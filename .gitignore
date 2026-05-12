@@ -10,9 +10,6 @@ discord_watcher/config.json
 discord_watcher/logs/
 info_*/
 
-# Past project is its own separate git repo
-pastproject/
-
 # Maze generator output (regenerable from seed)
 maze_gen/output/*.sdf
 maze_gen/output/*.json
