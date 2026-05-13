@@ -8,11 +8,12 @@ on any failure path, file-based logs.
 
 | Phase | Status | Scope |
 |---|---|---|
-| **1** | **building now** | Heartbeat + scripted-waypoint smoke flight. No detection. Goal: prove the offboard heartbeat survives a full flight. |
-| 2 | next | Add YOLO detector as a background task. Print detections. |
-| 3 | next next | Lawnmower search strategy across the 40×40 arena, 2-altitude passes. |
-| 4 | later | Detection dedup by NED position; restart-resilient state. |
+| **1** | **✅ DONE 2026-05-13** | Heartbeat + scripted-waypoint smoke flight. v2: yaw locked at 0°, 2 m moves, divergence watchdog. Flew clean 5-WP square in 33 s, sub-0.5 m pos err on every WP. |
+| **2** | **next** | Add YOLO detector as a background task using `gzphotodetectorsaver.py`'s pattern. Print detections with NED position. |
+| 3 | next next | Lawnmower search strategy across the 40×40 arena, 2-altitude passes (1 m for yellow, 3.5 m for red). |
+| 4 | later | Detection dedup by NED position; restart-resilient state (persist found barrels to disk). |
 | 5 | later | Frontier exploration (port from `pastproject/`) for irregular maps. |
+| 6 | qualifier prep | Pymavlink fake-GCS heartbeat (no QGC dependency); 10-min dry-run validation. |
 
 ## Prereqs (one-time in the VM)
 
@@ -46,21 +47,37 @@ python3 controller.py
 You can pass `--log-level DEBUG` to see the setpoint pumper's debug
 messages.
 
-## What Phase 1 does
+## What Phase 1 does (v2, the version that works)
 
 The drone:
 1. Connects to PX4 SITL on UDP 14540
 2. Sets `CBRK_SUPPLY_CHK=894281` and `SIM_BAT_MIN_PCT=100` via MAVSDK
-3. Waits until `is_armable=True` (max 45 s)
+3. Waits until `is_armable=True` (max 45 s; usually 1–2 s)
 4. Arms, takes off to 2 m altitude
 5. Enters offboard mode
-6. Background tasks start: setpoint pumper @ 10 Hz, telemetry monitor, 30-s watchdog
-7. Flies a 4×4 m square at 2 m alt, rotating to face each leg:
+6. Background tasks start: setpoint pumper @ 10 Hz, telemetry monitor, 30-s watchdog, **divergence watchdog** (aborts on `|pos − target| > 5 m` sustained for 3 s)
+7. Flies a **2 m × 2 m square at constant yaw=0°** (no rotation between legs — lateral flight only):
    ```
-   N4 → E4 → S4 → W4 → home
+   start → N2 → +E2 → -N2 → -E2 → start
    ```
-   ~30 s of flight total
+   ~33 s of flight total
 8. Lands, disarms, exits
+
+### Why yaw=0 throughout
+
+v1 of the controller tried to rotate the drone to face each direction of
+motion (N→E→S→W with yaw stepping 0→90→180→270). On waypoint 3 the drone
+flew **104 m off-target** — the EKF vision odometry lost tracking during
+the simultaneous yaw rotation + translation.
+
+v2 fixes this by keeping yaw constant. The drone flies sideways/backward
+when needed instead of rotating. PX4 handles lateral flight just fine.
+
+Lesson for Phases 3+: **don't combine yaw and position changes in the
+same setpoint**. If we need to rotate (e.g. to point the camera in a
+specific direction during search), do it as a separate move:
+1. Hold position, rotate to target yaw, wait for yaw arrival
+2. Then translate to next position holding that yaw
 
 ## Reliability features
 

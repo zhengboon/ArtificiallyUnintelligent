@@ -16,6 +16,18 @@ sequence → things to fix when they break.
 > **Date discovered:** 2026-05-12 / 2026-05-13. If the OP updates the VM
 > or publishes new fixes, parts of this guide may become obsolete.
 
+## Status banner
+
+| Milestone | State |
+|---|---|
+| Stock v3 VM → working sim | ✅ verified 2026-05-13 |
+| Smoke flight (`takeoff_and_land.py`) | ✅ verified 2026-05-13 |
+| **searchctl Phase 1 (scripted-waypoint flight)** | ✅ **verified 2026-05-13 19:35** — full square flown, exit 0, all WPs sub-0.5 m |
+| searchctl Phase 2 (YOLO detection as background task) | ⏳ next session |
+| searchctl Phase 3 (lawnmower search strategy) | ⏳ planned |
+| searchctl Phase 4 (detection dedup + restart-resume) | ⏳ planned |
+| 10-min full qualifier dry-run | ⏳ before 2026-05-22 |
+
 ---
 
 ## Table of contents
@@ -443,16 +455,67 @@ cd ~/searchctl
 python3 controller.py
 ```
 
-What it does:
+What it does (v2, verified 2026-05-13):
 - Applies `CBRK_SUPPLY_CHK` and `SIM_BAT_MIN_PCT` via MAVSDK
-- Waits up to 45 s for `is_armable=True`
-- Arms, takes off to 2 m
-- Starts a setpoint pumper at 10 Hz (the heartbeat the workshop's `avoid.py` doesn't have)
-- Starts telemetry + watchdog tasks
-- Flies a 4 m × 4 m square, rotating to face each leg
+- Waits up to 45 s for `is_armable=True` (typically takes 1–2 s)
+- Arms, takes off to 2 m (8 s sleep for PX4's TAKEOFF mode to settle)
+- Enters offboard mode, starts setpoint pumper at 10 Hz
+- Starts telemetry, watchdog, and **divergence watchdog** tasks
+- Flies a 2 m × 2 m square at constant `yaw=0` (no rotation)
 - Lands and disarms
 
-Total flight: ~30 s. Logs to `~/searchctl/logs/run_<timestamp>.log`.
+Total flight: ~33 s. Logs to `~/searchctl/logs/run_<timestamp>.log`.
+
+### 12.3 Expected output (from a successful run)
+
+```
+==== searchctl controller v0.1 (Phase 1: scripted square) ====
+PX4 connected
+CBRK_SUPPLY_CHK set to 894281 (supply check bypassed)
+SIM_BAT_MIN_PCT set to 100.0 (battery pinned full)
+waiting for is_armable...
+is_armable=True; OK to arm
+arming
+takeoff to 2.0 m
+takeoff complete (assumed; pumper will hold altitude)
+offboard mode started
+planner started; 5 waypoints
+WP 1/5 — hover above start ...
+  arrived (pos err=0.08 m, yaw err=6.3 deg)
+  holding 3.0 s
+WP 2/5 — forward 2 m ...
+  arrived (pos err=0.23 m, yaw err=1.0 deg)
+  ...
+planner complete; all waypoints visited
+offboard mode stopped
+landing
+on ground; disarming
+run finished cleanly
+```
+
+Pos errors should all be under 0.5 m. If you see any waypoint with pos
+err > 1 m, **stop and investigate before adding more flight code on top.**
+That's the signature of the EKF-divergence problem v1 hit (see Verification
+log § 2026-05-13 18:30).
+
+### 12.4 If a run fails
+
+The controller's reliability stack guarantees the drone is safe even on
+failure:
+
+- Any unhandled exception → `emergency_land` coroutine runs (offboard.stop → land → disarm), all with timeouts so cleanup never hangs.
+- Watchdog (no planner progress for 30 s) → abort flag → cleanup.
+- Divergence watchdog (`|pos - target| > 5 m` for 3 s) → abort flag → cleanup.
+- SIGINT (Ctrl+C) / SIGTERM → abort flag → cleanup.
+
+You should never end a run with a drone armed in the air. If you do, that's
+a bug worth filing.
+
+After a failed run, the sim may be in a degraded state (drone left somewhere
+unexpected, EKF confused). The fastest recovery is to **restart the sim
+cleanly**: Ctrl+C in the px4 console, then `~/start_px4.sh` again. Don't
+try to debug the sim state in place — just reset and re-run the §10.2 PX4
+console commands.
 
 ---
 
