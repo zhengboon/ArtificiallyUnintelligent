@@ -96,12 +96,32 @@ Lesson: **always use `growpart`, not `parted resizepart`, for live root-partitio
 - Team agreed time. Decision logged in local-only `challenge/qualifier_booking.md` (gitignored).
 - Hard cancellation cutoff: 2026-05-20 14:00 (48 h rule). After that, slot is fixed.
 
+### searchctl Phase 1 — built + partial flight success (evening, 18:30)
+- Wrote our own search controller `searchctl/controller.py` (320 lines), replacing the workshop's broken `avoid.py`. Architecture: independent setpoint pumper task (10 Hz), telemetry monitor, watchdog, planner that writes setpoints. Battery workarounds applied automatically via MAVSDK param plugin (no manual `pxh>` typing for those two — only EKF origin remains a one-line console step).
+- Deployed to VM via `vmrun copyFileFromHostToGuest`, syntax-checked, ran end-to-end.
+- **Result:**
+  - ✅ Connected, battery workarounds applied via MAVSDK, `is_armable=True` in **1 second** (vs 45-s timeouts in prior naive attempts)
+  - ✅ Armed, took off, offboard mode entered, pumper kept heartbeat alive
+  - ✅ WP 1 (hover at start): pos err 0.06 m
+  - ✅ WP 2 (forward 4 m): pos err 0.39 m
+  - ❌ WP 3 (right 4 m + yaw 90°): drone flew **104 m off-target** — simultaneous position+yaw change in NED frame caused PID divergence and/or EKF vision-odometry loss
+  - After WP 3: mavsdk_server lost heartbeats → gRPC connection refused → emergency_land triggered (best-effort, exited cleanly despite gRPC dead)
+- **Reliability features all engaged correctly** under the failure: heartbeat pumper survived 30 s of flight, WP timeout fired, fatal-exception caught, emergency_land ran without hanging.
+- **Next fix:** decouple yaw change from position change in planner — rotate first while holding XY position, THEN translate. Also: add a divergence watchdog (if pos error > Xm for >Ns, abort).
+- Full verification log in `guides/vm_from_zero_to_flight.md` § Verification log.
+
+### Logistics
+- **Qualifier slot booked: Friday 22 May 2026, 14:00, Orchard Grand Court Lloyd I/II.**
+- Team agreed time. Decision logged in local-only `challenge/qualifier_booking.md` (gitignored).
+- Hard cancellation cutoff: 2026-05-20 14:00 (48 h rule). After that, slot is fixed.
+
 ### Outstanding for next session
-- **Fix avoid.py's offboard heartbeat.** Likely needs a background setpoint-pumping task while `rotate_to_yaw` and depth processing happen. The `gzphotodetectorsaver.py` pattern from the OP shows the async-task split that's needed.
-- Run `UseDetectorExample.py` to see YOLO bbox detection on the live camera (will detect COCO classes, not barrels yet)
-- Get the OP's barrel-tuned YOLO weights from Discord (or train via Colab — disk now has room)
-- Decide search-controller architecture (port frontier exploration from `pastproject/`)
-- **9-day countdown to qualifier.** avoid.py-style reactive code is the foundation; build the smart search controller on top.
+- **Fix the WP 3 yaw+position behavior** in `searchctl/controller.py`. Plan: separate yaw alignment from translation. Use velocity-based yaw rate (`set_velocity_ned_yaw_rate`) for rotation, then position setpoints for translation, with the same target yaw held throughout. Test on smaller (2 m) waypoints first.
+- Add divergence watchdog (emergency-land if `|pos - target| > 5 m` sustained for 3 s — catches EKF blow-up).
+- Add `pymavlink`-based fake-GCS heartbeat sender (so QGC isn't required to pass preflight). Makes the controller self-sufficient at qualifier time.
+- Once Phase 1 flies the square cleanly, Phase 2: drop in the YOLO detector as a background task using the `gzphotodetectorsaver.py` async pattern.
+- Get the OP's barrel-tuned YOLO weights from Discord (or train via Colab — disk now has room).
+- **9-day countdown to qualifier.** Phase 1 reliability is the foundation; detection + search strategy layer on top once flight is rock-solid.
 
 ---
 

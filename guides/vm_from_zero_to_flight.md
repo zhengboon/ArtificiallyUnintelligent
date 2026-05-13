@@ -590,3 +590,63 @@ The two `param set` commands are automated by `searchctl/controller.py`. Only th
 - After a VM reset / re-import
 - Before the qualifier — confirm every per-session command is in muscle memory
 - After the OP publishes a v4 VM (parts of this guide may need updating)
+
+---
+
+## Verification log — what's been confirmed working, when, and how
+
+A running checklist of what we've actually verified end-to-end, with
+session refs so progress is traceable.
+
+### 2026-05-13 13:30 (afternoon, Linux→Windows handoff complete)
+
+- [x] **v3 VM imported into VMware Workstation 17.6.4 on Windows** — opens, boots, login works (`drone`/`password`)
+- [x] **VM disk expanded 49 GB → 100 GB** via VMware Settings → Expand + `growpart` + `resize2fs` inside the guest. Final: 98 G total / 52 G free / 45% used.
+- [x] **`vmrun` host→guest scripting works** — host PowerShell can run commands in the VM, copy files in both directions, retrieve outputs. Documented `Invoke-VMGuest` helper pattern.
+- [x] **`base6.glb` placed in PX4 worlds directory** (37 MB) — verified copy succeeds.
+- [x] **`x500_vision` model includes OakD-Lite** (grep confirms `<include><uri>model://OakD-Lite</uri></include>`).
+- [x] **`ultralytics` installed via pip** (was missing in v3). YOLO loads `yolov10n.pt` with 80 COCO classes.
+- [x] **Camera frame captured live from the running sim** via gz-transport → saved to `D:\hackerverse\spawn_view.jpg`. Confirmed the actual world's toxic-barrel appearance (red drums with diamond hazard signs).
+
+### 2026-05-13 18:30 (evening, searchctl Phase 1 tested)
+
+- [x] **Sim startup sequence verified** — `~/start_px4.sh` → x500_vision → roboverse → QGC starts → `Ready for takeoff` prints.
+- [x] **Per-session PX4 console commands accepted** — `param set CBRK_SUPPLY_CHK 894281` (curr 0 → 894281), `param set SIM_BAT_MIN_PCT 100` (curr 50 → 100), `commander set_ekf_origin 47.397742 8.545594 488.0` (`New NED origin (LLA)` + `home set`).
+- [x] **`commander check` returns `Preflight check: OK`** when all three params + QGC running.
+- [x] **`takeoff_and_land.py` smoke test** (patched per §8) — drone connected, armed, took off, hovered 5 s, landed. Confirmed earlier this afternoon.
+- [x] **`searchctl/controller.py` Phase 1 controller** — auto-applied battery workarounds via MAVSDK param plugin (no `pxh>` typing for these), waited for `is_armable=True` (1 s), armed, took off, entered offboard mode, started setpoint pumper.
+- [x] **Setpoint pumper sustains offboard heartbeat** — drone stayed in offboard for 60+ s while planner did its work (the exact thing `avoid.py` fails at).
+- [x] **Waypoints 1–2 of the scripted square hit cleanly** — WP1 hover at start, pos err 0.06 m. WP2 fly forward 4 m, pos err 0.39 m.
+
+### Outstanding / partially verified
+
+- [ ] **Waypoint 3 (4 m E + yaw 90°)** — drone flew 104 m off-target. Need to investigate: most likely a coordinate-frame issue or PID instability when yaw + position change simultaneously. **Fix planned:** decouple yaw change from position change (rotate first while holding XY position, then translate).
+- [ ] **Full square + return-home** — depends on WP 3 fix.
+- [ ] **mavsdk_server stability after EKF divergence** — after WP 3 timeout the gRPC server lost heartbeats and stopped responding (`Connection refused` to 127.0.0.1:50051). Probably caused by the drone flying far enough that the EKF lost vision odometry tracking. **Recovery strategy:** add a position-divergence watchdog in the controller — if drone-reported position is > X meters from target for > N seconds, emergency-land immediately rather than continue to next WP.
+
+### Reliability features that DID engage on the partial-failure run
+
+| Feature | Triggered? | Result |
+|---|---|---|
+| Setpoint pumper @ 10 Hz | Yes, continuously | Kept offboard mode alive through 30 s of flight |
+| WP-level timeout (25 s) | Yes, on WP 3 | Logged the 104 m position error, moved on to WP 4 |
+| Heartbeat-loss detection (in mavsdk_server) | Yes | Logged `heartbeats timed out` twice |
+| Fatal-exception → emergency_land | Yes | Caught the gRPC connection error, tried to land |
+| Emergency_land best-effort behavior | Yes | Could not actually reach PX4 (server crashed) but didn't hang — exited within 30 s with all errors logged |
+
+### Things NOT YET verified (next sessions)
+
+- [ ] Multi-altitude search pass (low pass for yellow / high pass for red)
+- [ ] YOLO detection running in background task during flight
+- [ ] Detection deduplication by NED position
+- [ ] Frontier exploration as alternative to scripted waypoints
+- [ ] Restart-resume from persisted state
+- [ ] Pymavlink-based fake-GCS heartbeat (so QGC isn't required to pass preflight)
+- [ ] Full 10-minute qualifier-style dry-run
+
+### How to update this log
+
+After any new verification run, add a dated subsection. Keep it skimable:
+what's CONFIRMED working, what's PARTIALLY working with the specific failure
+mode, what's NOT verified yet. Don't delete old entries — the timeline IS
+the value.
