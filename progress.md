@@ -106,6 +106,15 @@ Lesson: **always use `growpart`, not `parted resizepart`, for live root-partitio
 - Team agreed time. Decision logged in local-only `challenge/qualifier_booking.md` (gitignored).
 - Hard cancellation cutoff: 2026-05-20 14:00 (48 h rule). After that, slot is fixed.
 
+### Phase 2 detection scaffolding (late evening, ~22:00) 🧪
+- Wrote +226 lines into `searchctl/controller.py` (now 710 lines, version v0.2).
+- Adds gz-transport subscription to IMX214 camera + workshop's `Detector` class on a worker thread + per-frame NED pose stamping + `DetectionRecord` dataclass + per-run `logs/run_<ts>/detections/` folder + `on_detection` callback that logs each fire and appends to SharedState.
+- Architecture: nothing touches the asyncio loop. YOLO inference runs in Detector's own thread; gz-transport callback runs in its own thread; both push records back to SharedState via GIL-protected attribute writes. The 10 Hz setpoint pumper is unaffected.
+- Lazy imports (`_import_detection_deps`) wrapped in try/except — if any dep missing, controller falls back to Phase-1-only with a logged warning. Flight is never blocked by a missing camera/YOLO stack.
+- New CLI flag `--no-detect` for Phase-1-only runs (clean fallback if Phase 2 breaks).
+- `py_compile` clean. **Not flight-tested yet** — that's the half-day task tomorrow.
+- Commit: `49b9961`. README + main setup guide both updated.
+
 ### searchctl Phase 1 — COMPLETE (evening, 19:35) ✅
 
 Second iteration of the controller flew the full scripted square cleanly.

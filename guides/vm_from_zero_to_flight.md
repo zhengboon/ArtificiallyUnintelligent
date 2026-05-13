@@ -23,7 +23,7 @@ sequence → things to fix when they break.
 | Stock v3 VM → working sim | ✅ verified 2026-05-13 |
 | Smoke flight (`takeoff_and_land.py`) | ✅ verified 2026-05-13 |
 | **searchctl Phase 1 (scripted-waypoint flight)** | ✅ **verified 2026-05-13 19:35** — full square flown, exit 0, all WPs sub-0.5 m |
-| searchctl Phase 2 (YOLO detection as background task) | ⏳ next session |
+| searchctl Phase 2 (YOLO detection as background task) | 🧪 **scaffolding written + committed 2026-05-13 ~22:00; integration test pending (next session)** |
 | searchctl Phase 3 (lawnmower search strategy) | ⏳ planned |
 | searchctl Phase 4 (detection dedup + restart-resume) | ⏳ planned |
 | 10-min full qualifier dry-run | ⏳ before 2026-05-22 |
@@ -714,6 +714,39 @@ Then: `planner complete; all waypoints visited` → `offboard mode stopped` → 
 - [x] `takeoff_and_land.py` smoke test passes
 - [x] **`searchctl/controller.py` flies a multi-waypoint scripted pattern from arm to disarm with no human intervention** — Phase 1 complete
 - [x] Reliability features (pumper, watchdog, divergence watchdog, emergency_land, signal handlers) all engage correctly under normal and failure paths
+
+### 2026-05-13 ~22:00 (late evening, Phase 2 detection pipeline scaffolded)
+
+Wrote the detection layer on top of the proven Phase 1 framework. **Not flight-tested yet** — that's tomorrow's half-day task.
+
+**Code added (`searchctl/controller.py`, +226 lines, now 710 total):**
+
+- New `DetectionRecord` dataclass — light per-detection record (class, conf, bbox, NED pose at frame capture, saved-frame path).
+- `SharedState` extended with `detection_count`, `detections[]`, `last_detection_at`.
+- `_import_detection_deps()` — lazy imports `cv2`, `numpy`, `gz.transport13`, `gz.msgs10.image_pb2.Image`, and the workshop's `Detector` class (auto-adds `~/Desktop/codes` to `sys.path`; sets `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python` since the gz protobuf bindings need it). Returns None on ImportError → controller falls back to Phase-1-only with a logged warning, no flight blockage.
+- `setup_detection(state, run_dir)` — creates the `Detector` (callback wired to log + append to `SharedState.detections`), subscribes to the IMX214 camera topic via a gz `Node`, returns a handle dict for teardown.
+- Two callbacks running in non-asyncio threads:
+  - `image_callback` (gz-transport's own thread) — stamps each frame with current NED pose, submits via `Detector.submit_image()`.
+  - `on_detection` (Detector's worker thread) — appends a `DetectionRecord` to SharedState, logs a one-liner per detected object.
+- `teardown_detection(handle, state)` — clean Detector.stop(); logs total fired count.
+- `run()` updated: takes `detect_enabled`, creates `logs/run_<ts>/` (with `detections/` subfolder), brings up detection AFTER telemetry monitor and BEFORE arm so frames during takeoff are captured, tears down on every exit path (success / KeyboardInterrupt / fatal exception).
+- New CLI flag: `--no-detect` for Phase-1-only mode.
+- Version bumped to v0.2.
+
+**The architecture (recap of why threads, not asyncio tasks):**
+
+YOLO inference is CPU-bound and blocking (~100-200 ms / frame on the VM). Running it inside the asyncio loop would starve the setpoint pumper → PX4 failsafe → drone falls out of the sky. By isolating YOLO inside `Detector`'s own worker thread, the asyncio loop continues servicing the 10 Hz pumper completely undisturbed. The `image_callback` from gz-transport already runs on a non-asyncio thread, so the hand-off is clean.
+
+**Verified offline:** `python3 -m py_compile searchctl/controller.py` exits 0. Imports gated through `_import_detection_deps()` so the host IDE's "module not found" errors for `cv2` / `gz.transport13` / `Detector` are expected (those live in the VM, not on Windows).
+
+### Outstanding to verify next session (Thursday half-day)
+
+- [ ] **Phase 2 integration test** — deploy controller v0.2 to VM, run end-to-end:
+  - Phase 1 flight still clean (pumper unaffected by YOLO)
+  - Detection log lines appear during flight
+  - `logs/run_<ts>/detections/` contains annotated `.jpg` files
+  - `--no-detect` flag still produces a Phase-1-only clean run
+- [ ] Confirm CPU headroom — does the VM sustain 10 Hz pumper + YOLO inference simultaneously without queue backlog?
 
 ### Lessons learned this iteration
 
