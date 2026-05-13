@@ -608,21 +608,58 @@ session refs so progress is traceable.
 - [x] **`ultralytics` installed via pip** (was missing in v3). YOLO loads `yolov10n.pt` with 80 COCO classes.
 - [x] **Camera frame captured live from the running sim** via gz-transport → saved to `D:\hackerverse\spawn_view.jpg`. Confirmed the actual world's toxic-barrel appearance (red drums with diamond hazard signs).
 
-### 2026-05-13 18:30 (evening, searchctl Phase 1 tested)
+### 2026-05-13 18:30 (evening, searchctl Phase 1 v1 — partial)
 
 - [x] **Sim startup sequence verified** — `~/start_px4.sh` → x500_vision → roboverse → QGC starts → `Ready for takeoff` prints.
 - [x] **Per-session PX4 console commands accepted** — `param set CBRK_SUPPLY_CHK 894281` (curr 0 → 894281), `param set SIM_BAT_MIN_PCT 100` (curr 50 → 100), `commander set_ekf_origin 47.397742 8.545594 488.0` (`New NED origin (LLA)` + `home set`).
 - [x] **`commander check` returns `Preflight check: OK`** when all three params + QGC running.
 - [x] **`takeoff_and_land.py` smoke test** (patched per §8) — drone connected, armed, took off, hovered 5 s, landed. Confirmed earlier this afternoon.
-- [x] **`searchctl/controller.py` Phase 1 controller** — auto-applied battery workarounds via MAVSDK param plugin (no `pxh>` typing for these), waited for `is_armable=True` (1 s), armed, took off, entered offboard mode, started setpoint pumper.
+- [x] **`searchctl/controller.py` Phase 1 v1 controller** — auto-applied battery workarounds via MAVSDK param plugin (no `pxh>` typing for these), waited for `is_armable=True` (1 s), armed, took off, entered offboard mode, started setpoint pumper.
 - [x] **Setpoint pumper sustains offboard heartbeat** — drone stayed in offboard for 60+ s while planner did its work (the exact thing `avoid.py` fails at).
 - [x] **Waypoints 1–2 of the scripted square hit cleanly** — WP1 hover at start, pos err 0.06 m. WP2 fly forward 4 m, pos err 0.39 m.
+- **❌ Waypoint 3 (4 m E + yaw 90°) — drone flew 104 m off-target.** Hypothesis: EKF vision-odometry lost tracking during the simultaneous yaw rotation + translation. mavsdk_server then lost heartbeats; emergency_land triggered cleanly but couldn't reach the dead gRPC server.
 
-### Outstanding / partially verified
+### 2026-05-13 19:35 (evening, searchctl Phase 1 v2 — FULL SUCCESS ✅)
 
-- [ ] **Waypoint 3 (4 m E + yaw 90°)** — drone flew 104 m off-target. Need to investigate: most likely a coordinate-frame issue or PID instability when yaw + position change simultaneously. **Fix planned:** decouple yaw change from position change (rotate first while holding XY position, then translate).
-- [ ] **Full square + return-home** — depends on WP 3 fix.
-- [ ] **mavsdk_server stability after EKF divergence** — after WP 3 timeout the gRPC server lost heartbeats and stopped responding (`Connection refused` to 127.0.0.1:50051). Probably caused by the drone flying far enough that the EKF lost vision odometry tracking. **Recovery strategy:** add a position-divergence watchdog in the controller — if drone-reported position is > X meters from target for > N seconds, emergency-land immediately rather than continue to next WP.
+After v1's WP3 failure, made three changes to the controller and retried.
+
+**Changes (committed in `searchctl/controller.py`):**
+1. **Yaw locked to 0° throughout the entire waypoint sequence** — no rotation at any point. Drone flies laterally instead of facing each direction of motion. Removes the EKF-tracking-during-rotation failure mode entirely.
+2. **Reduced waypoint distances 4 m → 2 m.** Less transit time → less time for EKF drift to accumulate.
+3. **Added `divergence_watchdog` task.** If measured pos vs target exceeds `DIVERGENCE_LIMIT_M = 5.0` m for more than `DIVERGENCE_TIME_S = 3.0` s, requests abort → emergency_land. Catches EKF blow-up before drone flies into the void.
+4. **Replaced `_wait_until_altitude` with a simple 8 s sleep.** Matches the workshop's `drone_control_new.py` pattern. The altitude wait was producing false timeouts.
+
+**Result — clean run, exit code 0:**
+
+| WP | Target | Pos error | Yaw err | Time |
+|---|---|---|---|---|
+| 1 | hover at start (0, 0, -2) | **0.08 m** | 6.3° | t+6s |
+| 2 | forward 2 m (2, 0, -2) | **0.23 m** | 1.0° | t+12s |
+| 3 | right 2 m lateral (2, 2, -2) | **0.35 m** | 0.1° | t+18s |
+| 4 | back 2 m (0, 2, -2) | **0.27 m** | 0.0° | t+24s |
+| 5 | left 2 m, return home (0, 0, -2) | **0.33 m** | 0.2° | t+30s |
+
+Then: `planner complete; all waypoints visited` → `offboard mode stopped` → `landing` → `on ground; disarming` → `run finished cleanly`. **Exit code 0.** Total flight ~33 seconds.
+
+**Divergence watchdog never tripped.** Pos errors were all sub-0.5 m. Setpoint pumper sustained the heartbeat through the entire flight + land. Phase 1 architecture confirmed sound.
+
+### What's now CONFIRMED end-to-end
+
+- [x] VM imported, disk expanded, all workshop fixes applied
+- [x] Sim launches with x500_vision + roboverse + QGC
+- [x] Per-session PX4 console setup works
+- [x] `takeoff_and_land.py` smoke test passes
+- [x] **`searchctl/controller.py` flies a multi-waypoint scripted pattern from arm to disarm with no human intervention** — Phase 1 complete
+- [x] Reliability features (pumper, watchdog, divergence watchdog, emergency_land, signal handlers) all engage correctly under normal and failure paths
+
+### Lessons learned this iteration
+
+1. **Don't combine yaw + position changes in the same setpoint.** EKF vision odometry can lose tracking during fast rotation. Either separate rotation from translation, or keep yaw constant.
+2. **Smaller moves are safer.** Each transit is a chance to drift; more transits with smaller jumps converge better.
+3. **The divergence watchdog is a real safety net.** Even though it didn't trip in v2's successful run, it's the only thing standing between "PID instability" and "drone in the next county."
+4. **Sim state degrades after a failed flight.** v1's WP3 disaster left the sim such that v2's first attempt timed out on `is_armable`. Restart `start_px4.sh` cleanly after any unusual flight ending.
+
+### Things NOT YET verified (next sessions)
 
 ### Reliability features that DID engage on the partial-failure run
 

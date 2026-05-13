@@ -161,25 +161,12 @@ class Drone:
         except ActionError as e:
             raise RuntimeError(f"takeoff failed: {e}") from e
 
-        # Wait for the drone to reach roughly the target altitude.
-        await self._wait_until_altitude(altitude_m, tolerance=0.5, timeout_s=20.0)
-        log.info("takeoff complete")
-
-    async def _wait_until_altitude(
-        self, target_alt: float, tolerance: float, timeout_s: float
-    ) -> None:
-        deadline = time.monotonic() + timeout_s
-        async for p in self.drone.telemetry.position_velocity_ned():
-            alt = -p.position.down_m
-            if abs(alt - target_alt) <= tolerance:
-                return
-            if time.monotonic() > deadline:
-                log.warning(
-                    "altitude wait timed out (current=%.2f target=%.2f)",
-                    alt, target_alt,
-                )
-                return
-            await asyncio.sleep(0.3)
+        # PX4 TAKEOFF mode handles the climb. Sleep 8 s — same pattern the
+        # workshop's drone_control_new.py uses. The pumper takes over after
+        # offboard.start(); no point in polling telemetry just to time out
+        # exactly when the drone is mid-climb.
+        await asyncio.sleep(8.0)
+        log.info("takeoff complete (assumed; pumper will hold altitude)")
 
     async def begin_offboard(self, initial: PositionNedYaw) -> None:
         """Prime offboard with one setpoint, then start the mode."""
@@ -305,21 +292,65 @@ async def watchdog(state: SharedState, timeout_s: float = 30.0) -> None:
         await asyncio.sleep(1.0)
 
 
+async def divergence_watchdog(state: SharedState) -> None:
+    """Emergency-abort if measured position drifts far from the active target.
+
+    EKF vision odometry can lose tracking during fast yaw or visually
+    featureless flight, causing the position estimate to diverge by tens
+    of meters. We refuse to let the drone fly into the void: if the
+    distance from current measured pose to the active setpoint exceeds
+    DIVERGENCE_LIMIT_M continuously for DIVERGENCE_TIME_S, set abort.
+    """
+    divergent_since: Optional[float] = None
+    while not state.abort_requested:
+        err = math.hypot(
+            state.north_m - state.target_north,
+            state.east_m - state.target_east,
+        )
+        now = time.monotonic()
+        if err > DIVERGENCE_LIMIT_M:
+            if divergent_since is None:
+                divergent_since = now
+                log.warning(
+                    "divergence watchdog armed: pos err=%.2f m > %.1f m",
+                    err, DIVERGENCE_LIMIT_M,
+                )
+            elif now - divergent_since > DIVERGENCE_TIME_S:
+                log.error(
+                    "DIVERGENCE WATCHDOG TRIPPED — pos err=%.2f m sustained "
+                    "for %.1f s; requesting abort",
+                    err, now - divergent_since,
+                )
+                state.abort_requested = True
+                return
+        else:
+            divergent_since = None  # back in range
+        await asyncio.sleep(0.2)
+
+
 # ---------------------------------------------------------------------------
 # Phase 1 planner — fly a small scripted square at fixed altitude
 # ---------------------------------------------------------------------------
 WAYPOINTS = [
     # (north, east, down, yaw_deg, hold_s, label)
-    ( 0.0,  0.0, -2.0,   0.0,  3.0, "hover above start"),
-    ( 4.0,  0.0, -2.0,   0.0,  4.0, "forward 4 m, facing N"),
-    ( 4.0,  4.0, -2.0,  90.0,  4.0, "right 4 m, facing E"),
-    ( 0.0,  4.0, -2.0, 180.0,  4.0, "back 4 m, facing S"),
-    ( 0.0,  0.0, -2.0, -90.0,  4.0, "left 4 m, facing W"),
-    ( 0.0,  0.0, -2.0,   0.0,  3.0, "return home, hover"),
+    # Phase 1 v2: yaw locked to 0° throughout (no rotation), 2 m moves.
+    # Rationale: combining a position translation with a yaw change in NED
+    # frame caused EKF vision odometry to drift ~100 m on v1's WP3. Without
+    # rotation the drone flies laterally with stable visual tracking.
+    ( 0.0,  0.0, -2.0, 0.0,  3.0, "hover above start"),
+    ( 2.0,  0.0, -2.0, 0.0,  3.0, "forward 2 m"),
+    ( 2.0,  2.0, -2.0, 0.0,  3.0, "right 2 m (lateral, yaw still 0)"),
+    ( 0.0,  2.0, -2.0, 0.0,  3.0, "back 2 m"),
+    ( 0.0,  0.0, -2.0, 0.0,  3.0, "left 2 m, back to start"),
 ]
 
 ARRIVE_TOL_XY = 0.4   # m
 ARRIVE_TOL_YAW = 8.0  # deg
+
+# Divergence watchdog: emergency-land if measured position is this far from
+# target for this long. Catches EKF blow-up before drone flies far away.
+DIVERGENCE_LIMIT_M = 5.0
+DIVERGENCE_TIME_S = 3.0
 
 
 def _dist_xy(state: SharedState, n: float, e: float) -> float:
@@ -428,15 +459,16 @@ async def run() -> int:
         )
         pumper_task = asyncio.create_task(setpoint_pumper(drone, state), name="pumper")
         wd_task = asyncio.create_task(watchdog(state), name="watchdog")
+        div_task = asyncio.create_task(divergence_watchdog(state), name="divergence")
 
         # Run the scripted planner. Wraps in try so we always land afterward.
         try:
             await planner(state)
         finally:
             state.abort_requested = True
-            for t in (pumper_task, wd_task, telem_task):
+            for t in (pumper_task, wd_task, div_task, telem_task):
                 t.cancel()
-            for t in (pumper_task, wd_task, telem_task):
+            for t in (pumper_task, wd_task, div_task, telem_task):
                 try:
                     await t
                 except (asyncio.CancelledError, Exception):

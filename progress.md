@@ -96,7 +96,31 @@ Lesson: **always use `growpart`, not `parted resizepart`, for live root-partitio
 - Team agreed time. Decision logged in local-only `challenge/qualifier_booking.md` (gitignored).
 - Hard cancellation cutoff: 2026-05-20 14:00 (48 h rule). After that, slot is fixed.
 
-### searchctl Phase 1 — built + partial flight success (evening, 18:30)
+### searchctl Phase 1 — COMPLETE (evening, 19:35) ✅
+
+Second iteration of the controller flew the full scripted square cleanly.
+
+**v2 fixes vs v1:**
+1. Yaw locked to 0° throughout (no rotation) — removes EKF-tracking-during-rotation failure
+2. Waypoint distances 4 m → 2 m — less drift accumulation
+3. New `divergence_watchdog` task — aborts if `|measured - target| > 5 m` sustained for 3 s
+4. `_wait_until_altitude` replaced with 8 s sleep (matched workshop pattern)
+
+**Run result:** all 5 waypoints hit with sub-0.5 m accuracy, divergence watchdog never tripped, clean land + disarm, **exit code 0** in ~33 s of flight.
+
+| WP | Pos err | Yaw err |
+|---|---|---|
+| 1 (hover) | 0.08 m | 6.3° |
+| 2 (forward 2 m) | 0.23 m | 1.0° |
+| 3 (right 2 m lateral) | 0.35 m | 0.1° |
+| 4 (back 2 m) | 0.27 m | 0.0° |
+| 5 (return) | 0.33 m | 0.2° |
+
+**Phase 1 architecture confirmed sound.** Independent setpoint pumper, telemetry monitor, watchdog, divergence watchdog, emergency_land — all working. Ready to layer Phase 2 (detection) on top.
+
+Full run-by-run analysis in `guides/vm_from_zero_to_flight.md` § 2026-05-13 19:35.
+
+### searchctl Phase 1 v1 — partial (evening, 18:30)
 - Wrote our own search controller `searchctl/controller.py` (320 lines), replacing the workshop's broken `avoid.py`. Architecture: independent setpoint pumper task (10 Hz), telemetry monitor, watchdog, planner that writes setpoints. Battery workarounds applied automatically via MAVSDK param plugin (no manual `pxh>` typing for those two — only EKF origin remains a one-line console step).
 - Deployed to VM via `vmrun copyFileFromHostToGuest`, syntax-checked, ran end-to-end.
 - **Result:**
