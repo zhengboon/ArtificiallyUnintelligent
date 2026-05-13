@@ -64,6 +64,19 @@ Detailed report at `reports/2026-05-13_sim_verification.md`. Troubleshooting che
 - Team agreed time. Decision logged in local-only `challenge/qualifier_booking.md` (gitignored).
 - Hard cancellation cutoff: 2026-05-20 14:00 (48 h rule). After that, slot is fixed.
 
+### VM disk expanded 49 GB → 100 GB
+Triggered by the disk-pressure issue from the YOLO install. Sequence:
+1. Host (VMware): VM powered off, **Settings → Hard Disk → Expand → 100 GB**
+2. Guest verified disk now 107 GB total but partition 3 still at 53.7 GB; 53.7 GB free space at end
+3. First attempt with `parted -s /dev/sda resizepart 3 100%` was rejected — partition was mounted, parted's safety check refused
+4. Switched to `cloud-guest-utils` (provides `growpart`, designed for online resize):
+   - `sudo apt install -y cloud-guest-utils`
+   - `sudo growpart /dev/sda 3` — partition extended live, kernel rescanned automatically
+   - `sudo resize2fs /dev/sda3` — ext4 filesystem grew live
+5. Result: **root partition 98 GB, 52 GB free (45% used).** No reboot needed.
+
+Lesson: **always use `growpart`, not `parted resizepart`, for live root-partition expansion.** Documented in `reports/troubleshooting.md` under "VM disk space."
+
 ### Outstanding for next session
 - The patched `takeoff_and_land.py` set the pattern — other workshop scripts (`avoid.py`, `basic_offboard.py`) likely need the same `is_global_position_ok` removal
 - Run `avoid.py` to see depth-camera-based obstacle avoidance in action

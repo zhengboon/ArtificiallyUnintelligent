@@ -46,7 +46,7 @@ The v3 VM ships with a 49 GB disk that's already 95% used. **Any non-trivial ins
 
 | Permanent fix | How |
 |---|---|
-| Expand VM disk | VMware Workstation → VM Settings → Hard Disk → **Expand** → set to e.g. 80 GB. Then inside the VM: `sudo growpart /dev/sda 3 && sudo resize2fs /dev/sda3`. Requires the VM to be powered off for the Workstation step. |
+| Expand VM disk (full procedure, verified 2026-05-13) | (1) Power off the VM. (2) VMware → Settings → Hard Disk → **Expand** → new size. (3) Boot VM. (4) `sudo apt install -y cloud-guest-utils` (provides `growpart`). (5) `sudo growpart /dev/sda 3`. (6) `sudo resize2fs /dev/sda3`. (7) `df -h /` to confirm. **Important: use `growpart`, not `parted resizepart`** — parted refuses to operate on a mounted partition even in script mode. `growpart` is designed for online resize. |
 | Move heavy stuff to a shared folder | VMware Settings → Options → Shared Folders → Add → point at host folder. Inside VM at `/mnt/hgfs/<name>`. Don't put PX4-Autopilot here (slow I/O); use for YOLO training data, weights, output images. |
 
 ## YOLO / Detection
