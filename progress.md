@@ -17,6 +17,16 @@ and commit hashes where they exist. Skim-able when looking back later.
 | ~2026-05-21 (Thu) | 8 days | Actual qualifier map released by org (1 day before our slot) |
 | 2026-06-10 to 06-11 | 28–29 days | Final round at Marina Bay Sands (top 26 teams only) |
 
+### Team availability
+
+| Date | Availability |
+|---|---|
+| 2026-05-13 (Wed, today) | working (Phase 1 done in evening) |
+| **2026-05-14 (Thu)** | **HALF DAY** — Phase 2 (detection) fits the available half if we start clean. Don't try to also do Phase 3 here. |
+| 2026-05-15 (Fri) onwards | full days assumed until qualifier |
+| 2026-05-20 (Tue) 14:00 | cancellation cutoff |
+| 2026-05-21 (Wed/Thu, day before qualifier) | qualifier map likely released; use full day to tune to it |
+
 Booking details (local only, not in repo): `challenge/qualifier_booking.md`.
 
 ---
