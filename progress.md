@@ -7,6 +7,20 @@ and commit hashes where they exist. Skim-able when looking back later.
 
 ---
 
+## ⏰ Key dates
+
+| Date | Days from now (2026-05-13) | Event |
+|---|---|---|
+| **2026-05-22 (Fri) 14:00** | **9 days** | **Our qualifier slot — Orchard Grand Court, Lloyd I/II** |
+| 2026-05-23 (Sat) | 10 days | Backup qualifier day (other teams' sessions) |
+| 2026-05-20 (Tue) 14:00 | 7 days | Hard 48-hour cancellation cutoff for our slot |
+| ~2026-05-21 (Thu) | 8 days | Actual qualifier map released by org (1 day before our slot) |
+| 2026-06-10 to 06-11 | 28–29 days | Final round at Marina Bay Sands (top 26 teams only) |
+
+Booking details (local only, not in repo): `challenge/qualifier_booking.md`.
+
+---
+
 ## 2026-05-13 (Wednesday) — Sim verified, YOLO ready, world inspected
 
 Detailed report at `reports/2026-05-13_sim_verification.md`. Troubleshooting cheatsheet at `reports/troubleshooting.md`.
@@ -45,12 +59,18 @@ Detailed report at `reports/2026-05-13_sim_verification.md`. Troubleshooting che
 - New `reports/troubleshooting.md` — 30+ symptoms → fixes
 - Updated `maze_gen/README.md` and `maze_gen/generate_maze.py`
 
+### Logistics
+- **Qualifier slot booked: Friday 22 May 2026, 14:00, Orchard Grand Court Lloyd I/II.**
+- Team agreed time. Decision logged in local-only `challenge/qualifier_booking.md` (gitignored).
+- Hard cancellation cutoff: 2026-05-20 14:00 (48 h rule). After that, slot is fixed.
+
 ### Outstanding for next session
 - The patched `takeoff_and_land.py` set the pattern — other workshop scripts (`avoid.py`, `basic_offboard.py`) likely need the same `is_global_position_ok` removal
 - Run `avoid.py` to see depth-camera-based obstacle avoidance in action
 - Run `UseDetectorExample.py` with the patched protobuf env var to see YOLO bbox detection on the live camera (will detect COCO classes, not barrels yet)
 - Get the OP's barrel-tuned YOLO weights from Discord (or train via Colab)
 - Decide search-controller architecture (port frontier exploration from `pastproject/`)
+- **9-day countdown to qualifier.** Build the search controller first; YOLO weights and robustness can layer on top.
 
 ---
 

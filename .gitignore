@@ -15,6 +15,9 @@ maze_gen/output/*.sdf
 maze_gen/output/*.json
 maze_gen/output/*.png
 
+# Team logistics — not for public repo
+challenge/qualifier_booking.md
+
 # Python build artifacts
 **/__pycache__/
 *.pyc
