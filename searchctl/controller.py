@@ -1,5 +1,5 @@
 """
-RoboVerse search controller — Phase 1.
+RoboVerse search controller — Phase 1 (flight) + Phase 2 (detection).
 
 Single-file asyncio controller that:
   * Connects to PX4 SITL on udp://:14540
@@ -10,12 +10,21 @@ Single-file asyncio controller that:
   * Arms, takes off, follows a hardcoded waypoint script, lands, disarms
   * Runs a setpoint pumper task at 10 Hz so PX4 never loses heartbeat
     while the main loop is doing planner work
-  * Logs everything to searchctl/logs/run_<ts>.log AND stdout
+  * (Phase 2) Subscribes to the IMX214 RGB camera via gz-transport,
+    feeds frames into a YOLO worker thread, logs detections with the
+    drone's NED pose at frame-capture time, and saves annotated .jpgs
+    to logs/run_<ts>/detections/
+  * Logs everything to logs/run_<ts>.log AND stdout
   * On *any* failure path (exception, signal, watchdog trigger),
     runs an emergency_land coroutine that lands + disarms before exit
 
-Phase 1 has no detection, no depth, no real search strategy. The waypoint
-script is just a smoke pattern — fly a square at 2 m altitude, then land.
+Phase 2 detection is opt-out via --no-detect. If the detection deps
+(ultralytics, gz.transport13, the workshop's Detector.py) can't be
+imported, the controller logs a warning and proceeds Phase-1-only —
+flight will not be blocked by a missing camera stack.
+
+The current waypoint script is still a smoke pattern (4-cell square at
+2 m altitude). Phase 3 will replace it with a real search strategy.
 """
 
 from __future__ import annotations
@@ -24,16 +33,21 @@ import argparse
 import asyncio
 import logging
 import math
+import os
 import signal
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from mavsdk import System
 from mavsdk.action import ActionError
 from mavsdk.offboard import OffboardError, PositionNedYaw, VelocityNedYaw
+
+# Detection deps are imported lazily inside setup_detection() so the
+# controller still runs Phase-1-only without them installed.
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +93,24 @@ class SharedState:
     # Heartbeat / liveness
     last_planner_progress: float = field(default_factory=time.monotonic)
     abort_requested: bool = False
+
+    # ---- Detection state (Phase 2; populated by detection_callback) ----
+    detection_count: int = 0
+    detections: list = field(default_factory=list)
+    last_detection_at: Optional[float] = None
+
+
+@dataclass
+class DetectionRecord:
+    """One record per fired detection. Kept light — full annotated frame
+    lives on disk, this just keeps the gist."""
+    seq: int
+    ts: float
+    class_name: str
+    confidence: float
+    bbox_xyxy: tuple        # (x1, y1, x2, y2) in image pixels
+    pose_at_detect: tuple   # (north, east, down, yaw_deg) at frame capture time
+    saved_path: Optional[str]
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +361,154 @@ async def divergence_watchdog(state: SharedState) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Detection pipeline (Phase 2)
+# ---------------------------------------------------------------------------
+# Architecture:
+#   gz-transport delivers frames to our callback (on its own thread)
+#   → callback stamps frame with current NED pose + submits to Detector
+#   → Detector runs YOLO in its own worker thread(s)
+#   → Detector calls our on_detection() callback when something fires
+#   → on_detection logs + appends to SharedState.detections
+#
+# Nothing in this pipeline touches the asyncio loop — the setpoint pumper
+# is unaffected by YOLO inference time. That's the whole point.
+
+IMAGE_TOPIC_DEFAULT = (
+    "/world/roboverse/model/x500_vision_0/link/camera_link"
+    "/sensor/IMX214/image"
+)
+WORKSHOP_CODES_DIR = os.path.expanduser("~/Desktop/codes")
+YOLO_WEIGHTS_DEFAULT = os.path.join(WORKSHOP_CODES_DIR, "yolov10n.pt")
+DETECT_CONFIDENCE_DEFAULT = 0.4
+
+
+def _import_detection_deps():
+    """Lazy import so the controller still runs without ultralytics/gz installed."""
+    # The workshop's Detector lives in ~/Desktop/codes; make it importable.
+    if WORKSHOP_CODES_DIR not in sys.path:
+        sys.path.insert(0, WORKSHOP_CODES_DIR)
+    # gz.msgs10 needs this env var or its import explodes.
+    os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+    import cv2                                    # noqa: F401
+    import numpy as np
+    from gz.transport13 import Node
+    from gz.msgs10.image_pb2 import Image
+    from Detector import Detector                 # workshop's class
+    return cv2, np, Node, Image, Detector
+
+
+def setup_detection(
+    state: SharedState,
+    run_dir: Path,
+    weights_path: str = YOLO_WEIGHTS_DEFAULT,
+    confidence: float = DETECT_CONFIDENCE_DEFAULT,
+    image_topic: str = IMAGE_TOPIC_DEFAULT,
+) -> Optional[dict]:
+    """Stand up the camera → YOLO pipeline.
+
+    Returns a handle dict with the live objects so teardown_detection
+    can shut them down, or None if init failed (in which case we run
+    Phase-1-only with a logged warning — flight should not be blocked
+    by a missing camera).
+    """
+    try:
+        cv2, np, Node, Image, Detector = _import_detection_deps()
+    except Exception:
+        log.exception("could not import detection deps; running without detection")
+        return None
+
+    det_dir = run_dir / "detections"
+    det_dir.mkdir(parents=True, exist_ok=True)
+    log.info("detection: saving annotated frames into %s", det_dir)
+
+    seq_counter = {"n": 0}
+
+    def on_detection(detections, annotated_image, context):
+        """Runs in Detector's worker thread. Don't touch asyncio from here."""
+        if not detections:
+            return
+        seq_counter["n"] += 1
+        for d in detections:
+            cls = d.get("class_name", "?")
+            conf = float(d.get("confidence", 0.0))
+            bbox = tuple(d.get("bbox", (0, 0, 0, 0)))
+            pose = context.get("pose", (0.0, 0.0, 0.0, 0.0))
+            saved = context.get("saved_path")
+            record = DetectionRecord(
+                seq=seq_counter["n"],
+                ts=context.get("timestamp", time.time()),
+                class_name=cls,
+                confidence=conf,
+                bbox_xyxy=bbox,
+                pose_at_detect=pose,
+                saved_path=str(saved) if saved else None,
+            )
+            state.detections.append(record)
+            state.detection_count += 1
+            state.last_detection_at = time.monotonic()
+            log.info(
+                "detection: class=%s conf=%.2f pose=(N=%.2f E=%.2f D=%.2f yaw=%.0f)  -> %s",
+                cls, conf, pose[0], pose[1], pose[2], pose[3],
+                Path(saved).name if saved else "(no file)",
+            )
+
+    try:
+        detector = Detector(
+            model_path=weights_path,
+            confidence_threshold=confidence,
+            callback=on_detection,
+            num_workers=2,
+            device="cpu",
+            save_dir=str(det_dir),
+            enable_display=False,
+        )
+    except Exception:
+        log.exception("Detector failed to init; running without detection")
+        return None
+
+    def image_callback(msg):
+        """Runs in gz-transport's own thread. Push frame -> Detector queue.
+        Detector internally has its own worker thread, so this returns fast."""
+        try:
+            frame = np.frombuffer(msg.data, dtype=np.uint8)
+            frame = frame.reshape((msg.height, msg.width, 3))
+            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            # Snapshot pose at capture time — GIL makes these reads safe.
+            pose = (state.north_m, state.east_m, state.down_m, state.yaw_deg)
+            detector.submit_image(
+                frame_bgr,
+                context={"timestamp": time.time(), "pose": pose},
+            )
+        except Exception:
+            log.exception("image_callback failed (will keep listening)")
+
+    node = Node()
+    if not node.subscribe(Image, image_topic, image_callback):
+        log.error("could not subscribe to image topic %s; running without detection", image_topic)
+        try:
+            detector.stop()
+        except Exception:
+            pass
+        return None
+    log.info("detection: subscribed to %s", image_topic)
+
+    return {"detector": detector, "node": node}
+
+
+def teardown_detection(handle: Optional[dict], state: SharedState) -> None:
+    if handle is None:
+        return
+    log.info("detection: total fired = %d", state.detection_count)
+    try:
+        handle["detector"].stop()
+    except Exception:
+        log.exception("Detector.stop() failed during teardown")
+    # gz-transport Node has no clean unsubscribe API; it'll exit with the
+    # process. Drop our reference so it can be garbage-collected.
+    handle["node"] = None
+
+
+# ---------------------------------------------------------------------------
 # Phase 1 planner — fly a small scripted square at fixed altitude
 # ---------------------------------------------------------------------------
 WAYPOINTS = [
@@ -426,9 +606,13 @@ async def emergency_land(drone: Drone, state: SharedState) -> None:
     log.warning("emergency_land complete")
 
 
-async def run() -> int:
+async def run(detect_enabled: bool = True) -> int:
     state = SharedState()
     drone = Drone()
+    detect_handle: Optional[dict] = None
+    # This run's working dir for outputs (annotated detection frames, etc.)
+    run_dir = LOG_DIR.parent / f"run_{RUN_TS}"
+    run_dir.mkdir(parents=True, exist_ok=True)
 
     # Hook SIGINT / SIGTERM into the abort flag.
     loop = asyncio.get_running_loop()
@@ -450,6 +634,16 @@ async def run() -> int:
         # Telemetry must be live BEFORE we arm so the pumper has fresh pose data.
         telem_task = asyncio.create_task(telemetry_monitor(drone, state), name="telemetry")
         await asyncio.sleep(0.5)
+
+        # Stand up the detection pipeline after telemetry so the gz image
+        # callback already sees real pose data when stamping frames.
+        # Init BEFORE arm so the first frames during takeoff don't get dropped.
+        if detect_enabled:
+            detect_handle = setup_detection(state, run_dir)
+            if detect_handle is None:
+                log.warning("detection unavailable — Phase 1-only flight")
+        else:
+            log.info("detection disabled by flag (--no-detect)")
 
         await drone.arm_and_takeoff(altitude_m=abs(state.target_down))
 
@@ -476,29 +670,38 @@ async def run() -> int:
 
         await drone.end_offboard()
         await drone.land_and_disarm()
+        teardown_detection(detect_handle, state)
         log.info("run finished cleanly")
         return 0
 
     except KeyboardInterrupt:
         log.warning("KeyboardInterrupt received")
         await emergency_land(drone, state)
+        teardown_detection(detect_handle, state)
         return 130
     except Exception:
         log.exception("fatal error in run()")
         await emergency_land(drone, state)
+        teardown_detection(detect_handle, state)
         return 1
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING"])
+    ap.add_argument(
+        "--no-detect",
+        action="store_true",
+        help="Disable Phase 2 detection pipeline; run Phase 1 (flight only).",
+    )
     args = ap.parse_args()
     logging.getLogger().setLevel(args.log_level)
 
-    log.info("==== searchctl controller v0.1 (Phase 1: scripted square) ====")
+    log.info("==== searchctl controller v0.2 (Phase 1 + Phase 2 detection) ====")
     log.info("logs at %s", LOG_FILE)
+    log.info("detection: %s", "OFF (--no-detect)" if args.no_detect else "ON")
     try:
-        return asyncio.run(run())
+        return asyncio.run(run(detect_enabled=not args.no_detect))
     except KeyboardInterrupt:
         return 130
 

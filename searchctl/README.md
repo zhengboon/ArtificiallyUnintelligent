@@ -9,7 +9,7 @@ on any failure path, file-based logs.
 | Phase | Status | Scope |
 |---|---|---|
 | **1** | **✅ DONE 2026-05-13** | Heartbeat + scripted-waypoint smoke flight. v2: yaw locked at 0°, 2 m moves, divergence watchdog. Flew clean 5-WP square in 33 s, sub-0.5 m pos err on every WP. |
-| **2** | **next** | Add YOLO detector as a background task using `gzphotodetectorsaver.py`'s pattern. Print detections with NED position. |
+| **2** | **scaffolding done 2026-05-13; integration test pending** | YOLO detector running in a worker thread. Subscribes to IMX214 camera via gz-transport, frames stamped with NED pose, annotated `.jpg`s saved per run, detections logged. Opt-out via `--no-detect`. **Next:** verify a full run with detection on. |
 | 3 | next next | Lawnmower search strategy across the 40×40 arena, 2-altitude passes (1 m for yellow, 3.5 m for red). |
 | 4 | later | Detection dedup by NED position; restart-resilient state (persist found barrels to disk). |
 | 5 | later | Frontier exploration (port from `pastproject/`) for irregular maps. |
@@ -39,13 +39,23 @@ on any failure path, file-based logs.
 From inside the VM:
 
 ```bash
-export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python  # only needed when we add gz-transport in Phase 2
 cd ~/searchctl
-python3 controller.py
+python3 controller.py                 # Phase 1 + Phase 2 (detection ON)
+python3 controller.py --no-detect     # Phase 1 only (flight, no YOLO)
+python3 controller.py --log-level DEBUG
 ```
 
-You can pass `--log-level DEBUG` to see the setpoint pumper's debug
-messages.
+The controller auto-sets `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python`
+internally for the gz.msgs10 import — no need to pre-export it.
+
+**Phase 2 deps** (must be installed in the VM):
+- `ultralytics` (pip — installed 2026-05-13, see VM setup guide §6)
+- `python3-gz-transport13`, `python3-gz-msgs10` (apt — present in v3 VM)
+- The workshop's `Detector.py` at `~/Desktop/codes/Detector.py` (present in v3 VM)
+- `yolov10n.pt` weights at `~/Desktop/codes/yolov10n.pt` (present in v3 VM)
+
+If any of these is missing, the controller logs a warning and runs
+Phase-1-only. Flight is not blocked.
 
 ## What Phase 1 does (v2, the version that works)
 
