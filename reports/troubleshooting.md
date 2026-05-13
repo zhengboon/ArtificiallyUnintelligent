@@ -18,6 +18,8 @@ Keep this open in another tab during dev.
 | Symptom | Fix |
 |---|---|
 | `Preflight Fail: horizontal position unstable` | EKF origin wasn't set. In the PX4 console: `commander set_ekf_origin 47.397742 8.545594 488.0`. Wait for `Set position estimate` log line. |
+| `Preflight Fail: Battery unhealthy` / arm denied with `Resolve system health failures first` | **SITL's fake battery starts at 50% which PX4 flags as unhealthy.** In the PX4 console, every fresh sim start: `param set CBRK_SUPPLY_CHK 894281` and `param set SIM_BAT_MIN_PCT 100`. (Workshop docs miss this. Verified 2026-05-13.) |
+| `Arming denied: Resolve system health failures first` generic | In the PX4 console: `commander check`. The output will list the specific check that's failing. Common ones: battery (above), no EKF origin (see horizontal-position-unstable row), or sensor calibration drift after a long sim run. |
 | Health check hangs forever in your script | The script is checking `is_global_position_ok`. Comment it out and keep only `is_home_position_ok`. (For the workshop's `takeoff_and_land.py`: `sed -i 's/health.is_global_position_ok and //' takeoff_and_land.py`) |
 | Drone arms, takes off, but immediately enters Failsafe | Likely missed a setpoint. PX4 needs an offboard setpoint at least every 0.5 s. Never use `time.sleep` in async code — use `await asyncio.sleep`. Check your loop timing. |
 | `Action error: ARM_DENIED` | QGC will tell you why in the bottom-left banner. Most common: not in offboard mode, or another pre-arm check failed. |

@@ -77,13 +77,31 @@ Triggered by the disk-pressure issue from the YOLO install. Sequence:
 
 Lesson: **always use `growpart`, not `parted resizepart`, for live root-partition expansion.** Documented in `reports/troubleshooting.md` under "VM disk space."
 
+### avoid.py — partial success (afternoon session)
+- Sim restarted post-disk-expansion → new battery/sensor state. `takeoff_and_land.py` started failing with `COMMAND_DENIED`.
+- Diagnosed via custom MAVSDK probe: PX4 emitted `Arming denied: Resolve system health failures first`, `is_armable=False` despite home/local position OK.
+- Root cause: **`commander check`** showed `Preflight Fail: Battery unhealthy` — the simulated SITL battery was at 50% min charge.
+- **Fix discovered (workshop didn't document):** at the PX4 console, run these three commands every fresh sim start:
+  ```
+  param set CBRK_SUPPLY_CHK 894281    # bypass power supply check
+  param set SIM_BAT_MIN_PCT 100       # pin simulated battery at 100%
+  commander set_ekf_origin 47.397742 8.545594 488.0
+  ```
+  After this, `is_armable=True` and arming succeeds. Now in `reports/troubleshooting.md`.
+- Replaced all `*_new.py` workshop modules over their base names (per OP guidance "those files ended with `_new.py` are updated codes"): `drone_control.py`, `GlobalMapper.py`, `PointCloudPlanner.py`, `RRTExample.py`. **But then discovered `drone_control_new.py` is missing methods the originals had** (`rotate_to_yaw`, others) — reverted `drone_control.py` to original and applied a targeted patch (`patch_drone_control.py` at repo root) that adds a health-wait *only* to `arm_and_takeoff()`.
+- **`avoid.py` now reaches takeoff** ✅ — arm + takeoff prints, offboard mode is entered. But the main loop doesn't sustain offboard setpoints reliably enough; PX4 failsafes after the takeoff sleep, drone auto-lands and disarms. **This is the next real engineering task** — the avoid.py main loop needs setpoint heartbeat management.
+
+### Logistics
+- **Qualifier slot booked: Friday 22 May 2026, 14:00, Orchard Grand Court Lloyd I/II.**
+- Team agreed time. Decision logged in local-only `challenge/qualifier_booking.md` (gitignored).
+- Hard cancellation cutoff: 2026-05-20 14:00 (48 h rule). After that, slot is fixed.
+
 ### Outstanding for next session
-- The patched `takeoff_and_land.py` set the pattern — other workshop scripts (`avoid.py`, `basic_offboard.py`) likely need the same `is_global_position_ok` removal
-- Run `avoid.py` to see depth-camera-based obstacle avoidance in action
-- Run `UseDetectorExample.py` with the patched protobuf env var to see YOLO bbox detection on the live camera (will detect COCO classes, not barrels yet)
-- Get the OP's barrel-tuned YOLO weights from Discord (or train via Colab)
+- **Fix avoid.py's offboard heartbeat.** Likely needs a background setpoint-pumping task while `rotate_to_yaw` and depth processing happen. The `gzphotodetectorsaver.py` pattern from the OP shows the async-task split that's needed.
+- Run `UseDetectorExample.py` to see YOLO bbox detection on the live camera (will detect COCO classes, not barrels yet)
+- Get the OP's barrel-tuned YOLO weights from Discord (or train via Colab — disk now has room)
 - Decide search-controller architecture (port frontier exploration from `pastproject/`)
-- **9-day countdown to qualifier.** Build the search controller first; YOLO weights and robustness can layer on top.
+- **9-day countdown to qualifier.** avoid.py-style reactive code is the foundation; build the smart search controller on top.
 
 ---
 
