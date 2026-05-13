@@ -339,7 +339,15 @@ COLOR_SHELF = (0.55, 0.5, 0.45)
 COLOR_PERIMETER = (0.35, 0.35, 0.4)
 COLOR_YELLOW = (0.95, 0.85, 0.1)
 COLOR_RED = (0.85, 0.1, 0.1)
-COLOR_TOXIC = (0.95, 0.55, 0.1)  # orange — visually similar to yellow, distractor
+# Toxic barrels in the actual roboverse world are RED with a diamond toxic
+# sign — they look almost identical to legitimate red barrels except for
+# (a) the warning sign and (b) placement (toxics tend to sit on the
+# ground, often clustered with legitimate yellow barrels to fool the
+# detector). A simple colour proxy can't fully replicate the warning
+# sign, but using a slightly different red shade (with a 'distractor'
+# tag in the JSON metadata) is enough to test that your strategy
+# distinguishes elevation + class, not just colour.
+COLOR_TOXIC = (0.7, 0.15, 0.15)  # dark red — similar to legit red, distinct enough to visually distinguish
 
 
 def emit_sdf(grid, yellow, red, toxic, world_name: str) -> str:

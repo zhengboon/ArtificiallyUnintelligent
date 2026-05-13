@@ -7,14 +7,50 @@ and commit hashes where they exist. Skim-able when looking back later.
 
 ---
 
-## 2026-05-13 (tomorrow) — *planned*
+## 2026-05-13 (Wednesday) — Sim verified, YOLO ready, world inspected
 
-- [ ] Boot VM, run `~/start_px4.sh` end-to-end with `x500_vision` + `roboverse`
-- [ ] EKF origin trick verified (`commander set_ekf_origin 47.397742 8.545594 488.0`)
-- [ ] Smoke test: `python3 ~/Desktop/codes/takeoff_and_land.py` flies + lands
-- [ ] Run `avoid.py` and see drone wander + react to obstacles
-- [ ] Run `UseDetectorExample.py` and confirm YOLO bbox window shows up
-- [ ] Decide on search-controller architecture (port from `pastproject/`)
+Detailed report at `reports/2026-05-13_sim_verification.md`. Troubleshooting cheatsheet at `reports/troubleshooting.md`.
+
+### Sim verified end-to-end
+- User booted VM, ran `~/start_px4.sh` (x500_vision + roboverse + QGC), set EKF origin
+- Patched `~/Desktop/codes/takeoff_and_land.py` via sed: removed `is_global_position_ok` check, kept `is_home_position_ok`. Original backed up at `.orig`.
+- Ran the patched script → **drone armed, took off, hovered 5 s, landed** ✅
+- Confirms: PX4 SITL + Gazebo + MAVSDK + EKF origin all wired correctly
+
+### YOLO installed in VM (was missing from v3 image)
+- v3 VM didn't have `ultralytics`. First install attempt failed on disk pressure (root was at 95% used) AND uninstalled numpy mid-failure.
+- Cleaned `pip cache purge` + `sudo apt clean` → freed ~5 GB
+- Restored `numpy<2`, then installed `ultralytics --no-deps` plus selective heavy deps (torch 2.11, torchvision 0.26, opencv-python-headless, etc.)
+- Final state: YOLO loads `yolov10n.pt` with 80 COCO classes ✅. Disk now 91% (4.4 GB free).
+- **Flag:** disk pressure will keep biting. Either expand the VM disk in VMware, train YOLO on Colab, or use a shared folder for big artifacts.
+
+### Real roboverse world inspected
+- Subscribed to `/world/roboverse/.../IMX214/image` from PowerShell-driven Python in the VM
+- Grabbed one 1920×1080 frame, copied to host as `D:\hackerverse\spawn_view.jpg`
+- Required `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python` env var — `vmrun` doesn't source `.bashrc` for non-interactive shells
+- Findings:
+  - World is a single 38 MB baked GLB at `/home/drone/worlds/groundmodel/meshes/base6.glb`. No discrete barrel/wall models in SDF.
+  - Spawn view: 2 **toxic distractors** (RED barrels with yellow diamond hazard signs) flanking 1 **legitimate yellow barrel**. All on ground. Clearly designed to fool naive colour-only detectors.
+  - **Toxic barrels are RED, not orange** — my maze_gen had the wrong colour. Fixed.
+  - Environment: dark gray hex panels, neon blue accents, white floor grid lines (the 4 m cells).
+- `gz model --list` confirms only 3 models loaded: `ground_plane`, `base`, `x500_vision_0`. Everything in the world is in `base`.
+
+### Maze generator updated
+- `COLOR_TOXIC` orange → dark red (matches real world)
+- README updated with the "what the real world looks like" section
+- Generator placement strategy unchanged for now (toxics still random) — noted as TODO to cluster toxics with yellows for realistic adversarial testing
+
+### Documentation
+- New `reports/2026-05-13_sim_verification.md` — full run-by-run breakdown
+- New `reports/troubleshooting.md` — 30+ symptoms → fixes
+- Updated `maze_gen/README.md` and `maze_gen/generate_maze.py`
+
+### Outstanding for next session
+- The patched `takeoff_and_land.py` set the pattern — other workshop scripts (`avoid.py`, `basic_offboard.py`) likely need the same `is_global_position_ok` removal
+- Run `avoid.py` to see depth-camera-based obstacle avoidance in action
+- Run `UseDetectorExample.py` with the patched protobuf env var to see YOLO bbox detection on the live camera (will detect COCO classes, not barrels yet)
+- Get the OP's barrel-tuned YOLO weights from Discord (or train via Colab)
+- Decide search-controller architecture (port frontier exploration from `pastproject/`)
 
 ---
 

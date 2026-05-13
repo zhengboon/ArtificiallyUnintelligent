@@ -115,3 +115,37 @@ your detector + planner against the ground truth).
   fidelity. If you train a custom YOLO on this generator's output, also
   fine-tune on screenshots from the real `roboverse.sdf` world before
   the qualifier.
+
+## What the actual roboverse world looks like (observed 2026-05-13)
+
+A live camera frame from the v3 VM is at `../spawn_view.jpg`. From it:
+
+- **Yellow legitimate barrel:** plain yellow drum, weathered/sooty,
+  no sign on it. Sits on the ground.
+- **Toxic distractor:** **RED** drum with a yellow diamond hazard sign
+  on the side. The OP placed two of them flanking a single yellow
+  barrel at the spawn point — obvious intent is to fool a colour-only
+  or COCO-class detector. Distractors sit on the ground.
+- **Legitimate red barrel (elevated):** not visible from spawn —
+  they're somewhere else in the arena, presumably on shelves or in
+  pillar cubbies (per the qualifier brief image).
+- **Environment style:** dark gray hexagonal panels with neon blue
+  accent lines. White grid lines on the floor (visualising the 4 m
+  cells).
+
+What that means for the generator:
+
+- `COLOR_TOXIC` was switched from orange to **dark red** so toxics now
+  look closer to real toxics. Won't fool a YOLO the way a diamond
+  sign would, but forces your strategy to differentiate by
+  **elevation + class**, not just colour.
+- Generator places toxics randomly across OPEN cells. Real OP placement
+  tends to **cluster toxics next to yellows** on the ground. If you
+  want to test that adversarial case, edit `generate_layout()` to
+  seed toxic placements adjacent to yellow placements (TODO; not done
+  yet — current default is random).
+- The actual world geometry is a single baked 38 MB GLB mesh
+  (`/home/drone/worlds/groundmodel/meshes/base6.glb`), not discrete
+  primitives like ours. Visual style won't match. **Don't train YOLO
+  exclusively on generator screenshots** — capture frames from the
+  real `roboverse.sdf` world too.
