@@ -410,6 +410,42 @@ QGC should have started automatically with `start_px4.sh`. If it crashed (you sa
 
 The `&` runs it in background. **Without QGC, PX4's "No connection to GCS" preflight check fails** and arming is denied. This is the source of many "why can't I arm" tickets in Discord.
 
+### 10.5 Routine maintenance — clean PX4 SITL logs
+
+PX4 SITL writes flight logs to `~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/` every run. They can grow to **many GB** over a week of work and are the **#1 cause of disk pressure** (per `BH2026ROBOVERSE` in `#general` and `#tech-discussion`, 13/5/2026 6:00 PM). Clean periodically:
+
+```bash
+rm -rf ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*
+```
+
+Safe — these are just per-run logs, no persistent state.
+
+### 10.6 Camera topic name varies by drone × world
+
+When subscribing to the camera in your own scripts, the topic name depends on which drone model and which world you launched:
+
+| Drone | World | Topic name |
+|---|---|---|
+| `x500_vision` | `roboverse` (the qualifier world) | `/world/roboverse/model/x500_vision_0/link/camera_link/sensor/IMX214/image` |
+| `x500_vision` | empty (`default`) | `/world/default/model/x500_vision_0/link/camera_link/sensor/IMX214/image` |
+| `x500_depth` | `roboverse` | `/world/roboverse/model/x500_depth_0/link/camera_link/sensor/IMX214/image` |
+| `x500_depth` | empty | `/world/default/model/x500_depth_0/link/camera_link/sensor/IMX214/image` |
+
+Use `gz topic -l` in a separate terminal (with the sim running) to discover the right name on your specific setup. Source: `BH2026ROBOVERSE` in `#general`, 11/5/2026 7:05 AM.
+
+### 10.7 OAK-D Lite lightweight camera config (optional but recommended)
+
+The default x500_vision camera streams at 1920×1080 at 30 Hz, which slammed the sim hard on the v3 VM. The OP published a lightweight replacement on 11/5/2026 (`#coding-discussion` 3:21 PM) that drops to 640×480 at 10 Hz.
+
+We've already downloaded it as `optionB/OakD-Lite_model.sdf`. Install:
+
+```bash
+cp /path/to/hackerverse/optionB/OakD-Lite_model.sdf \
+   ~/PX4-Autopilot/Tools/simulation/gz/models/OakD-Lite/model.sdf
+```
+
+After this, restart the sim. Camera stream is ~10× lighter; main loop has more headroom for YOLO.
+
 ---
 
 ## 11. Run the smoke test (`takeoff_and_land.py`)

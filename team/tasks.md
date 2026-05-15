@@ -12,7 +12,7 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 
 ## Critical dates
 
-- **2026-05-20 (Tue) 14:00** — 48-h cancellation cutoff. Slot locked after this.
+- **2026-05-21 (Thu) 10:00 SGT** — **Official deadline for booking + rescheduling** (per `65drones1` 13/5/2026 4:51 PM in `#general`). After this, unbooked teams get random slots assigned. (We had previously had 2026-05-20 14:00 — that was our incorrect 48-h math; the org's hard deadline is the morning of the 21st.)
 - **~2026-05-21 (Thu)** — OP releases the actual qualifier map. We get ~24 h to tune to it.
 - **2026-05-22 (Fri) 14:00** — **OUR QUALIFIER SLOT.** Orchard Grand Court, Lloyd I/II.
 
@@ -260,7 +260,13 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 
 ## ⚠️ Disk-space contingency (org VM is 49 GB, ~95% used)
 
-Our controller needs `ultralytics` + `torch` (~2 GB to install). The stock v3 VM has ~2.5 GB free. Naïve `pip install ultralytics` on the org's machine **will fail mid-install AND uninstall numpy** — same failure we hit on 2026-05-13.
+**Update 2026-05-15:** the OP officially answered the *general* disk-pressure question — see `info_2026-05-15/general.md` (13/5/2026 6:00 PM) and `info_2026-05-15/tech-discussion.md`. The OP attributes disk-fill to **accumulated PX4 SITL logs** in `~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/` and gives the cleanup command:
+
+```bash
+rm -rf ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*
+```
+
+This **does not** answer our *install-time* problem (`ultralytics` + `torch` ≈ 3 GB) — that's a different failure mode the OP hasn't addressed. The DS-1 ticket below remains valid but is now sharpened to the install-time question.
 
 **Four-pronged response (all in parallel):**
 

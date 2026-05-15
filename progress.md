@@ -13,7 +13,7 @@ and commit hashes where they exist. Skim-able when looking back later.
 |---|---|---|
 | **2026-05-22 (Fri) 14:00** | **9 days** | **Our qualifier slot — Orchard Grand Court, Lloyd I/II** |
 | 2026-05-23 (Sat) | 10 days | Backup qualifier day (other teams' sessions) |
-| 2026-05-20 (Tue) 14:00 | 7 days | Hard 48-hour cancellation cutoff for our slot |
+| **2026-05-21 (Thu) 10:00 SGT** | 8 days | **Official deadline for booking + rescheduling** per `65drones1` 13/5 4:51 PM. Teams unbooked by then get random slots assigned. |
 | ~2026-05-21 (Thu) | 8 days | Actual qualifier map released by org (1 day before our slot) |
 | 2026-06-10 to 06-11 | 28–29 days | Final round at Marina Bay Sands (top 26 teams only) |
 

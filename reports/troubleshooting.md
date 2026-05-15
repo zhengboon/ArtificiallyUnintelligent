@@ -40,10 +40,11 @@ The v3 VM ships with a 49 GB disk that's already 95% used. **Any non-trivial ins
 
 | Quick wins (each ~1–3 GB) | Command |
 |---|---|
+| **PX4 SITL logs (the BIG one — OP-confirmed 13/5/2026)** — can grow to many GB | `rm -rf ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*` |
 | Purge pip cache | `pip cache purge` |
 | Clean apt | `echo password \| sudo -S apt clean` |
 | Remove PX4 build artifacts (slow rebuild next time) | `rm -rf ~/PX4-Autopilot/build` |
-| Delete log files | `find ~/.ros/log -mtime +1 -delete` |
+| Delete ROS log files (if you ran any) | `find ~/.ros/log -mtime +1 -delete` |
 | Delete the redundant `base6.glb` in PX4 worlds dir | `rm ~/PX4-Autopilot/Tools/simulation/gz/worlds/base6.glb` |
 
 | Permanent fix | How |
