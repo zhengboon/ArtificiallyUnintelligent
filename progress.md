@@ -30,7 +30,7 @@ and commit hashes where they exist. Skim-able when looking back later.
 Booking details (local only, not in repo): `challenge/qualifier_booking.md`.
 
 ---
-## 2026-05-15 (Friday) — Kai Sheng
+## 2026-05-15 (Friday) — Solved the VM storage issue & collected image dataset (Kai Sheng)
 ultralytics / torch installed after clearing PX4 logs
 
 According to organiser:
