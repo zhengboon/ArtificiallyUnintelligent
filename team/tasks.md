@@ -12,7 +12,8 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 
 ## Critical dates
 
-- **2026-05-21 (Thu) 10:00 SGT** — **Official deadline for booking + rescheduling** (per `65drones1` 13/5/2026 4:51 PM in `#general`). After this, unbooked teams get random slots assigned. (We had previously had 2026-05-20 14:00 — that was our incorrect 48-h math; the org's hard deadline is the morning of the 21st.)
+- **2026-05-20 (Wed) 14:00** — **OUR personal cancel/reschedule cutoff** = 48 h before our 22 May 14:00 slot (booking-page T&Cs). After this, our slot is fixed.
+- **2026-05-21 (Thu) 10:00 SGT** — org-wide deadline for *unbooked* teams (per `65drones1` 13/5/2026 4:51 PM in `#general`). Unbooked teams get random slots assigned after this. Not directly relevant to us — we're already booked — but worth knowing.
 - **~2026-05-21 (Thu)** — OP releases the actual qualifier map. We get ~24 h to tune to it.
 - **2026-05-22 (Fri) 14:00** — **OUR QUALIFIER SLOT.** Orchard Grand Court, Lloyd I/II.
 

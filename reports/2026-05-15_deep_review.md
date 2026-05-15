@@ -20,15 +20,22 @@ all workshop files we downloaded.
 
 ## Section A — Findings from the new Discord dumps
 
-### A1. CRITICAL: booking/rescheduling deadline is wrong in our docs
+### A1. Two separate deadlines exist (I conflated them on first pass; corrected)
 
-**Our docs claim:** cancellation cutoff = `2026-05-20 (Tue) 14:00` (our 48-hour math from the 65drones page).
+There are TWO distinct booking-related cutoffs, not one:
 
-**Official deadline (`65drones1` in #general, 13/5/2026 4:51 PM):**
+| Deadline | Date | Who it applies to | Source |
+|---|---|---|---|
+| Personal cancel/reschedule cutoff | **48 h before your slot** — for us: 2026-05-20 (Wed) 14:00 | Each team's own booked slot | Booking-page T&Cs, item 3 |
+| Org-wide unbooked-team auto-assign | **2026-05-21 (Thu) 10:00 SGT** | Teams that haven't booked at all by this point | `65drones1` in #general, 13/5/2026 4:51 PM |
 
-> "The deadline for booking/rescheduling is **21st May, 10am**. Teams which have not booked the slot by 21 May, 10am will be assigned random available slots, at organizer's discretion."
+> "Once slot is confirmed, you may cancel or re-schedule, at least 48 hours before your scheduled date and timing." — booking page T&Cs
 
-→ Real deadline is **2026-05-21 (Thu) 10:00 SGT**, not 2026-05-20 14:00. Affects `progress.md`, `team/tasks.md`, `challenge/qualifier_booking.md`. Fixing all three.
+> "The deadline for booking/rescheduling is 21st May, 10am. Teams which have not booked the slot by 21 May, 10am will be assigned random available slots, at organizer's discretion." — `65drones1`, 13/5
+
+**For our team (booked at 22 May 14:00):** the personal 48-h cutoff (Wed 20 May 14:00) hits first and is what we care about. The org-wide 21 May 10:00 is informational — applies to teams who never booked.
+
+(First pass I removed our 48-h personal cutoff thinking the org-wide one superseded it. That was wrong; they're independent. Restored both.)
 
 ### A2. OP officially answered the "disk fills up" question
 
