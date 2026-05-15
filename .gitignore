@@ -8,6 +8,7 @@ learning/*.mp4
 discord_watcher/profile/
 discord_watcher/config.json
 discord_watcher/logs/
+discord_watcher/server_state.json
 info_*/
 
 # Maze generator output (regenerable from seed)

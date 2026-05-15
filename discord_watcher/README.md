@@ -109,6 +109,37 @@ Start-ScheduledTask -TaskName "RoboVerseDiscordPoll"
 
 ---
 
+## Control panel (localhost dashboard)
+
+Double-click **`run_server.bat`** to launch a tiny Flask app at
+**http://localhost:5050/**. Browser-viewable dashboard with:
+
+- buttons to trigger `login` / `poll` / `scrape`
+- live log of whatever's currently running
+- "notes" — you and Claude can both leave messages here (shared, two-way)
+- history of recent runs
+
+Why bother:
+
+- **You see progress** without staring at a terminal
+- **Claude triggers runs** via `curl http://localhost:5050/api/run/scrape` from PowerShell
+- **Single source of truth** in `server_state.json` — both sides see the same view
+
+The server stays running until you close the terminal (or Ctrl+C). Only
+binds to 127.0.0.1, no network exposure.
+
+Endpoints (for the curious / scripting):
+
+| Method | Path | What |
+|---|---|---|
+| GET | `/` | the dashboard |
+| GET | `/api/status` | full state JSON |
+| POST | `/api/run/<cmd>` | trigger `login` \| `poll` \| `scrape` (409 if one's running) |
+| POST | `/api/cancel` | terminate the running subprocess |
+| POST | `/api/note` | body: `{"text": "...", "from": "user|claude"}` |
+| POST | `/api/notes/clear` | wipe the notes list |
+| GET | `/api/logs/raw` | tail of `logs/watcher.log` |
+
 ## Full-history scrape (audit mode)
 
 Double-click **`run_scrape.bat`** for a one-shot dump of every message
