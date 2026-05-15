@@ -249,6 +249,7 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
+| **Disk-space on org's stock v3 VM** — torch/ultralytics won't install on a 49 GB disk at 95% used | **HIGH** | See "Disk-space contingency" section below. **OPEN INVESTIGATION — Z to file support ticket immediately.** |
 | K's `barrel.pt` not ready by qualifier | Medium | Stock `yolov10n.pt` as fallback — won't detect "barrel" but will fire on barrel-like objects. Partial points possible. |
 | Z's controller has new bug from Phase 3/4 changes | Medium | `--no-detect` flag → known-good Phase 1. Tagged commits at each phase complete. |
 | Org laptop fails or has weird setup | Low | Z brings backup laptop with own VM. A's runbook has fallback steps. |
@@ -256,6 +257,46 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 | EKF origin not set on org machine | Medium | Setup script that runs the 3 PX4 console commands on launch (Z's script in Z.4). |
 | QGC crashes on org machine (it did on ours) | Medium | Pymavlink fake-GCS heartbeat (Z.5) — eliminates QGC dependency. |
 | One of us sick on demo day | Low | The other two can run with the runbook in `qualifier/day_of_runbook.md` (A's deliverable). |
+
+## ⚠️ Disk-space contingency (org VM is 49 GB, ~95% used)
+
+Our controller needs `ultralytics` + `torch` (~2 GB to install). The stock v3 VM has ~2.5 GB free. Naïve `pip install ultralytics` on the org's machine **will fail mid-install AND uninstall numpy** — same failure we hit on 2026-05-13.
+
+**Four-pronged response (all in parallel):**
+
+### DS-1 — Z: file a support ticket (DO NOW, costs 5 min) 📌
+Ask the OP:
+1. Is `ultralytics` + `torch` pre-installed on the demo-day machine?
+2. May we bring our own laptop with a pre-configured VM and demo from that instead?
+3. If we must use the org machine, may we resize the partition during the 15-min setup window (`growpart` is non-destructive, ~30 sec to apply)?
+
+Answer to any of these unblocks us. **Until this is filed, every other DS-* task is a hedge.**
+
+### DS-2 — K: also export model to ONNX after every training run ⏰ ~5 min per run
+At the end of `Train_YOLO_Models.ipynb`, add:
+```python
+model.export(format="onnx", imgsz=640, simplify=True)
+```
+Ship both `barrel.pt` AND `barrel.onnx` to Z. Future Z swaps backends with a CLI flag.
+
+### DS-3 — Z: write an `onnxruntime`-based Detector backend ⏰ ~2 hr (fold into Phase 5)
+`onnxruntime` install is ~50 MB vs torch's ~2 GB. Fits comfortably in 2.5 GB headroom.
+- Add `searchctl/detector_onnx.py` — minimal class with same interface as workshop's `Detector` (submit_image, callback).
+- CLI flag `--detector-backend ultralytics|onnx|opencv-dnn` (default ultralytics on our VM, onnx for org machine).
+- Test both produce identical detections on the same input frame.
+
+### DS-4 — Z: bring own laptop as day-of fallback ⏰ ~30 min the night before
+Charge fully + bring HDMI cable + USB with last-known-good. If the org machine fights us, we run on Z's hardware. Workshop docs allow this ("you can use our machine" — `can`, not `must`).
+
+**Decision tree for demo day:**
+```
+On arrival:
+  1. Check org machine has ultralytics → run as normal
+  2. Else, check our laptop can plug in → run from there
+  3. Else, try onnxruntime backend (DS-3) on org machine
+  4. Else, last resort: stock yolov10n.pt + --no-detect-style scoring
+       (we still fly + photograph; submit images for manual review)
+```
 
 ---
 
