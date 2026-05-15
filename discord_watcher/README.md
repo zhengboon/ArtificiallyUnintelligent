@@ -109,18 +109,32 @@ Start-ScheduledTask -TaskName "RoboVerseDiscordPoll"
 
 ---
 
+## Full-history scrape (audit mode)
+
+Double-click **`run_scrape.bat`** for a one-shot dump of every message
+currently visible in each channel — not just new ones since the last poll.
+
+- Output: `D:\hackerverse\info_<today>_scrape\<channel_name>.md` — one file per channel.
+- The script visits each channel, scrolls all the way up (Discord lazy-loads older messages page by page), then extracts everything.
+- **Slower than `poll`** — ~30 s of scrolling per channel plus Discord's load latency. Plan for ~5 min total.
+- Use this when Claude (or any reviewer) needs to cross-check the repo docs against the source-of-truth Discord content. `poll` is for routine updates; `scrape` is for audits.
+- Same Playwright session as the others — re-run `run_login.bat` if Discord boots you out.
+
+---
+
 ## Files
 
 | Path | What |
 |---|---|
-| `watcher.py` | Playwright poller (6-hour cadence) |
+| `watcher.py` | Playwright tool with 3 modes: `login`, `poll`, `scrape` |
 | `notif_listener.py` | Windows toast listener (always on) |
 | `config.json` | server_id, channels, last-seen msg id per channel |
 | `profile/` | Playwright user-data dir (Discord cookies for the polled session) |
 | `logs/watcher.log` | one line per poll |
 | `logs/notif_listener.log` | every Discord toast we see |
 | `run_login.bat` | first-run / re-login wrapper |
-| `run_poll.bat` | what Task Scheduler invokes every 6 h |
+| `run_poll.bat` | what Task Scheduler invokes every 6 h (incremental) |
+| `run_scrape.bat` | manual full-history dump for audits |
 | `run_listener.bat` | what Task Scheduler invokes at logon |
 
 ---

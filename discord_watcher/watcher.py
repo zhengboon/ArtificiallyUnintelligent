@@ -1,18 +1,27 @@
 """
 RoboVerse Discord watcher.
 
-Two modes:
+Three modes:
   python watcher.py login    # first-run: opens visible Chromium, you log in
                              # and navigate to the BH2026ROBOVERSE server.
                              # Saves session + auto-discovers channels.
   python watcher.py poll     # poll mode: opens visible Chromium, polls each
-                             # channel, writes new messages to the dated
-                             # info folder. This is what Task Scheduler runs.
+                             # channel, writes only NEW messages since last
+                             # poll into the dated info folder. (Used by
+                             # Task Scheduler for incremental updates.)
+  python watcher.py scrape   # full-history dump: scrolls up through each
+                             # channel until no more messages load, writes
+                             # ALL messages per channel into a separate
+                             # markdown file. Use this when you want me
+                             # (Claude) to cross-check the repo docs
+                             # against the source-of-truth Discord content.
 
 State is kept in config.json (server_id, channels, last_seen msg id per
 channel) and the Playwright profile dir (Discord session cookies).
 
-Output: D:\\hackerverse\\info_<YYYY-MM-DD>\\msg_<NNN>.md
+Output:
+  poll   -> D:\\hackerverse\\info_<YYYY-MM-DD>\\msg_<NNN>.md
+  scrape -> D:\\hackerverse\\info_<YYYY-MM-DD>_scrape\\<channel_name>.md
 """
 from __future__ import annotations
 
@@ -382,11 +391,152 @@ def cmd_poll() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Scrape mode — full-history dump for retrospective cross-checking
+# ---------------------------------------------------------------------------
+SCROLL_JS = r"""() => {
+    // Try a few selectors that Discord uses for the chat scroller; whichever exists wins.
+    const sels = ['[data-list-id^="chat-messages"]', '[class*="scroller-"]', 'main [role="list"]'];
+    for (const sel of sels) {
+        const s = document.querySelector(sel);
+        if (s) { s.scrollTop = 0; return true; }
+    }
+    return false;
+}"""
+
+COUNT_MSGS_JS = r"""() => document.querySelectorAll('li[id^="chat-messages-"]').length"""
+
+
+def scroll_to_top(page, max_scrolls: int = 200, settle_ms: int = 900) -> int:
+    """Scroll the chat list up repeatedly until no new messages load.
+    Returns the final visible message count.
+    """
+    last_count = -1
+    stuck_iters = 0
+    for i in range(max_scrolls):
+        page.evaluate(SCROLL_JS)
+        page.wait_for_timeout(settle_ms)
+        count = page.evaluate(COUNT_MSGS_JS)
+        if count == last_count and count > 0:
+            stuck_iters += 1
+            if stuck_iters >= 3:
+                # Three consecutive scrolls with no new messages — we're at the top.
+                return count
+        else:
+            stuck_iters = 0
+        last_count = count
+    return last_count
+
+
+def scrape_channel(page, channel: dict, server_id: str) -> list[dict]:
+    """Visit a channel, scroll all the way up, return every message we can see."""
+    url = f"https://discord.com/channels/{server_id}/{channel['id']}"
+    log.info(f"  -> #{channel['name']}")
+    page.goto(url, wait_until="domcontentloaded")
+    try:
+        page.wait_for_selector('li[id^="chat-messages-"]', timeout=8000)
+    except PWTimeout:
+        log.warning(f"     no messages rendered after 8s; skipping")
+        return []
+    page.wait_for_timeout(1500)
+
+    initial = page.evaluate(COUNT_MSGS_JS)
+    log.info(f"     initial msg count: {initial}; scrolling up...")
+    final = scroll_to_top(page)
+    log.info(f"     after scrolling: {final} messages loaded")
+
+    msgs = page.evaluate(MESSAGE_SCRAPER_JS)
+    # Sort by message id ascending (Discord snowflakes encode time).
+    msgs.sort(key=lambda m: int(m["id"]))
+    return msgs
+
+
+def write_channel_scrape(out_dir: Path, channel_name: str, msgs: list[dict]) -> Path:
+    out_path = out_dir / f"{channel_name}.md"
+    lines = [
+        f"# #{channel_name} — full scrape {datetime.now(timezone.utc).isoformat()}",
+        "",
+        f"Total messages captured: **{len(msgs)}**",
+        "",
+        "Sorted chronologically (oldest first).",
+        "",
+        "---",
+        "",
+    ]
+    for m in msgs:
+        ts = m.get("timestamp") or "(no timestamp)"
+        author = m.get("author") or "(unknown)"
+        content = m.get("content") or "(no text)"
+        atts = m.get("attachments") or []
+        lines.append(f"**{author}** — `{m['id']}` — {ts}")
+        lines.append("")
+        lines.append(content)
+        if atts:
+            lines.append("")
+            lines.append("Attachments:")
+            for a in atts:
+                lines.append(f"- {a}")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    return out_path
+
+
+def cmd_scrape() -> None:
+    cfg = load_config()
+    if not cfg.get("server_id"):
+        log.error("No server configured. Run `python watcher.py login` first.")
+        sys.exit(2)
+
+    server_id = cfg["server_id"]
+    channels = cfg.get("channels", [])
+    log.info(f"Full-history scrape: {len(channels)} channels on server {server_id}")
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    out_dir = INFO_ROOT / f"info_{today}_scrape"
+    out_dir.mkdir(exist_ok=True)
+    log.info(f"Writing scrapes to {out_dir}")
+
+    with sync_playwright() as p:
+        ctx = p.chromium.launch_persistent_context(
+            user_data_dir=str(PROFILE_DIR),
+            headless=False,
+            viewport={"width": 1280, "height": 900},
+        )
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        page.goto(f"https://discord.com/channels/{server_id}", wait_until="domcontentloaded")
+        page.wait_for_timeout(2500)
+        if "/login" in page.url:
+            log.error("Not logged in — session expired. Run `python watcher.py login` first.")
+            ctx.close()
+            sys.exit(3)
+
+        total = 0
+        for ch in channels:
+            try:
+                msgs = scrape_channel(page, ch, server_id)
+            except Exception as e:
+                log.exception(f"     error scraping #{ch['name']}: {e}")
+                continue
+            path = write_channel_scrape(out_dir, ch["name"], msgs)
+            log.info(f"     wrote {len(msgs)} msgs -> {path.name}")
+            total += len(msgs)
+        ctx.close()
+
+    log.info(f"Scrape complete: {total} messages across {len(channels)} channels in {out_dir}")
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("mode", choices=["login", "poll"], help="login = first-run bootstrap; poll = run a single poll cycle")
+    ap.add_argument(
+        "mode",
+        choices=["login", "poll", "scrape"],
+        help="login = first-run bootstrap; poll = new messages since last; "
+             "scrape = full-history dump per channel",
+    )
     args = ap.parse_args()
     t0 = time.time()
     try:
@@ -394,6 +544,8 @@ def main() -> None:
             cmd_login()
         elif args.mode == "poll":
             cmd_poll()
+        elif args.mode == "scrape":
+            cmd_scrape()
     except KeyboardInterrupt:
         log.warning("Interrupted by user.")
     except Exception:
