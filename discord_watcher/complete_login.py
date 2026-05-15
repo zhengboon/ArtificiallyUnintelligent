@@ -68,11 +68,17 @@ def main():
                     if (seen.has(cid)) continue;
                     seen.add(cid);
 
-                    // Strategy 1: aria-label of the link, often e.g. "general (channel, 5 unread)"
+                    // Strategy 1: aria-label of the link.
+                    //   Format examples:
+                    //     "general (text channel)"
+                    //     "unread, tech-discussion (text channel)"
+                    //     "support-ticket (text channel, 2 mentions)"
+                    //   Discord channel names are [a-z0-9_-]+. We find that token
+                    //   immediately preceding "(... channel".
                     let name = '';
                     const aria = a.getAttribute('aria-label') || '';
-                    const ariaMatch = aria.match(/^([^,(]+?)(?:\\s*\\(|,|$)/);
-                    if (ariaMatch) name = ariaMatch[1].trim();
+                    let am = aria.match(/([a-z0-9_\\-]+)\\s*\\([^)]*channel/i);
+                    if (am) name = am[1];
 
                     // Strategy 2: name-specific child class
                     if (!name || noise.has(name)) {
