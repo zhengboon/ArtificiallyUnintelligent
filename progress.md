@@ -30,6 +30,21 @@ and commit hashes where they exist. Skim-able when looking back later.
 Booking details (local only, not in repo): `challenge/qualifier_booking.md`.
 
 ---
+## 2026-05-15 (Friday) — Kai Sheng
+ultralytics / torch installed after clearing PX4 logs
+
+According to organiser:
+"Hi, you are allowed to expand the VM disk space. The diskspace get fill-up quickly mainly due to the px4 logs. Please regularly delete those logs as it grew very fast. Give me a moment while I find out the directory that contains those logs. 
+The PX4 logs are stored in ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log . The logs are stored in separate directories. If you are sure that you do not need those logs, please delete them by rm -rf ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*
+Please attempt to delete the logs, before expanding the VM diskspace. If you choose to expand the VM diskpace, please backup your codes before attempting the VM diskspace."
+
+Created image dataset containing (https://drive.google.com/drive/folders/1KTEmspVkSxB6hTlXNWKBgP5S0AnMH4sA):
+- 40 background images
+- 34 images containing one yellow barrel and one red barrel
+- 41 images containing one red barrel only
+- 41 images containing one yellow barrel only 
+- 60 images containing toxic barrel(s)
+Next step: Label  the images
 
 ## 2026-05-13 (Wednesday) — Sim verified, YOLO ready, world inspected
 
