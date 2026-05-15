@@ -1,6 +1,11 @@
 # Setup Guide — Part 2: Native Ubuntu 22.04 on the old machine
 
-**Companion to:** [setup_guide.md](setup_guide.md) (the Windows + VMware guide).
+> ⚠️ **SUPERSEDED 2026-05-15.** Kept for the second-machine (bare-metal Ubuntu)
+> path. For the primary VMware-on-Windows path, use
+> [`guides/vm_from_zero_to_flight.md`](guides/vm_from_zero_to_flight.md)
+> instead of the original `setup_guide.md` this file companions.
+
+**Companion to:** [setup_guide.md](setup_guide.md) (the Windows + VMware guide; also superseded — see above).
 **Target host:** an old computer, bare-metal Ubuntu 22.04 install.
 **Why:** native gives you full GPU and no VM overhead — Gazebo rendering will be smoother and the PX4 build will be faster, assuming the hardware cooperates.
 **This guide stops at "Ubuntu is booted and clean."** The actual workshop install (PX4, MAVSDK, Gazebo, env vars, files) is identical to **Path B §3.3 onwards in [setup_guide.md](setup_guide.md)** — don't duplicate, just jump there when prompted.

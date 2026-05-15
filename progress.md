@@ -9,24 +9,25 @@ and commit hashes where they exist. Skim-able when looking back later.
 
 ## ⏰ Key dates
 
-| Date | Days from now (2026-05-13) | Event |
+| Date | Days from now (2026-05-15) | Event |
 |---|---|---|
-| **2026-05-22 (Fri) 14:00** | **9 days** | **Our qualifier slot — Orchard Grand Court, Lloyd I/II** |
-| 2026-05-23 (Sat) | 10 days | Backup qualifier day (other teams' sessions) |
-| **2026-05-20 (Wed) 14:00** | 7 days | **OUR personal cancel/reschedule cutoff** — 48-h rule from booking-page T&Cs (48 h before our 22 May 14:00 slot). After this, our slot is locked. |
-| 2026-05-21 (Thu) 10:00 SGT | 8 days | Org-wide booking deadline per `65drones1` 13/5 4:51 PM — teams that *haven't booked at all* get assigned random slots. Not relevant to us (we're booked). |
-| ~2026-05-21 (Thu) | 8 days | Actual qualifier map released by org (1 day before our slot) |
-| 2026-06-10 to 06-11 | 28–29 days | Final round at Marina Bay Sands (top 26 teams only) |
+| **2026-05-22 (Fri) 14:00** | **7 days** | **Our qualifier slot — Orchard Grand Court, Lloyd I/II** |
+| 2026-05-23 (Sat) | 8 days | Backup qualifier day (other teams' sessions) |
+| **2026-05-20 (Wed) 14:00** | 5 days | **OUR personal cancel/reschedule cutoff** — 48-h rule from booking-page T&Cs (48 h before our 22 May 14:00 slot). After this, our slot is locked. |
+| 2026-05-21 (Thu) 10:00 SGT | 6 days | Org-wide booking deadline per `65drones1` 13/5 4:51 PM — teams that *haven't booked at all* get assigned random slots. Not relevant to us (we're booked). |
+| ~2026-05-21 (Thu) | 6 days | Actual qualifier map released by org (1 day before our slot) |
+| 2026-06-10 to 06-11 | 26–27 days | Final round at Marina Bay Sands (top 26 teams only) |
 
 ### Team availability
 
 | Date | Availability |
 |---|---|
-| 2026-05-13 (Wed, today) | working (Phase 1 done in evening) |
-| **2026-05-14 (Thu)** | **HALF DAY** — Phase 2 (detection) fits the available half if we start clean. Don't try to also do Phase 3 here. |
-| 2026-05-15 (Fri) onwards | full days assumed until qualifier |
-| 2026-05-20 (Tue) 14:00 | cancellation cutoff |
-| 2026-05-21 (Wed/Thu, day before qualifier) | qualifier map likely released; use full day to tune to it |
+| 2026-05-13 (Wed) | done — Phase 1 controller verified, Phase 2 scaffolding written |
+| 2026-05-14 (Thu) | half day used for Phase 2 follow-up |
+| **2026-05-15 (Fri, today)** | working — Phase 6 fake-GCS scaffolded; deep-doc review |
+| 2026-05-16 (Sat) – 2026-05-19 (Mon) | full days assumed |
+| 2026-05-20 (Wed) 14:00 | personal cancel/reschedule cutoff |
+| 2026-05-21 (Thu, day before qualifier) | qualifier map likely released; use full day to tune to it |
 
 Booking details (local only, not in repo): `challenge/qualifier_booking.md`.
 

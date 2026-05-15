@@ -370,13 +370,20 @@ That's the PX4 shell. Now you type commands at it.
 
 ### 10.2 Critical PX4 console setup — every fresh sim
 
-**These three commands are REQUIRED before the drone can arm.** Type at the `pxh>` prompt:
+**One command is REQUIRED before the drone can arm** if you're running our `searchctl/controller.py`:
+
+```
+commander set_ekf_origin 47.397742 8.545594 488.0
+```
+
+**Two extra commands** are needed if you're testing workshop scripts directly (`takeoff_and_land.py`, `avoid.py`, etc.) — our controller applies these automatically:
 
 ```
 param set CBRK_SUPPLY_CHK 894281
 param set SIM_BAT_MIN_PCT 100
-commander set_ekf_origin 47.397742 8.545594 488.0
 ```
+
+In short: for our controller, just the `commander set_ekf_origin` line. For raw workshop scripts, all three.
 
 **Why each:**
 

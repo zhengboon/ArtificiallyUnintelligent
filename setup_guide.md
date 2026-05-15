@@ -1,5 +1,10 @@
 # Setup Guide — RoboVerse Qualifier dev environment
 
+> ⚠️ **SUPERSEDED 2026-05-15.** This guide predates ~5 workshop gotchas we
+> later discovered. The canonical, up-to-date setup procedure is
+> [`guides/vm_from_zero_to_flight.md`](guides/vm_from_zero_to_flight.md) —
+> use that. This file kept for history.
+
 **Target host:** Windows laptop running **VMware Workstation Pro**.
 **Target guest:** **Ubuntu 22.04** — either the workshop's pre-built **v3 VM image** (recommended) or a fresh install with manual setup (Option B).
 **Time budget:** 30–60 min for Path A (provided VM); 3–4 hrs for Path B (fresh install).

@@ -186,10 +186,14 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 - [ ] Watchdog tuning: too-tight tolerance has hurt us; loosen if false-positives in dry-runs
 - [ ] Quick-restart script: one command launches `start_px4.sh`, applies params, runs controller (chain-on-fail with re-set EKF origin)
 
-### Z.5 — Phase 6: pymavlink fake-GCS heartbeat ⏰ ~2 hrs
-- [ ] Sends MAVLink HEARTBEAT on UDP 14550 identifying as a GCS — satisfies PX4's "no GCS" preflight without needing QGC running
-- [ ] Important because on demo day QGC might fail to start (like it did on 2026-05-13)
-- [ ] Integrates as a background asyncio task in the controller
+### Z.5 — Phase 6: pymavlink fake-GCS heartbeat ⏰ ~2 hrs — **CODE DONE 2026-05-15; flight test outstanding**
+- [x] Sends MAVLink HEARTBEAT on UDP 14550 identifying as a GCS — satisfies PX4's "no GCS" preflight without needing QGC running
+- [x] Important because on demo day QGC might fail to start (like it did on 2026-05-13)
+- [x] Integrates as a background daemon thread in the controller (not asyncio — pymavlink is sync; thread is safer)
+- [x] Auto-skips if QGC is already running (port 14550 conflict → log + skip cleanly)
+- [x] CLI `--no-fake-gcs` opt-out
+- [ ] **`pip install --user pymavlink` in the VM** (~5 MB, fast)
+- [ ] **Flight test**: kill QGC, run controller, confirm `commander check` shows `Preflight check: OK` purely from our heartbeat
 
 ### Z.6 — Integration with K's weights ⏰ ~5 min (when K ships)
 - [ ] Swap `YOLO_WEIGHTS_DEFAULT` in `controller.py` to K's `barrel.pt`
@@ -250,7 +254,7 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| **Disk-space on org's stock v3 VM** — torch/ultralytics won't install on a 49 GB disk at 95% used | **HIGH** | See "Disk-space contingency" section below. **OPEN INVESTIGATION — Z to file support ticket immediately.** |
+| **Disk-space on org's stock v3 VM** — torch/ultralytics won't install on a 49 GB disk at 95% used | **HIGH** | See "Disk-space contingency" section below. DS-1 support ticket v2 drafted in `team/discord_drafts.md` (2026-05-15) — **needs to be sent**. ONNX fallback (DS-3) being built into searchctl. |
 | K's `barrel.pt` not ready by qualifier | Medium | Stock `yolov10n.pt` as fallback — won't detect "barrel" but will fire on barrel-like objects. Partial points possible. |
 | Z's controller has new bug from Phase 3/4 changes | Medium | `--no-detect` flag → known-good Phase 1. Tagged commits at each phase complete. |
 | Org laptop fails or has weird setup | Low | Z brings backup laptop with own VM. A's runbook has fallback steps. |
@@ -271,7 +275,7 @@ This **does not** answer our *install-time* problem (`ultralytics` + `torch` ≈
 
 **Four-pronged response (all in parallel):**
 
-### DS-1 — Z: file a support ticket (DO NOW, costs 5 min) 📌
+### DS-1 — Z: send the support ticket (drafted 2026-05-15, ready to copy-paste) 📌
 Ask the OP:
 1. Is `ultralytics` + `torch` pre-installed on the demo-day machine?
 2. May we bring our own laptop with a pre-configured VM and demo from that instead?

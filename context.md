@@ -1,8 +1,8 @@
 # RoboVerse 2026 — Project Context
 
-**Last updated:** 2026-05-08 (maze generator built)
-**User email:** e1408861@u.nus.edu
-**Workspace root:** `/home/jugaad/zbstuff/hackerverse/`
+**Last updated:** 2026-05-15 (deep doc review; Phase 6 fake-GCS scaffolded)
+**User email:** e1399019@u.nus.edu (Z; the Linux-side `e1408861@u.nus.edu` is the same person, different account)
+**Workspace root:** `D:\hackerverse\` (Windows host, the canonical workspace as of 2026-05-12). Earlier Linux mirror at `/home/jugaad/zbstuff/hackerverse/` is no longer the source of truth.
 
 ---
 

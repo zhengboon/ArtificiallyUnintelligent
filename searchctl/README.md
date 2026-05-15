@@ -150,16 +150,23 @@ arming
 takeoff to 2.0 m
 takeoff complete
 offboard mode started
-WP 1/6 — hover above start ...
-  arrived (pos err=0.12 m, yaw err=2.1 deg)
+WP 1/5 — hover above start ...
+  arrived (pos err=0.08 m, yaw err=6.3 deg)
   holding 3.0 s
-WP 2/6 — forward 4 m, facing N ...
+WP 2/5 — forward 2 m ...
+  arrived (pos err=0.23 m, yaw err=1.0 deg)
   ...
+WP 5/5 — left 2 m, back to start ...
 landing
 on ground; disarming
 run finished cleanly
 ```
 
-And the drone in Gazebo will have actually flown the square. If any
+And the drone in Gazebo will have actually flown the 2 m square. If any
 step prints `emergency_land triggered`, we have something to debug —
 the log file at `logs/run_*.log` will say what.
+
+**Why 5 WPs not 6**: Phase 1 v1 had 6 WPs including yaw rotation between
+legs — that combination caused EKF vision-odometry to drift 104 m on
+WP3 (see `guides/vm_from_zero_to_flight.md` § 2026-05-13 verification log).
+v2 keeps yaw=0 throughout and uses 5 WPs (hover + 4 lateral moves).
