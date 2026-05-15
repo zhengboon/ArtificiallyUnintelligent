@@ -52,22 +52,43 @@ def main():
         print("waiting 5s for Discord to render the sidebar...")
         page.wait_for_timeout(5000)
 
-        # Same sidebar query the original cmd_login uses.
+        # Sidebar query. Discord's accessibility label is the most reliable
+        # source for the channel name (innerText often grabs the "Text" /
+        # "Forum" type label, not the channel name).
         channels = page.evaluate(
             """(server_id) => {
                 const anchors = document.querySelectorAll(`a[href^='/channels/${server_id}/']`);
                 const out = [];
                 const seen = new Set();
+                const noise = new Set(['Text', 'Forum', 'Voice', 'Announcement', 'Stage', '']);
                 for (const a of anchors) {
                     const m = a.href.match(/\\/channels\\/\\d+\\/(\\d+)/);
                     if (!m) continue;
                     const cid = m[1];
                     if (seen.has(cid)) continue;
                     seen.add(cid);
-                    const name = (a.innerText || a.textContent || '').trim().split('\\n')[0];
+
+                    // Strategy 1: aria-label of the link, often e.g. "general (channel, 5 unread)"
+                    let name = '';
                     const aria = a.getAttribute('aria-label') || '';
+                    const ariaMatch = aria.match(/^([^,(]+?)(?:\\s*\\(|,|$)/);
+                    if (ariaMatch) name = ariaMatch[1].trim();
+
+                    // Strategy 2: name-specific child class
+                    if (!name || noise.has(name)) {
+                        const nameEl = a.querySelector('[class*="name_"], [class*="channelName"]');
+                        if (nameEl) name = nameEl.innerText.trim();
+                    }
+
+                    // Strategy 3: filter innerText lines to drop type labels
+                    if (!name || noise.has(name)) {
+                        const raw = (a.innerText || a.textContent || '').trim();
+                        const lines = raw.split('\\n').map(s => s.trim()).filter(s => s && !noise.has(s));
+                        if (lines.length) name = lines[0];
+                    }
+
                     const isVoice = aria.toLowerCase().includes('(voice');
-                    out.push({id: cid, name, isVoice});
+                    out.push({id: cid, name: name || `channel_${cid}`, isVoice, aria});
                 }
                 return out;
             }""",
@@ -77,7 +98,8 @@ def main():
         text_channels = [c for c in channels if not c["isVoice"] and c["name"]]
         print(f"\nDiscovered {len(text_channels)} text channels:")
         for c in text_channels:
-            print(f"  #{c['name']:30s}  ({c['id']})")
+            extra = f"  [aria: {c.get('aria','')}]" if c.get('aria') else ""
+            print(f"  #{c['name']:30s}  ({c['id']}){extra}")
 
         if not text_channels:
             print("\nNo channels found — make sure you're logged in AND the URL is a channel inside the server.")
