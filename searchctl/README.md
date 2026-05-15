@@ -13,7 +13,7 @@ on any failure path, file-based logs.
 | 3 | next next | Lawnmower search strategy across the 40×40 arena, 2-altitude passes (1 m for yellow, 3.5 m for red). |
 | 4 | later | Detection dedup by NED position; restart-resilient state (persist found barrels to disk). |
 | 5 | later | Frontier exploration (port from `pastproject/`) for irregular maps. |
-| 6 | qualifier prep | Pymavlink fake-GCS heartbeat (no QGC dependency); 10-min dry-run validation. |
+| **6** | **scaffolding done 2026-05-15; needs end-to-end test** | Pymavlink fake-GCS heartbeat — sends MAV_TYPE_GCS on UDP 14550 @ 1 Hz so PX4's preflight passes without QGC. Auto-skips if QGC is already binding 14550. Opt-out via `--no-fake-gcs`. |
 
 ## Prereqs (one-time in the VM)
 
@@ -40,8 +40,9 @@ From inside the VM:
 
 ```bash
 cd ~/searchctl
-python3 controller.py                 # Phase 1 + Phase 2 (detection ON)
-python3 controller.py --no-detect     # Phase 1 only (flight, no YOLO)
+python3 controller.py                  # all features ON (detection + fake-GCS)
+python3 controller.py --no-detect      # flight only, no YOLO
+python3 controller.py --no-fake-gcs    # rely on QGC for the GCS link
 python3 controller.py --log-level DEBUG
 ```
 
@@ -54,8 +55,11 @@ internally for the gz.msgs10 import — no need to pre-export it.
 - The workshop's `Detector.py` at `~/Desktop/codes/Detector.py` (present in v3 VM)
 - `yolov10n.pt` weights at `~/Desktop/codes/yolov10n.pt` (present in v3 VM)
 
-If any of these is missing, the controller logs a warning and runs
-Phase-1-only. Flight is not blocked.
+**Phase 6 dep** (optional but recommended):
+- `pymavlink` (pip — `pip install --user pymavlink`)
+
+If any of these is missing, the controller logs a warning and runs the
+features it can. Flight is never blocked by a missing optional dep.
 
 ## What Phase 1 does (v2, the version that works)
 

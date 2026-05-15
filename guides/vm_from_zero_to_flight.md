@@ -24,6 +24,7 @@ sequence → things to fix when they break.
 | Smoke flight (`takeoff_and_land.py`) | ✅ verified 2026-05-13 |
 | **searchctl Phase 1 (scripted-waypoint flight)** | ✅ **verified 2026-05-13 19:35** — full square flown, exit 0, all WPs sub-0.5 m |
 | searchctl Phase 2 (YOLO detection as background task) | 🧪 **scaffolding written + committed 2026-05-13 ~22:00; integration test pending (next session)** |
+| searchctl Phase 6 (pymavlink fake-GCS heartbeat — no QGC needed) | 🧪 **scaffolding written + committed 2026-05-15 — needs end-to-end test** |
 | searchctl Phase 3 (lawnmower search strategy) | ⏳ planned |
 | searchctl Phase 4 (detection dedup + restart-resume) | ⏳ planned |
 | 10-min full qualifier dry-run | ⏳ before 2026-05-22 |

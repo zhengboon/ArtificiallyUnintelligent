@@ -107,6 +107,24 @@ Lesson: **always use `growpart`, not `parted resizepart`, for live root-partitio
 - Team agreed time. Decision logged in local-only `challenge/qualifier_booking.md` (gitignored).
 - Hard cancellation cutoff: 2026-05-20 14:00 (48 h rule). After that, slot is fixed.
 
+## 2026-05-15 (Friday) — Phase 6 fake-GCS + deep doc review
+
+### Phase 6 — pymavlink fake-GCS heartbeat scaffolded (`zb` task)
+- Wrote `_fake_gcs_pump` background thread in `searchctl/controller.py`. Sends `MAV_TYPE_GCS` HEARTBEAT at 1 Hz on UDP 14550 so PX4's "GCS connection" preflight check passes without QGC running.
+- Lazy imports `pymavlink` (degrades gracefully with a warning if missing).
+- Auto-skips if port 14550 is already bound (QGC already serving as GCS — no conflict).
+- CLI: `--no-fake-gcs` opts out. Default is ON.
+- Wired into `run()` — starts BEFORE PX4 connection so the heartbeat is already streaming when preflight runs.
+- Stopped in all exit paths (success, KeyboardInterrupt, fatal).
+- Version bumped v0.2 → v0.3.
+- **Not yet tested end-to-end** in the VM — needs `pip install pymavlink` first and a sim run with QGC killed to confirm preflight passes.
+
+### Deep file review (separate task; documented in `reports/2026-05-15_deep_review.md`)
+- Cross-referenced our docs against the 6 user-dumped Discord channels at `info_2026-05-15/`.
+- Light integrity check on all 21 downloaded workshop files vs. their Drive IDs — all healthy.
+- Found + fixed: deadline framing (two separate deadlines, restored both), DS-1 ticket sharpening (OP answered the general disk question), camera topic name documentation, OAK-D Lite install instructions, PX4 log cleanup as routine maintenance.
+- Still owe: 3 Discord-only `_v2` files for K to grab manually; DS-1 ticket to send.
+
 ### Phase 2 detection scaffolding (late evening, ~22:00) 🧪
 - Wrote +226 lines into `searchctl/controller.py` (now 710 lines, version v0.2).
 - Adds gz-transport subscription to IMX214 camera + workshop's `Detector` class on a worker thread + per-frame NED pose stamping + `DetectionRecord` dataclass + per-run `logs/run_<ts>/detections/` folder + `on_detection` callback that logs each fire and appends to SharedState.
