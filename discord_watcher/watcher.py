@@ -130,18 +130,41 @@ def cmd_login() -> None:
         # changed pages, so iterate over all pages.
         server_id = None
         cur_url = None
-        for pg in ctx.pages:
+        log.info("currently open pages in this Chromium context:")
+        for i, pg in enumerate(ctx.pages):
+            log.info("  [%d] %s", i, pg.url)
             m = SERVER_URL_RE.search(pg.url)
-            if m:
+            if m and not server_id:
                 server_id = m.group(1)
                 cur_url = pg.url
                 page = pg
-                break
+
+        # Fallback: ask the user to paste the URL directly. This handles
+        # cases where ctx.pages doesn't reflect the user-visible navigation
+        # (e.g. Discord opened in a tab we don't see, or pg.url is stale).
+        if not server_id:
+            log.warning("auto-detect failed; falling back to manual URL")
+            print()
+            print(">>> Paste the FULL URL from your Chromium address bar")
+            print("    (should look like https://discord.com/channels/<server>/<channel>)")
+            manual_url = input(">>> URL: ").strip()
+            m = SERVER_URL_RE.search(manual_url)
+            if m:
+                server_id = m.group(1)
+                cur_url = manual_url
+                # Navigate our page object to that URL so channel discovery works.
+                try:
+                    page.goto(manual_url, wait_until="domcontentloaded")
+                    page.wait_for_timeout(2500)
+                except Exception:
+                    log.exception("could not navigate to pasted URL")
+            else:
+                log.error("URL didn't match the channel format. Aborting.")
+                ctx.close()
+                sys.exit(1)
 
         if not server_id:
-            log.error("Could not detect server URL. Are you on a channel "
-                      "inside the server? URL should look like "
-                      "https://discord.com/channels/<server>/<channel>")
+            log.error("Could not detect server URL. Aborting.")
             ctx.close()
             sys.exit(1)
 
