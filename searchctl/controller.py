@@ -509,6 +509,105 @@ def teardown_detection(handle: Optional[dict], state: SharedState) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Fake-GCS heartbeat (Phase 6)
+# ---------------------------------------------------------------------------
+# PX4's preflight has a "GCS connection" check that fires when QGroundControl
+# (or any peer identifying as MAV_TYPE_GCS) is connected. On 2026-05-13 we
+# hit a QGC crash and PX4 refused to arm with "No connection to the GCS"
+# even though our MAVSDK controller was happily talking on udp 14540.
+# Reason: PX4 tags the 14540 link as "Onboard", not "GCS".
+#
+# Workaround: spawn a tiny pymavlink loop on udp 14550 that sends HEARTBEAT
+# at 1 Hz claiming to be a GCS. PX4 sees a GCS connected, preflight passes.
+# Now the controller is fully self-sufficient — QGC is no longer required.
+#
+# If QGC IS running, port 14550 is already bound and pymavlink fails to
+# open it — we detect that and skip cleanly (QGC is already doing the job).
+# If pymavlink isn't installed in the VM, we log a warning and skip.
+
+FAKE_GCS_PORT = 14550
+
+
+def _fake_gcs_pump(stop_event: "object", port: int = FAKE_GCS_PORT) -> None:
+    """Send MAV_TYPE_GCS heartbeats on UDP <port> at 1 Hz until stop_event is set.
+
+    Runs in a daemon thread (not the asyncio loop) so blocking socket
+    operations don't interfere with the setpoint pumper.
+    """
+    try:
+        from pymavlink import mavutil
+    except ImportError:
+        log.warning(
+            "fake-GCS: pymavlink not installed; QGC must be running for "
+            "preflight to pass. Install with: pip install --user pymavlink"
+        )
+        return
+
+    try:
+        conn = mavutil.mavlink_connection(f"udpin:0.0.0.0:{port}")
+    except OSError as e:
+        log.info(
+            "fake-GCS: could not bind UDP %d (%s) — QGC is probably already "
+            "running and serving as GCS. Skipping fake heartbeat.",
+            port, e,
+        )
+        return
+    except Exception:
+        log.exception("fake-GCS: pymavlink connection failed; continuing without")
+        return
+
+    log.info("fake-GCS heartbeat: bound UDP %d, will pulse @ 1 Hz", port)
+    sent = 0
+    while not stop_event.is_set():
+        try:
+            conn.mav.heartbeat_send(
+                mavutil.mavlink.MAV_TYPE_GCS,
+                mavutil.mavlink.MAV_AUTOPILOT_INVALID,
+                0,
+                0,
+                mavutil.mavlink.MAV_STATE_ACTIVE,
+            )
+            sent += 1
+            if sent == 1:
+                log.info("fake-GCS: first heartbeat sent")
+            elif sent % 60 == 0:
+                log.debug("fake-GCS: %d heartbeats sent", sent)
+        except Exception:
+            log.exception("fake-GCS: heartbeat_send failed (will keep trying)")
+        stop_event.wait(timeout=1.0)
+
+    try:
+        conn.close()
+    except Exception:
+        pass
+    log.info("fake-GCS: stopped (sent %d heartbeats)", sent)
+
+
+def start_fake_gcs(enabled: bool = True) -> Optional[dict]:
+    """Spawn the heartbeat thread. Returns a handle for stop_fake_gcs."""
+    if not enabled:
+        log.info("fake-GCS disabled (--no-fake-gcs)")
+        return None
+    import threading
+    stop_event = threading.Event()
+    t = threading.Thread(
+        target=_fake_gcs_pump,
+        args=(stop_event,),
+        daemon=True,
+        name="fake-gcs",
+    )
+    t.start()
+    return {"thread": t, "stop_event": stop_event}
+
+
+def stop_fake_gcs(handle: Optional[dict]) -> None:
+    if handle is None:
+        return
+    handle["stop_event"].set()
+    handle["thread"].join(timeout=3.0)
+
+
+# ---------------------------------------------------------------------------
 # Phase 1 planner — fly a small scripted square at fixed altitude
 # ---------------------------------------------------------------------------
 WAYPOINTS = [
@@ -606,10 +705,11 @@ async def emergency_land(drone: Drone, state: SharedState) -> None:
     log.warning("emergency_land complete")
 
 
-async def run(detect_enabled: bool = True) -> int:
+async def run(detect_enabled: bool = True, fake_gcs_enabled: bool = True) -> int:
     state = SharedState()
     drone = Drone()
     detect_handle: Optional[dict] = None
+    fake_gcs_handle: Optional[dict] = None
     # This run's working dir for outputs (annotated detection frames, etc.)
     run_dir = LOG_DIR.parent / f"run_{RUN_TS}"
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -624,6 +724,12 @@ async def run(detect_enabled: bool = True) -> int:
             # VM is Linux so this works there. KeyboardInterrupt catch-all
             # below picks up SIGINT on Windows.
             pass
+
+    # Spawn fake-GCS heartbeat BEFORE we connect to PX4 — gives PX4 time to
+    # register a "GCS connected" before our preflight check runs.
+    fake_gcs_handle = start_fake_gcs(enabled=fake_gcs_enabled)
+    if fake_gcs_handle is not None:
+        await asyncio.sleep(1.5)  # let a couple heartbeats land
 
     try:
         await drone.connect()
@@ -671,6 +777,7 @@ async def run(detect_enabled: bool = True) -> int:
         await drone.end_offboard()
         await drone.land_and_disarm()
         teardown_detection(detect_handle, state)
+        stop_fake_gcs(fake_gcs_handle)
         log.info("run finished cleanly")
         return 0
 
@@ -678,11 +785,13 @@ async def run(detect_enabled: bool = True) -> int:
         log.warning("KeyboardInterrupt received")
         await emergency_land(drone, state)
         teardown_detection(detect_handle, state)
+        stop_fake_gcs(fake_gcs_handle)
         return 130
     except Exception:
         log.exception("fatal error in run()")
         await emergency_land(drone, state)
         teardown_detection(detect_handle, state)
+        stop_fake_gcs(fake_gcs_handle)
         return 1
 
 
@@ -694,14 +803,25 @@ def main() -> int:
         action="store_true",
         help="Disable Phase 2 detection pipeline; run Phase 1 (flight only).",
     )
+    ap.add_argument(
+        "--no-fake-gcs",
+        action="store_true",
+        help="Disable the pymavlink fake-GCS heartbeat. Use this if QGC is "
+             "already running (port 14550 conflict) — though the script "
+             "auto-detects that and skips cleanly anyway.",
+    )
     args = ap.parse_args()
     logging.getLogger().setLevel(args.log_level)
 
-    log.info("==== searchctl controller v0.2 (Phase 1 + Phase 2 detection) ====")
+    log.info("==== searchctl controller v0.3 (Phase 1 + Phase 2 + fake-GCS) ====")
     log.info("logs at %s", LOG_FILE)
-    log.info("detection: %s", "OFF (--no-detect)" if args.no_detect else "ON")
+    log.info("detection:  %s", "OFF (--no-detect)" if args.no_detect else "ON")
+    log.info("fake-GCS:   %s", "OFF (--no-fake-gcs)" if args.no_fake_gcs else "ON")
     try:
-        return asyncio.run(run(detect_enabled=not args.no_detect))
+        return asyncio.run(run(
+            detect_enabled=not args.no_detect,
+            fake_gcs_enabled=not args.no_fake_gcs,
+        ))
     except KeyboardInterrupt:
         return 130
 

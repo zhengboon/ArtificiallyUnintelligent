@@ -13,7 +13,7 @@ on any failure path, file-based logs.
 | 3 | next next | Lawnmower search strategy across the 40×40 arena, 2-altitude passes (1 m for yellow, 3.5 m for red). |
 | 4 | later | Detection dedup by NED position; restart-resilient state (persist found barrels to disk). |
 | 5 | later | Frontier exploration (port from `pastproject/`) for irregular maps. |
-| 6 | qualifier prep | Pymavlink fake-GCS heartbeat (no QGC dependency); 10-min dry-run validation. |
+| **6** | **scaffolding done 2026-05-15; needs end-to-end test** | Pymavlink fake-GCS heartbeat — sends MAV_TYPE_GCS on UDP 14550 @ 1 Hz so PX4's preflight passes without QGC. Auto-skips if QGC is already binding 14550. Opt-out via `--no-fake-gcs`. |
 
 ## Prereqs (one-time in the VM)
 
@@ -40,8 +40,9 @@ From inside the VM:
 
 ```bash
 cd ~/searchctl
-python3 controller.py                 # Phase 1 + Phase 2 (detection ON)
-python3 controller.py --no-detect     # Phase 1 only (flight, no YOLO)
+python3 controller.py                  # all features ON (detection + fake-GCS)
+python3 controller.py --no-detect      # flight only, no YOLO
+python3 controller.py --no-fake-gcs    # rely on QGC for the GCS link
 python3 controller.py --log-level DEBUG
 ```
 
@@ -54,8 +55,11 @@ internally for the gz.msgs10 import — no need to pre-export it.
 - The workshop's `Detector.py` at `~/Desktop/codes/Detector.py` (present in v3 VM)
 - `yolov10n.pt` weights at `~/Desktop/codes/yolov10n.pt` (present in v3 VM)
 
-If any of these is missing, the controller logs a warning and runs
-Phase-1-only. Flight is not blocked.
+**Phase 6 dep** (optional but recommended):
+- `pymavlink` (pip — `pip install --user pymavlink`)
+
+If any of these is missing, the controller logs a warning and runs the
+features it can. Flight is never blocked by a missing optional dep.
 
 ## What Phase 1 does (v2, the version that works)
 
@@ -146,16 +150,23 @@ arming
 takeoff to 2.0 m
 takeoff complete
 offboard mode started
-WP 1/6 — hover above start ...
-  arrived (pos err=0.12 m, yaw err=2.1 deg)
+WP 1/5 — hover above start ...
+  arrived (pos err=0.08 m, yaw err=6.3 deg)
   holding 3.0 s
-WP 2/6 — forward 4 m, facing N ...
+WP 2/5 — forward 2 m ...
+  arrived (pos err=0.23 m, yaw err=1.0 deg)
   ...
+WP 5/5 — left 2 m, back to start ...
 landing
 on ground; disarming
 run finished cleanly
 ```
 
-And the drone in Gazebo will have actually flown the square. If any
+And the drone in Gazebo will have actually flown the 2 m square. If any
 step prints `emergency_land triggered`, we have something to debug —
 the log file at `logs/run_*.log` will say what.
+
+**Why 5 WPs not 6**: Phase 1 v1 had 6 WPs including yaw rotation between
+legs — that combination caused EKF vision-odometry to drift 104 m on
+WP3 (see `guides/vm_from_zero_to_flight.md` § 2026-05-13 verification log).
+v2 keeps yaw=0 throughout and uses 5 WPs (hover + 4 lateral moves).

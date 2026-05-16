@@ -7,25 +7,59 @@ and commit hashes where they exist. Skim-able when looking back later.
 
 ---
 
+## 2026-05-16 (Sat) — Qualifier rule changes; PR cleanup
+
+### Org announcements (`info_2026-05-16/qualifier-update.md`)
+
+- **05:59** Map = workshop Roboverse map (no map drop on Thu after all). Only barrels change.
+- **09:13 / 09:15** Targets are NOT the old oil-drums. New: red gas cylinder
+  inside a locker (elevated ~1.5 m); small yellow object on the floor
+  (banana-shaped). Old workshop oil-drums shown crossed out — those are
+  distractors / non-scoring.
+- **11:32** All teams run on **org laptop + org VM** (workshop v3 image
+  with ultralytics). We bring code; we install it. Our `vmrun` host→VM
+  deploy path is dead for the qualifier.
+
+### Impact taken
+- **`team/tasks.md` rescoped**: K's classes change to `red_cylinder` +
+  `yellow_object`, weights file renamed `targets.pt`. K.0 added — K must
+  first verify new targets actually spawn in the sim. Phase 3 altitude for
+  red revised from 3.5 m → ~1.5 m (locker-mouth height; 3.5 m would see
+  only the locker roof).
+- **New task Z.10** (deploy onto org VM): git-clone primary, USB-stick
+  fallback with offline pip wheels. Need to make the repo public or grant
+  access, and confirm what's pre-installed beyond ultralytics.
+- **Risks updated**: org-laptop-fallback removed (not allowed). New risks:
+  org VM missing a package; org VM no internet.
+
+### Earlier today: PR cleanup
+- Two PRs from `zb` → `main` opened cleanly (no conflicts):
+  - PR #1 `pr/discord-watcher` — 5 commits, scrape mode, control panel, login fallback
+  - PR #2 `pr/docs-and-controller` — 6 commits, Phase 6 fake-GCS, DS-1 draft, deep-review
+
+---
+
 ## ⏰ Key dates
 
-| Date | Days from now (2026-05-13) | Event |
+| Date | Days from now (2026-05-15) | Event |
 |---|---|---|
-| **2026-05-22 (Fri) 14:00** | **9 days** | **Our qualifier slot — Orchard Grand Court, Lloyd I/II** |
-| 2026-05-23 (Sat) | 10 days | Backup qualifier day (other teams' sessions) |
-| 2026-05-20 (Tue) 14:00 | 7 days | Hard 48-hour cancellation cutoff for our slot |
-| ~2026-05-21 (Thu) | 8 days | Actual qualifier map released by org (1 day before our slot) |
-| 2026-06-10 to 06-11 | 28–29 days | Final round at Marina Bay Sands (top 26 teams only) |
+| **2026-05-22 (Fri) 14:00** | **7 days** | **Our qualifier slot — Orchard Grand Court, Lloyd I/II** |
+| 2026-05-23 (Sat) | 8 days | Backup qualifier day (other teams' sessions) |
+| **2026-05-20 (Wed) 14:00** | 5 days | **OUR personal cancel/reschedule cutoff** — 48-h rule from booking-page T&Cs (48 h before our 22 May 14:00 slot). After this, our slot is locked. |
+| 2026-05-21 (Thu) 10:00 SGT | 6 days | Org-wide booking deadline per `65drones1` 13/5 4:51 PM — teams that *haven't booked at all* get assigned random slots. Not relevant to us (we're booked). |
+| ~~~2026-05-21 (Thu)~~ | n/a | ~~Actual qualifier map released by org~~ — **CANCELLED 2026-05-16**: map = workshop Roboverse map, only targets are new |
+| 2026-06-10 to 06-11 | 26–27 days | Final round at Marina Bay Sands (top 26 teams only) |
 
 ### Team availability
 
 | Date | Availability |
 |---|---|
-| 2026-05-13 (Wed, today) | working (Phase 1 done in evening) |
-| **2026-05-14 (Thu)** | **HALF DAY** — Phase 2 (detection) fits the available half if we start clean. Don't try to also do Phase 3 here. |
-| 2026-05-15 (Fri) onwards | full days assumed until qualifier |
-| 2026-05-20 (Tue) 14:00 | cancellation cutoff |
-| 2026-05-21 (Wed/Thu, day before qualifier) | qualifier map likely released; use full day to tune to it |
+| 2026-05-13 (Wed) | done — Phase 1 controller verified, Phase 2 scaffolding written |
+| 2026-05-14 (Thu) | half day used for Phase 2 follow-up |
+| **2026-05-15 (Fri, today)** | working — Phase 6 fake-GCS scaffolded; deep-doc review |
+| 2026-05-16 (Sat) – 2026-05-19 (Mon) | full days assumed |
+| 2026-05-20 (Wed) 14:00 | personal cancel/reschedule cutoff |
+| 2026-05-21 (Thu, day before qualifier) | qualifier map likely released; use full day to tune to it |
 
 Booking details (local only, not in repo): `challenge/qualifier_booking.md`.
 
@@ -124,6 +158,24 @@ Lesson: **always use `growpart`, not `parted resizepart`, for live root-partitio
 - **Qualifier slot booked: Friday 22 May 2026, 14:00, Orchard Grand Court Lloyd I/II.**
 - Team agreed time. Decision logged in local-only `challenge/qualifier_booking.md` (gitignored).
 - Hard cancellation cutoff: 2026-05-20 14:00 (48 h rule). After that, slot is fixed.
+
+## 2026-05-15 (Friday) — Phase 6 fake-GCS + deep doc review
+
+### Phase 6 — pymavlink fake-GCS heartbeat scaffolded (`zb` task)
+- Wrote `_fake_gcs_pump` background thread in `searchctl/controller.py`. Sends `MAV_TYPE_GCS` HEARTBEAT at 1 Hz on UDP 14550 so PX4's "GCS connection" preflight check passes without QGC running.
+- Lazy imports `pymavlink` (degrades gracefully with a warning if missing).
+- Auto-skips if port 14550 is already bound (QGC already serving as GCS — no conflict).
+- CLI: `--no-fake-gcs` opts out. Default is ON.
+- Wired into `run()` — starts BEFORE PX4 connection so the heartbeat is already streaming when preflight runs.
+- Stopped in all exit paths (success, KeyboardInterrupt, fatal).
+- Version bumped v0.2 → v0.3.
+- **Not yet tested end-to-end** in the VM — needs `pip install pymavlink` first and a sim run with QGC killed to confirm preflight passes.
+
+### Deep file review (separate task; documented in `reports/2026-05-15_deep_review.md`)
+- Cross-referenced our docs against the 6 user-dumped Discord channels at `info_2026-05-15/`.
+- Light integrity check on all 21 downloaded workshop files vs. their Drive IDs — all healthy.
+- Found + fixed: deadline framing (two separate deadlines, restored both), DS-1 ticket sharpening (OP answered the general disk question), camera topic name documentation, OAK-D Lite install instructions, PX4 log cleanup as routine maintenance.
+- Still owe: 3 Discord-only `_v2` files for K to grab manually; DS-1 ticket to send.
 
 ### Phase 2 detection scaffolding (late evening, ~22:00) 🧪
 - Wrote +226 lines into `searchctl/controller.py` (now 710 lines, version v0.2).
