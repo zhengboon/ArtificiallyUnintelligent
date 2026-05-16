@@ -109,18 +109,63 @@ Start-ScheduledTask -TaskName "RoboVerseDiscordPoll"
 
 ---
 
+## Control panel (localhost dashboard)
+
+Double-click **`run_server.bat`** to launch a tiny Flask app at
+**http://localhost:5050/**. Browser-viewable dashboard with:
+
+- buttons to trigger `login` / `poll` / `scrape`
+- live log of whatever's currently running
+- "notes" — you and Claude can both leave messages here (shared, two-way)
+- history of recent runs
+
+Why bother:
+
+- **You see progress** without staring at a terminal
+- **Claude triggers runs** via `curl http://localhost:5050/api/run/scrape` from PowerShell
+- **Single source of truth** in `server_state.json` — both sides see the same view
+
+The server stays running until you close the terminal (or Ctrl+C). Only
+binds to 127.0.0.1, no network exposure.
+
+Endpoints (for the curious / scripting):
+
+| Method | Path | What |
+|---|---|---|
+| GET | `/` | the dashboard |
+| GET | `/api/status` | full state JSON |
+| POST | `/api/run/<cmd>` | trigger `login` \| `poll` \| `scrape` (409 if one's running) |
+| POST | `/api/cancel` | terminate the running subprocess |
+| POST | `/api/note` | body: `{"text": "...", "from": "user|claude"}` |
+| POST | `/api/notes/clear` | wipe the notes list |
+| GET | `/api/logs/raw` | tail of `logs/watcher.log` |
+
+## Full-history scrape (audit mode)
+
+Double-click **`run_scrape.bat`** for a one-shot dump of every message
+currently visible in each channel — not just new ones since the last poll.
+
+- Output: `D:\hackerverse\info_<today>_scrape\<channel_name>.md` — one file per channel.
+- The script visits each channel, scrolls all the way up (Discord lazy-loads older messages page by page), then extracts everything.
+- **Slower than `poll`** — ~30 s of scrolling per channel plus Discord's load latency. Plan for ~5 min total.
+- Use this when Claude (or any reviewer) needs to cross-check the repo docs against the source-of-truth Discord content. `poll` is for routine updates; `scrape` is for audits.
+- Same Playwright session as the others — re-run `run_login.bat` if Discord boots you out.
+
+---
+
 ## Files
 
 | Path | What |
 |---|---|
-| `watcher.py` | Playwright poller (6-hour cadence) |
+| `watcher.py` | Playwright tool with 3 modes: `login`, `poll`, `scrape` |
 | `notif_listener.py` | Windows toast listener (always on) |
 | `config.json` | server_id, channels, last-seen msg id per channel |
 | `profile/` | Playwright user-data dir (Discord cookies for the polled session) |
 | `logs/watcher.log` | one line per poll |
 | `logs/notif_listener.log` | every Discord toast we see |
 | `run_login.bat` | first-run / re-login wrapper |
-| `run_poll.bat` | what Task Scheduler invokes every 6 h |
+| `run_poll.bat` | what Task Scheduler invokes every 6 h (incremental) |
+| `run_scrape.bat` | manual full-history dump for audits |
 | `run_listener.bat` | what Task Scheduler invokes at logon |
 
 ---
