@@ -1,4 +1,18 @@
-# Team task list — RoboVerse Qualifier (T-9 days)
+# Team task list — RoboVerse Qualifier (T-6 days)
+
+> **🚨 2026-05-16 RULE CHANGES** (see `info_2026-05-16/qualifier-update.md`)
+>
+> 1. **Map**: same as Roboverse workshop sim. Geometry unchanged.
+> 2. **Targets changed**: NOT the workshop oil-drums anymore. New targets =
+>    **red gas cylinder inside a locker (elevated ~1–2 m)** + **small yellow
+>    banana-shaped object on the floor**. **K's existing weights / planned
+>    dataset are now obsolete.**
+> 3. **Compute mandated**: all teams run on **org laptop + org VM** (workshop
+>    v3 image with ultralytics). Our `vmrun` deploy path is dead. New deploy
+>    path = git clone (or USB) into the org VM at our 14:00 slot.
+>
+> See *Action items spawned* at the bottom of the info-dump file for the
+> per-person impact. The sections below have been updated.
 
 Three of us. Roles roughly carved by domain so we don't merge-conflict:
 
@@ -14,7 +28,7 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 
 - **2026-05-20 (Wed) 14:00** — **OUR personal cancel/reschedule cutoff** = 48 h before our 22 May 14:00 slot (booking-page T&Cs). After this, our slot is fixed.
 - **2026-05-21 (Thu) 10:00 SGT** — org-wide deadline for *unbooked* teams (per `65drones1` 13/5/2026 4:51 PM in `#general`). Unbooked teams get random slots assigned after this. Not directly relevant to us — we're already booked — but worth knowing.
-- **~2026-05-21 (Thu)** — OP releases the actual qualifier map. We get ~24 h to tune to it.
+- ~~**~2026-05-21 (Thu)** — OP releases the actual qualifier map.~~ **CANCELLED 2026-05-16**: the qualifier map IS the workshop Roboverse map. Only the barrel targets are new.
 - **2026-05-22 (Fri) 14:00** — **OUR QUALIFIER SLOT.** Orchard Grand Court, Lloyd I/II.
 
 ## Status snapshot (2026-05-13, end of day)
@@ -28,32 +42,52 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 
 ## 👁 Person K — Detection Pipeline
 
-**End goal:** a `barrel.pt` YOLO weights file with 3 classes (yellow / red / toxic) that achieves > 0.8 precision and > 0.7 recall per class on a held-out test set. Plus the dataset + training notebook to reproduce it.
+> **🚨 RESCOPED 2026-05-16.** New qualifier targets are NOT the workshop
+> oil-drums. See `info_2026-05-16/qualifier-update.md`. Old "barrel" weights
+> (`yolov10n.pt`) are no longer useful. K's pipeline keeps the same shape
+> (capture → label → train → eval → integrate) but the **classes change**
+> and the **sim source may need updating** depending on the OP's answer to
+> the open questions in DS-2.
+
+**End goal:** a `targets.pt` YOLO weights file with **2 classes**
+(`red_cylinder`, `yellow_object`) achieving > 0.8 precision and > 0.7 recall
+per class on a held-out test set. Plus the dataset + training notebook to
+reproduce it.
+
+### K.0 — Block: confirm sim targets before capturing ⏰ ~30 min — **DO FIRST**
+- [ ] Boot v3 VM, start the Roboverse sim, fly around manually with
+      `~/Desktop/codes/keyboardcontrol.py`. **Are the new objects (red gas
+      cylinder in lockers + yellow banana-shaped) actually spawning in the
+      sim?** Or is the sim still showing the old oil-drums?
+- [ ] If the new objects are NOT in the sim, ask A to escalate to OP
+      (DS-2) — we cannot train without representative images.
+- [ ] If the new objects ARE in the sim, proceed to K.1.
 
 ### K.1 — Image capture from the sim ⏰ ~4 hrs
-- [ ] Boot the v3 VM, start sim with `~/start_px4.sh` → x500_vision → roboverse → QGC
-- [ ] Set the three PX4 console commands (battery + EKF origin) — see `guides/vm_from_zero_to_flight.md` §10.2
-- [ ] Use `~/Desktop/codes/keyboardcontrol.py` to fly the drone manually around the warehouse
-- [ ] Use `~/Desktop/codes/save_photo.py` to capture frames as you fly. **Target counts:**
-  - ≥ 200 frames containing a yellow barrel
-  - ≥ 200 frames containing a red barrel
-  - ≥ 200 frames containing a toxic-sign barrel (the OP's RED-drum-with-diamond-sign)
-  - Bonus: frames containing **multiple barrel types in the same shot** — important adversarial cases
-- [ ] Vary perspective: low altitude (~1 m), high altitude (~3.5 m), close (~2 m away), far (~8 m away), partially occluded
+- [ ] Sim startup as above, with QGC + EKF-origin set per
+      `guides/vm_from_zero_to_flight.md` §10.2
+- [ ] Use `~/Desktop/codes/save_photo.py` to capture frames as you fly.
+      **Target counts:**
+  - ≥ 200 frames containing a **red gas cylinder** (inside-locker views;
+        try variable lighting and locker-mouth angles)
+  - ≥ 200 frames containing a **yellow object** (floor-level views;
+        include partial occlusion behind other objects)
+  - Bonus: frames containing **both targets in the same shot** — adversarial cases
+  - Bonus: frames containing the OLD oil-drums (now distractors) — train
+        the model to *not* fire on them
+- [ ] Vary perspective: low altitude (~1 m, for yellow), mid altitude
+      (~1.5 m, locker-mouth height for red), close (~2 m away), far
+      (~5–8 m away), partially occluded
 - [ ] Save into `detection/dataset/raw/` with timestamped filenames
-- [ ] Push to GitHub on a branch `detection/k-capture-001` (don't merge to main yet — dataset will be gitignored later but the raw images can sit on the branch for K's review)
-
-**Output:** ~600–800 raw frames in `detection/dataset/raw/`.
 
 ### K.2 — Labeling ⏰ ~3–4 hrs (the grindy part)
-- [ ] Pick a tool: **Roboflow** (cloud, free <10k images, has YOLO export + auto-augmentation) is the fast path. **labelImg** is the slow-but-local fallback.
-- [ ] Create a Roboflow project, **3 classes**: `yellow_barrel`, `red_barrel`, `toxic_barrel`
-- [ ] Upload all frames. Label every barrel in every frame. **Don't skip occluded barrels** — those are training signal for the qualifier where the drone won't always have clean views.
+- [ ] **Roboflow** (cloud, free) is the fast path; labelImg is fallback
+- [ ] Create a Roboflow project, **2 classes**: `red_cylinder`, `yellow_object`
+      (drop `toxic_barrel` — old workshop concept, no longer in the rules)
+- [ ] Upload all frames. Label every target. Don't skip occluded ones.
 - [ ] Auto-split 70/15/15 train/val/test
-- [ ] Apply Roboflow's auto-augmentation: rotation ±15°, brightness ±25%, blur, slight crop. Doubles the dataset for free.
-- [ ] Export YOLOv8 format → save `detection/dataset/processed/` (or use Roboflow's hosted dataset URL directly in Colab)
-
-**Output:** a labeled dataset, exported in YOLOv8 format.
+- [ ] Apply auto-augmentation (rotation ±15°, brightness ±25%, blur, slight crop)
+- [ ] Export YOLOv8 format → `detection/dataset/processed/`
 
 ### K.3 — Training on Colab ⏰ ~2 hrs (mostly waiting)
 - [ ] Open the workshop's `~/Desktop/codes/Train_YOLO_Models.ipynb` in Colab (upload it there)
@@ -61,15 +95,18 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 - [ ] Point at the Roboflow dataset URL or upload the processed zip
 - [ ] Start with default hyperparams: yolov8n base, 100 epochs, batch 16, imgsz 640
 - [ ] First training run is the baseline — don't tune yet
-- [ ] Download `best.pt` → rename `barrel_v1.pt` → save to `detection/weights/barrel_v1.pt`
+- [ ] Download `best.pt` → rename `targets_v1.pt` → save to `detection/weights/targets_v1.pt`
 
-**Output:** `detection/weights/barrel_v1.pt`
+**Output:** `detection/weights/targets_v1.pt`
 
 ### K.4 — Evaluation ⏰ ~1 hr
 - [ ] Run Ultralytics' `model.val()` on the test set
-- [ ] Record per-class precision + recall + mAP50 + mAP50-95 in `detection/eval/barrel_v1.md`
-- [ ] **Sanity-check toxic-barrel detection** specifically. If precision < 0.9 on toxic, you'll false-positive on real reds at the qualifier → loss of points. Iterate before integration.
-- [ ] If yellow recall < 0.7, you'll miss easy points. Capture more yellow images.
+- [ ] Record per-class precision + recall + mAP50 + mAP50-95 in `detection/eval/targets_v1.md`
+- [ ] **Sanity-check that old workshop oil-drums DO NOT trigger detections.**
+      If the model fires on them, you'll false-positive at the qualifier
+      (those will likely still be around the arena as distractors). Add
+      hard-negatives to training set if so.
+- [ ] If yellow_object recall < 0.7, you'll miss easy points — capture more.
 
 **Output:** an eval report. If the numbers look good, push to Z for integration. If not, iterate.
 
@@ -77,10 +114,10 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 - [ ] More images of weak classes
 - [ ] Tune confidence threshold during training
 - [ ] Try larger model (yolov8s instead of yolov8n) if inference is fast enough on the VM
-- [ ] Train `barrel_v2.pt`, `barrel_v3.pt`... eval each, hand off best
+- [ ] Train `targets_v2.pt`, `targets_v3.pt`... eval each, hand off best
 
 ### K.6 — Integration hand-off to Z ⏰ ~5 min
-- [ ] Drop final `barrel.pt` into the controller path. Tell Z the filename + classes + eval numbers.
+- [ ] Drop final `targets.pt` into the controller path. Tell Z the filename + classes + eval numbers.
 - [ ] Z changes one line in `searchctl/controller.py` (`YOLO_WEIGHTS_DEFAULT`) and tests.
 
 ### K.7 — Standing tasks throughout the week
@@ -94,12 +131,16 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 **End goal:** the drone has a search pattern that actually finds barrels in a 10-min run, has been validated against varied maze layouts, and we know exactly what to do on demo day if things go wrong.
 
 ### A.1 — Read the materials cold (do this FIRST) ⏰ ~2 hrs
-- [ ] Read `challenge/Qualifier.pdf` end to end. Understand the scoring math:
-  - Yellow barrel = 50 pts (ground only)
-  - Red barrel = 100 pts (elevated only)
+- [ ] Read `info_2026-05-16/qualifier-update.md` — the rule changes from
+      this morning. Targets are no longer the workshop oil-drums.
+- [ ] Read `challenge/Qualifier.pdf` end to end. Understand the scoring math
+      (**verify the points table is still current** given the target change —
+      the colors map the same but the *objects* don't):
+  - Yellow target = 50 pts (ground only — banana-shaped, floor)
+  - Red target = 100 pts (elevated only — gas cylinder in locker)
   - **University category needs ≥ 1 yellow AND ≥ 1 red to be ranked at all**
   - Speed bonus: 20 pts per 30 s under 5 min if all of one color found
-  - Toxic-sign barrels: **do NOT detect them**, no points either way
+  - Old workshop oil-drums: now **distractors** — do NOT detect, do NOT score
 - [ ] Skim `learning/LearningMaterial3.pdf` for search strategy ideas (lawnmower vs frontier)
 - [ ] Skim `pastproject/docs/software.md` and `pastproject/remote_laptop_src/nodes/global_controller.py` — frontier-exploration logic that we may port
 - [ ] Skim `searchctl/README.md` and the existing controller code so you know what hooks Z has built
@@ -108,10 +149,14 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 ### A.2 — Search strategy design ⏰ ~3 hrs
 - [ ] Decide between **lawnmower** (simple, predictable, good for Qualifier eligibility) or **frontier** (smarter for irregular maps, ported from pastproject).
   - Recommendation: lawnmower first as Phase 3 MVP. Frontier as a Phase 3.5 stretch goal.
-- [ ] Sketch the actual waypoint sequence for a 40×40 m arena at **two altitudes**:
-  - Pass 1: low (~1 m) for yellow barrels (ground only)
-  - Pass 2: high (~3.5 m) for red barrels (elevated only)
-- [ ] Account for the arena's IRREGULAR walls — the qualifier map is L-shaped, not a rectangle. Plan how to handle blocked cells.
+- [ ] Sketch the actual waypoint sequence for the 40×40 m arena at **two altitudes**:
+  - Pass 1: low (~1 m) for yellow object (banana on floor)
+  - Pass 2: **~1.5 m** for red gas cylinder inside lockers — **NOT 3.5 m**.
+    Locker mouth is mid-height; a 3.5 m overhead pass may see only the
+    locker roof. Verify visibility in sim before committing.
+- [ ] Account for the arena's IRREGULAR walls — the qualifier map is the
+      Roboverse layout (now confirmed; was previously expected to change).
+      Plan how to handle blocked cells.
 - [ ] Write the strategy as a markdown spec in `testing/strategy_v1.md` BEFORE coding it. Z will implement the actual planner code based on this spec.
 
 **Output:** `testing/strategy_v1.md` with waypoints + decision tree for "what to do when blocked."
@@ -140,13 +185,14 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 ### A.6 — Qualifier-day logistics ⏰ ~2 hrs spread over the week
 - [ ] **Confirm booking** — verify Z has the confirmation email screenshot
 - [ ] Plan the route to Orchard Grand Court Lloyd I/II (6 min walk from Somerset MRT). Test the route once if you can.
-- [ ] Bring: student pass / IC, phone with Discord, the team's USB stick with code + backup USB
-- [ ] **15-min setup window** — write a "what to do" checklist for the actual setup at the venue:
-  1. Plug in USB
-  2. Copy `searchctl/` and `barrel.pt` to the org laptop
-  3. Set the three PX4 params + EKF origin (or run a setup script)
-  4. Run `python3 controller.py` once to confirm it works on their machine
-  5. Hit "ready" when judge prompts
+- [ ] Bring: student pass / IC, phone with Discord, USB stick with `searchctl/` + `targets.pt` + offline pip wheels (Z's deliverable)
+- [ ] **Setup window on the ORG laptop + ORG VM** (we no longer get to bring our own machine — see 2026-05-16 announcement):
+  1. Power on the org laptop, log into the workshop v3 VM
+  2. EITHER `git clone https://github.com/zhengboon/ArtificiallyUnintelligent` (if VM has internet) OR `cp -r /media/usb/searchctl ~/` (USB fallback)
+  3. EKF origin: `commander set_ekf_origin 47.397742 8.545594 488.0` in PX4 console (controller handles battery params)
+  4. Run `python3 ~/ArtificiallyUnintelligent/searchctl/controller.py --no-detect` once to confirm Phase 1 baseline on their machine
+  5. Then the real run with detection
+  6. Hit "ready" when judge prompts
 - [ ] **Backup plan if smart controller misbehaves:** keep a `--no-detect` Phase-1-only version on the USB. Even a hover + return scores 0 but avoids DQ.
 
 **Output:** `qualifier/day_of_runbook.md` — the playbook you read out loud on demo day.
@@ -196,8 +242,9 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 - [ ] **Flight test**: kill QGC, run controller, confirm `commander check` shows `Preflight check: OK` purely from our heartbeat
 
 ### Z.6 — Integration with K's weights ⏰ ~5 min (when K ships)
-- [ ] Swap `YOLO_WEIGHTS_DEFAULT` in `controller.py` to K's `barrel.pt`
-- [ ] Run one dry-run, confirm detections now show `class=yellow_barrel` etc. (not `class=bottle`)
+- [ ] Swap `YOLO_WEIGHTS_DEFAULT` in `controller.py` to K's `targets.pt`
+- [ ] Run one dry-run, confirm detections now show `class=red_cylinder` /
+      `class=yellow_object` (not `class=bottle` or `class=barrel`)
 
 ### Z.7 — Dry-run support for A ⏰ continuous
 - [ ] When A needs a clean controller run for testing, run it via vmrun and ship the log
@@ -208,10 +255,27 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 - [ ] Commit + push after every shippable change
 
 ### Z.9 — Demo-day execution ⏰ ~30 min on Fri 5/22
-- [ ] Bring the laptop with the VM pre-booted (just in case the org laptop has issues)
-- [ ] Bring backup USB with `searchctl/` + `barrel.pt` + setup script
+- [ ] **CANNOT bring our own laptop** — qualifier is org laptop + org VM
+      only (2026-05-16 announcement). All deploy artifacts go on USB / git.
+- [ ] Bring USB with `searchctl/` + `targets.pt` + offline pip wheels
+      (mavsdk, pymavlink, onnxruntime, any deps not pre-installed in org VM)
 - [ ] Run A's `qualifier/day_of_runbook.md` checklist
 - [ ] If something breaks during the run, you're the on-the-fly debugger
+
+### Z.10 — Deploy plan for org VM ⏰ ~3 hrs — **NEW 2026-05-16**
+- [ ] Make `https://github.com/zhengboon/ArtificiallyUnintelligent` public
+      (or invite collaborators) so it can be cloned without auth inside the
+      org VM. Confirm by attempting a clone from a fresh VM session.
+- [ ] Build a USB-stick deploy fallback:
+      - `searchctl/` (tarball)
+      - `targets.pt` (latest from K)
+      - Offline pip wheels for `mavsdk`, `pymavlink`, `onnxruntime` (use
+        `pip download -d wheels/ -r requirements.txt` on a matching Python)
+      - A `setup.sh` that copies, installs from wheels, sets EKF origin hint
+- [ ] Test the USB path **inside a fresh v3 VM** (snapshot before, snapshot
+      after). Time it. Target < 5 min wall clock.
+- [ ] Confirm Phase 6 fake-GCS works without QGC — because we may not be
+      able to install QGC on the org laptop in time
 
 ---
 
@@ -230,7 +294,7 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 | From → To | What | When |
 |---|---|---|
 | A → Z | `testing/strategy_v1.md` (waypoint plan + decision tree) | before Z starts Phase 3 (Fri 5/15) |
-| K → Z | `barrel.pt` weights file + classes + eval report | as soon as K.4 numbers look good (target Sun 5/17 or earlier) |
+| K → Z | `targets.pt` weights file (2 classes: red_cylinder, yellow_object) + eval report | as soon as K.4 numbers look good (target Tue 5/19 — slipped from Sun 5/17 due to 2026-05-16 rule change) |
 | Z → A | Controller producing real run logs | after Z.1 (Thu 5/14) |
 | A → Z | Dry-run scores + failure modes | continuous Sun 5/17 onwards |
 | Z → all | Daily push to GitHub + chat update | end of each day |
@@ -255,10 +319,11 @@ Three of us. Roles roughly carved by domain so we don't merge-conflict:
 | Risk | Likelihood | Mitigation |
 |---|---|---|
 | **Disk-space on org's stock v3 VM** — torch/ultralytics won't install on a 49 GB disk at 95% used | **HIGH** | See "Disk-space contingency" section below. DS-1 support ticket v2 drafted in `team/discord_drafts.md` (2026-05-15) — **needs to be sent**. ONNX fallback (DS-3) being built into searchctl. |
-| K's `barrel.pt` not ready by qualifier | Medium | Stock `yolov10n.pt` as fallback — won't detect "barrel" but will fire on barrel-like objects. Partial points possible. |
+| **K's `targets.pt` not ready by qualifier** (rule change 2026-05-16 — restarted dataset) | **HIGH** | Phase 1 flight-only (`--no-detect`) is the worst-case fallback. Even if we score 0, we don't DQ. K to start K.0 capture today. |
+| **Org VM doesn't have a needed package** (MAVSDK, pymavlink, onnxruntime) | **HIGH** | Z.10 — offline pip wheels on USB so we don't depend on conference wifi to install at the qualifier. |
+| **Org VM has no internet, USB also blocked** | Medium | Last-ditch: type code from phone or repo into VM. Very slow. Mitigation: confirm USB or internet works during 15-min setup before running. |
 | Z's controller has new bug from Phase 3/4 changes | Medium | `--no-detect` flag → known-good Phase 1. Tagged commits at each phase complete. |
-| Org laptop fails or has weird setup | Low | Z brings backup laptop with own VM. A's runbook has fallback steps. |
-| All three of us at qualifier and code doesn't work on org machine | Low | Backup USB with last-known-good. Worst case: hover + return (Phase 1) — scores 0 but no DQ. |
+| ~~Org laptop fails or has weird setup~~ — **can't bring our own laptop anymore** (2026-05-16) | n/a | Removed — see Z.10 deploy plan instead. |
 | EKF origin not set on org machine | Medium | Setup script that runs the 3 PX4 console commands on launch (Z's script in Z.4). |
 | QGC crashes on org machine (it did on ours) | Medium | Pymavlink fake-GCS heartbeat (Z.5) — eliminates QGC dependency. |
 | One of us sick on demo day | Low | The other two can run with the runbook in `qualifier/day_of_runbook.md` (A's deliverable). |
@@ -299,14 +364,16 @@ Ship both `barrel.pt` AND `barrel.onnx` to Z. Future Z swaps backends with a CLI
 ### DS-4 — Z: bring own laptop as day-of fallback ⏰ ~30 min the night before
 Charge fully + bring HDMI cable + USB with last-known-good. If the org machine fights us, we run on Z's hardware. Workshop docs allow this ("you can use our machine" — `can`, not `must`).
 
-**Decision tree for demo day:**
+**Decision tree for demo day** (revised 2026-05-16 — our laptop not allowed):
 ```
-On arrival:
-  1. Check org machine has ultralytics → run as normal
-  2. Else, check our laptop can plug in → run from there
-  3. Else, try onnxruntime backend (DS-3) on org machine
-  4. Else, last resort: stock yolov10n.pt + --no-detect-style scoring
-       (we still fly + photograph; submit images for manual review)
+On arrival at org laptop:
+  1. Check org VM has ultralytics + torch (workshop announcement says yes)
+       → run as normal with our targets.pt
+  2. Else, try onnxruntime backend (DS-3) on org VM
+       → install from offline wheels on USB, run with targets.onnx
+  3. Else, last resort: --no-detect Phase 1 only
+       → fly the search pattern, save camera frames, submit images for
+         manual review. Scores 0 detection-wise but avoids DQ.
 ```
 
 ---
