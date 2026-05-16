@@ -7,6 +7,38 @@ and commit hashes where they exist. Skim-able when looking back later.
 
 ---
 
+## 2026-05-16 (Sat) — Qualifier rule changes; PR cleanup
+
+### Org announcements (`info_2026-05-16/qualifier-update.md`)
+
+- **05:59** Map = workshop Roboverse map (no map drop on Thu after all). Only barrels change.
+- **09:13 / 09:15** Targets are NOT the old oil-drums. New: red gas cylinder
+  inside a locker (elevated ~1.5 m); small yellow object on the floor
+  (banana-shaped). Old workshop oil-drums shown crossed out — those are
+  distractors / non-scoring.
+- **11:32** All teams run on **org laptop + org VM** (workshop v3 image
+  with ultralytics). We bring code; we install it. Our `vmrun` host→VM
+  deploy path is dead for the qualifier.
+
+### Impact taken
+- **`team/tasks.md` rescoped**: K's classes change to `red_cylinder` +
+  `yellow_object`, weights file renamed `targets.pt`. K.0 added — K must
+  first verify new targets actually spawn in the sim. Phase 3 altitude for
+  red revised from 3.5 m → ~1.5 m (locker-mouth height; 3.5 m would see
+  only the locker roof).
+- **New task Z.10** (deploy onto org VM): git-clone primary, USB-stick
+  fallback with offline pip wheels. Need to make the repo public or grant
+  access, and confirm what's pre-installed beyond ultralytics.
+- **Risks updated**: org-laptop-fallback removed (not allowed). New risks:
+  org VM missing a package; org VM no internet.
+
+### Earlier today: PR cleanup
+- Two PRs from `zb` → `main` opened cleanly (no conflicts):
+  - PR #1 `pr/discord-watcher` — 5 commits, scrape mode, control panel, login fallback
+  - PR #2 `pr/docs-and-controller` — 6 commits, Phase 6 fake-GCS, DS-1 draft, deep-review
+
+---
+
 ## ⏰ Key dates
 
 | Date | Days from now (2026-05-15) | Event |
@@ -15,7 +47,7 @@ and commit hashes where they exist. Skim-able when looking back later.
 | 2026-05-23 (Sat) | 8 days | Backup qualifier day (other teams' sessions) |
 | **2026-05-20 (Wed) 14:00** | 5 days | **OUR personal cancel/reschedule cutoff** — 48-h rule from booking-page T&Cs (48 h before our 22 May 14:00 slot). After this, our slot is locked. |
 | 2026-05-21 (Thu) 10:00 SGT | 6 days | Org-wide booking deadline per `65drones1` 13/5 4:51 PM — teams that *haven't booked at all* get assigned random slots. Not relevant to us (we're booked). |
-| ~2026-05-21 (Thu) | 6 days | Actual qualifier map released by org (1 day before our slot) |
+| ~~~2026-05-21 (Thu)~~ | n/a | ~~Actual qualifier map released by org~~ — **CANCELLED 2026-05-16**: map = workshop Roboverse map, only targets are new |
 | 2026-06-10 to 06-11 | 26–27 days | Final round at Marina Bay Sands (top 26 teams only) |
 
 ### Team availability
