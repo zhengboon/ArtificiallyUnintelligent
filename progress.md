@@ -30,6 +30,10 @@ and commit hashes where they exist. Skim-able when looking back later.
 Booking details (local only, not in repo): `challenge/qualifier_booking.md`.
 
 ---
+## 2026-05-16 (Saturday) — Labelled all training images and trained YOLO model (Kai Sheng)
+The lightest YOLO model (yolov8n.pt) was used for training. Model was able to predict the yellow and red barrels, and toxic barrels with high confidence.
+Next step: Deploy model in simulation.
+
 ## 2026-05-15 (Friday) — Solved the VM storage issue & collected image dataset (Kai Sheng)
 ultralytics / torch installed after clearing PX4 logs
 
