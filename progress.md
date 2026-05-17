@@ -66,6 +66,8 @@ Booking details (local only, not in repo): `challenge/qualifier_booking.md`.
 ---
 ## 2026-05-17 (Sunday) — Loaded YOLO model to the controller and adjusted detection confidence threshold (Kai Sheng)
 Saved detection images can take up quite a bit of space. Run these commands to delete them:
+
+```bash
 rm -rf ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*
 rm -rf ~/ArtificiallyUnintelligent/searchctl/run_*
 rm -f ~/ArtificiallyUnintelligent/searchctl/logs/run_*.log
