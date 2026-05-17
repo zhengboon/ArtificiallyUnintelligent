@@ -86,8 +86,9 @@ class Detector:
                 continue
 
             try:
-                results = self.model(image, verbose=False, conf=self.conf_threshold)
-                
+                # results = self.model(image, verbose=False, conf=self.conf_threshold)
+                results = self.model(image, verbose=False, conf=self.conf_threshold, classes=[0, 1])
+
                 detections = []
                 annotated_image = None
                 has_detections = False

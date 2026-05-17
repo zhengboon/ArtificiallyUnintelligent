@@ -377,9 +377,14 @@ IMAGE_TOPIC_DEFAULT = (
     "/world/roboverse/model/x500_vision_0/link/camera_link"
     "/sensor/IMX214/image"
 )
-WORKSHOP_CODES_DIR = os.path.expanduser("~/Desktop/codes")
-YOLO_WEIGHTS_DEFAULT = os.path.join(WORKSHOP_CODES_DIR, "yolov10n.pt")
-DETECT_CONFIDENCE_DEFAULT = 0.4
+
+WORKSHOP_CODES_DIR = os.path.expanduser("~/ArtificiallyUnintelligent/codes/Codes")
+YOLO_WEIGHTS_DEFAULT = os.path.expanduser("~/ArtificiallyUnintelligent/models/best.pt")
+DETECT_CONFIDENCE_DEFAULT = 0.5
+
+# WORKSHOP_CODES_DIR = os.path.expanduser("~/Desktop/codes")
+# YOLO_WEIGHTS_DEFAULT = os.path.join(WORKSHOP_CODES_DIR, "yolov10n.pt")
+# DETECT_CONFIDENCE_DEFAULT = 0.4
 
 
 def _import_detection_deps():
