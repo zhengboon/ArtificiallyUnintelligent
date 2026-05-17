@@ -64,6 +64,15 @@ and commit hashes where they exist. Skim-able when looking back later.
 Booking details (local only, not in repo): `challenge/qualifier_booking.md`.
 
 ---
+## 2026-05-17 (Sunday) — Loaded YOLO model to the controller and adjusted detection confidence threshold (Kai Sheng)
+Saved detection images can take up quite a bit of space. Run these commands to delete them:
+rm -rf ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*
+rm -rf ~/ArtificiallyUnintelligent/searchctl/run_*
+rm -f ~/ArtificiallyUnintelligent/searchctl/logs/run_*.log
+
+Next step: work on navigation strategy: Wall-following + 360° scanning?
+Organiser said: "Hi, your codes need to show with an image, in the form of file or show on the screen, that contains the barrel and with bounding box around the barrel saying barrel. The detection must be undoubtedly barrel. Not a little red or yellow square claiming to be the barrel." --> Don't need to perform any additional actions when the yellow / red barrels are detected.
+
 ## 2026-05-16 (Saturday) — Labelled all training images and trained YOLO model (Kai Sheng)
 The lightest YOLO model (yolov8n.pt) was used for training. Model was able to predict the yellow and red barrels, and toxic barrels with high confidence.
 Next step: Deploy model in simulation.
