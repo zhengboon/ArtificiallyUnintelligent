@@ -9,11 +9,12 @@ on any failure path, file-based logs.
 | Phase | Status | Scope |
 |---|---|---|
 | **1** | **✅ DONE 2026-05-13** | Heartbeat + scripted-waypoint smoke flight. v2: yaw locked at 0°, 2 m moves, divergence watchdog. Flew clean 5-WP square in 33 s, sub-0.5 m pos err on every WP. |
-| **2** | **scaffolding done 2026-05-13; integration test pending** | YOLO detector running in a worker thread. Subscribes to IMX214 camera via gz-transport, frames stamped with NED pose, annotated `.jpg`s saved per run, detections logged. Opt-out via `--no-detect`. **Next:** verify a full run with detection on. |
-| 3 | next next | Lawnmower search strategy across the 40×40 arena, 2-altitude passes (1 m for yellow, 3.5 m for red). |
+| **2** | **DONE — K integrated trained weights 2026-05-17** | YOLO detector running in a worker thread. Subscribes to IMX214 camera via gz-transport, frames stamped with NED pose, annotated `.jpg`s saved per run, detections logged. Opt-out via `--no-detect`. Filters toxic class out of detections. |
+| 3 | in progress (K, wall-following) | Search strategy. K's pivot 2026-05-18: wall-following with periodic 360° scans, replacing the earlier lawnmower plan. Lives in a separate module K is writing. |
 | 4 | later | Detection dedup by NED position; restart-resilient state (persist found barrels to disk). |
 | 5 | later | Frontier exploration (port from `pastproject/`) for irregular maps. |
 | **6** | **scaffolding done 2026-05-15; needs end-to-end test** | Pymavlink fake-GCS heartbeat — sends MAV_TYPE_GCS on UDP 14550 @ 1 Hz so PX4's preflight passes without QGC. Auto-skips if QGC is already binding 14550. Opt-out via `--no-fake-gcs`. |
+| **7** | **scaffolding done 2026-05-20; needs end-to-end test** | Top-down obstacle mapping (depth camera → global NED → live PNG) + per-run timing + `run_summary.json`. Judges observe "is mapping being done" as a tiebreaker per org's 18/5/2026 clarification. Opt-out via `--no-map`. |
 
 ## Prereqs (one-time in the VM)
 
@@ -40,11 +41,25 @@ From inside the VM:
 
 ```bash
 cd ~/searchctl
-python3 controller.py                  # all features ON (detection + fake-GCS)
+python3 controller.py                  # all features ON (detect + fake-GCS + map)
 python3 controller.py --no-detect      # flight only, no YOLO
 python3 controller.py --no-fake-gcs    # rely on QGC for the GCS link
+python3 controller.py --no-map         # skip Phase 7 mapping pipeline
 python3 controller.py --log-level DEBUG
 ```
+
+### Phase 7 artifacts (per-run)
+
+Every run drops these into `logs/run_<ts>/`:
+
+| File | What |
+|---|---|
+| `map.png` | Live-updated top-down obstacle map. Re-rendered every ~1 s during flight, finalised at land. **Open this in an image viewer with auto-reload so judges see it updating live.** |
+| `map_frames/map_NNNN.png` | One PNG per render tick. Useful for after-run timelapse / showing the build-up. |
+| `map_points.npy` | Final `Nx2` numpy array `[north, east]` of accumulated obstacle points in global NED. A's scoring + planning code can ingest this directly. |
+| `detections/*.jpg` | YOLO-annotated frames, one per fired detection (Phase 2). |
+| `run_summary.json` | One-shot JSON: takeoff / land timestamps, total flight seconds, detection list with poses, map points count, abort flag. Used by A's `testing/score.py` and by judges who want a single artifact per run. |
+| `../run_<ts>.log` | Full file log alongside stdout. |
 
 The controller auto-sets `PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python`
 internally for the gz.msgs10 import — no need to pre-export it.

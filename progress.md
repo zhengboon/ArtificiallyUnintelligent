@@ -7,6 +7,47 @@ and commit hashes where they exist. Skim-able when looking back later.
 
 ---
 
+## 2026-05-20 (Tue) — Phase 7: mapping + run timer (Z's half of K's 18/5 ask)
+
+K's 18/5 ask had two parts: (a) wall-following navigation, which K is
+writing himself, and (b) mapping + run-timing for the controller, which
+is Z. Done today, all in `searchctl/controller.py`:
+
+- **Top-down obstacle map** — gz subscribe to `/depth_camera`, runs
+  `top_down.depth_to_xy_map` per frame, transforms to global NED with
+  the same rotation as workshop `GlobalMapper_new.py`, accumulates
+  points in an asyncio task (off the loop — render is `asyncio.to_thread`).
+  Saves `map.png` (re-rendered every ~1 s), `map_frames/map_NNNN.png`
+  per tick, and `map_points.npy` on teardown. Headless matplotlib (Agg)
+  so it works on the org VM without a display.
+- **Run timing** — `state.takeoff_ts` set right after `arm_and_takeoff`,
+  `state.land_ts` set right after `land_and_disarm`. Total seconds
+  logged at end. Written into `run_summary.json` alongside detection
+  list + poses + map-point count + abort flag.
+- **Per-run artifacts** consolidated into `logs/run_<ts>/`:
+  `map.png`, `map_frames/`, `map_points.npy`, `detections/*.jpg`,
+  `run_summary.json` — described in `searchctl/README.md` Phase 7 table.
+- New CLI flag `--no-map`. Mapping deps (`matplotlib`, `top_down`, gz)
+  are lazy-imported with the same opt-out pattern as detection — flight
+  proceeds without map if any dep is missing.
+- Bumped header to controller v0.4.
+
+### Outstanding (not done today)
+
+- **Live PNG viewer for judges** — the spec is "map.png updates every
+  second; open it in any image viewer with auto-reload". An always-on-top
+  cv2.imshow window would be nicer; deferred because cv2 GUI from a
+  daemon thread is finicky and the org VM may not have a display server
+  configured on demo day anyway.
+- **Phase 7 end-to-end flight test in the VM** — controller imports
+  parse-checked locally; needs a real sim run. The depth topic
+  (`/depth_camera`) and intrinsics (640×480, fx=fy=433, cx=320, cy=240)
+  match workshop `GlobalMapper_new.py` so should Just Work.
+- **Pull K's wall-following module** when he ships it, integrate as the
+  Phase 3 planner replacement.
+
+---
+
 ## 2026-05-16 (Sat) — Qualifier rule changes; PR cleanup
 
 ### Org announcements (`info_2026-05-16/qualifier-update.md`)

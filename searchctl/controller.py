@@ -1,5 +1,5 @@
 """
-RoboVerse search controller — Phase 1 (flight) + Phase 2 (detection).
+RoboVerse search controller — Phases 1 (flight) + 2 (detection) + 6 (fake-GCS) + 7 (mapping + timer).
 
 Single-file asyncio controller that:
   * Connects to PX4 SITL on udp://:14540
@@ -14,14 +14,23 @@ Single-file asyncio controller that:
     feeds frames into a YOLO worker thread, logs detections with the
     drone's NED pose at frame-capture time, and saves annotated .jpgs
     to logs/run_<ts>/detections/
+  * (Phase 6) Sends a fake-GCS HEARTBEAT on UDP 14550 so PX4's preflight
+    "no GCS connection" check passes without QGC running
+  * (Phase 7) Subscribes to the depth camera, accumulates obstacle points
+    in a global NED top-down map, periodically renders run_dir/map.png
+    so judges observe a live map being built (tiebreaker signal per org's
+    2026-05-18 clarification), saves map_points.npy on teardown
+  * (Phase 7) Tracks per-run wall-clock from takeoff→land and writes a
+    run_summary.json with detection list + timing for A's scoring script
   * Logs everything to logs/run_<ts>.log AND stdout
   * On *any* failure path (exception, signal, watchdog trigger),
     runs an emergency_land coroutine that lands + disarms before exit
 
-Phase 2 detection is opt-out via --no-detect. If the detection deps
-(ultralytics, gz.transport13, the workshop's Detector.py) can't be
-imported, the controller logs a warning and proceeds Phase-1-only —
-flight will not be blocked by a missing camera stack.
+Detection, fake-GCS, and mapping are each opt-out via --no-detect,
+--no-fake-gcs, --no-map. If any dependency (ultralytics, gz.transport13,
+matplotlib, pymavlink, the workshop's Detector.py) can't be imported, the
+controller logs a warning and proceeds with whatever remains — flight is
+never blocked by an optional pipeline failing to start.
 
 The current waypoint script is still a smoke pattern (4-cell square at
 2 m altitude). Phase 3 will replace it with a real search strategy.
@@ -98,6 +107,15 @@ class SharedState:
     detection_count: int = 0
     detections: list = field(default_factory=list)
     last_detection_at: Optional[float] = None
+
+    # ---- Run-timing state (Phase 7; populated by run()) ----
+    # Wall-clock seconds since epoch. takeoff_ts is set just after
+    # arm_and_takeoff returns; land_ts is set right before disarm.
+    takeoff_ts: Optional[float] = None
+    land_ts: Optional[float] = None
+
+    # ---- Mapping state (Phase 7; populated by mapping task) ----
+    map_points_count: int = 0       # rolling count of accumulated obstacle points
 
 
 @dataclass
@@ -514,6 +532,297 @@ def teardown_detection(handle: Optional[dict], state: SharedState) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Top-down mapping pipeline (Phase 7)
+# ---------------------------------------------------------------------------
+# Judges observe "is some sort of mapping being done as the drone flies"
+# (org clarification 2026-05-18). They use this as a tiebreaker signal.
+#
+# Architecture mirrors detection: a gz-transport callback on the depth
+# topic stashes the latest frame, a background asyncio task drains it
+# every N seconds and accumulates obstacle points in the global NED frame
+# using pose snapshots from SharedState. Every render tick we save a PNG
+# of the live map to run_dir/map.png AND a snapshot map_<seq>.png to
+# run_dir/map_frames/ so the judge sees a fresh image on screen.
+#
+# At teardown we save final map.png + map_points.npy + run_summary.json.
+#
+# All work happens off the asyncio loop (gz callback thread + the asyncio
+# task only does the cheap aggregation step). The render is offloaded to
+# a thread so matplotlib's PNG save can't stall the planner.
+
+DEPTH_TOPIC_DEFAULT = "/depth_camera"
+# Same intrinsics the workshop uses (OAK-D Lite at 640x480 after the
+# org's 11/5/2026 model.sdf update). If the camera resolution differs
+# at runtime the depth_to_xy_map call still works — only fx/fy/cx/cy
+# scaling would be slightly off, which is acceptable for a visual map.
+DEPTH_K = (
+    (433.0,   0.0, 320.0),
+    (  0.0, 433.0, 240.0),
+    (  0.0,   0.0,   1.0),
+)
+MAP_RENDER_INTERVAL_S = 1.0   # how often we re-render the PNG
+MAP_MAX_POINTS = 200_000      # cap memory; oldest points dropped past this
+
+
+def _import_mapping_deps():
+    """Lazy import — same opt-out pattern as detection deps."""
+    if WORKSHOP_CODES_DIR not in sys.path:
+        sys.path.insert(0, WORKSHOP_CODES_DIR)
+    os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+    import numpy as np
+    import matplotlib
+    matplotlib.use("Agg")             # headless — no display server needed
+    import matplotlib.pyplot as plt
+    from gz.transport13 import Node
+    from gz.msgs10.image_pb2 import Image
+    from top_down import depth_to_xy_map    # workshop helper
+    return np, plt, Node, Image, depth_to_xy_map
+
+
+def setup_mapping(
+    state: SharedState,
+    run_dir: Path,
+    depth_topic: str = DEPTH_TOPIC_DEFAULT,
+) -> Optional[dict]:
+    """Stand up the depth-camera → top-down map pipeline.
+
+    Returns a handle dict (or None on init failure → mapping disabled,
+    flight proceeds without it).
+    """
+    try:
+        np, plt, Node, Image, depth_to_xy_map = _import_mapping_deps()
+    except Exception:
+        log.exception("could not import mapping deps; running without map")
+        return None
+
+    map_dir = run_dir / "map_frames"
+    map_dir.mkdir(parents=True, exist_ok=True)
+    final_png = run_dir / "map.png"
+    final_npy = run_dir / "map_points.npy"
+
+    # Latest depth frame stashed by the gz callback; the asyncio task
+    # consumes it. We don't queue every frame — only the most recent
+    # one matters for an accumulating obstacle map.
+    latest = {"depth": None, "pose": None, "ts": 0.0}
+    latest_lock = threading.Lock()
+
+    # Accumulator (kept as a numpy array, two columns: north, east)
+    points = np.empty((0, 2), dtype=np.float32)
+
+    K = np.array(DEPTH_K, dtype=np.float32)
+
+    def depth_callback(msg):
+        """Runs in gz-transport's own thread."""
+        try:
+            depth = np.frombuffer(msg.data, dtype=np.float32)
+            depth = depth.reshape((msg.height, msg.width))
+            pose = (state.north_m, state.east_m, state.down_m, state.yaw_deg)
+            with latest_lock:
+                latest["depth"] = depth
+                latest["pose"] = pose
+                latest["ts"] = time.monotonic()
+        except Exception:
+            log.exception("depth_callback failed (will keep listening)")
+
+    node = Node()
+    if not node.subscribe(Image, depth_topic, depth_callback):
+        log.error(
+            "could not subscribe to depth topic %s; running without map",
+            depth_topic,
+        )
+        return None
+    log.info("mapping: subscribed to %s", depth_topic)
+
+    def _render_png(pts, drone_pose, out_path: Path) -> None:
+        """Save a top-down obstacle map to PNG. Runs in a worker thread."""
+        try:
+            fig, ax = plt.subplots(figsize=(8, 8))
+            if pts.shape[0] > 0:
+                dists = np.linalg.norm(pts, axis=1)
+                ax.scatter(
+                    pts[:, 1],  # east on X axis
+                    pts[:, 0],  # north on Y axis
+                    c=dists, s=2, cmap="viridis", edgecolors="none",
+                )
+            if drone_pose is not None:
+                ax.plot(drone_pose[1], drone_pose[0], "r*", markersize=14, label="drone")
+                ax.legend(loc="upper right")
+            ax.set_xlabel("East [m]")
+            ax.set_ylabel("North [m]")
+            ax.set_aspect("equal")
+            ax.grid(alpha=0.3)
+            ax.set_title(
+                f"top-down map  |  points={pts.shape[0]}  |  "
+                f"detections={state.detection_count}"
+            )
+            fig.savefig(out_path, dpi=90, bbox_inches="tight")
+            plt.close(fig)
+        except Exception:
+            log.exception("map render failed")
+
+    handle = {
+        "node": node,
+        "latest": latest,
+        "latest_lock": latest_lock,
+        "points": points,
+        "K": K,
+        "depth_to_xy_map": depth_to_xy_map,
+        "np": np,
+        "map_dir": map_dir,
+        "final_png": final_png,
+        "final_npy": final_npy,
+        "render": _render_png,
+        "last_render": 0.0,
+        "seq": 0,
+        "stop": threading.Event(),
+    }
+    return handle
+
+
+def _local_to_ned_global(local_xy, north, east, yaw_rad, np_mod):
+    """Same transform as workshop's GlobalMapper_new.py.
+
+    local_xy[:, 0] = camera-right (X_cam), local_xy[:, 1] = camera-forward (Z_cam).
+    Returns Nx2 array [north, east] in global NED.
+    """
+    Xc = local_xy[:, 0]
+    Zc = local_xy[:, 1]
+    c = np_mod.cos(yaw_rad)
+    s = np_mod.sin(yaw_rad)
+    north_g = north + Zc * c - Xc * s
+    east_g = east + Zc * s + Xc * c
+    return np_mod.column_stack([north_g, east_g])
+
+
+async def mapping_task(handle: Optional[dict], state: SharedState) -> None:
+    """Drain the latest depth frame, accumulate points, periodically render.
+
+    Cancels cleanly when state.abort_requested flips. Yields back to the
+    loop on every tick so the setpoint pumper is never starved.
+    """
+    if handle is None:
+        return
+    np = handle["np"]
+    depth_to_xy_map = handle["depth_to_xy_map"]
+    K = handle["K"]
+    latest = handle["latest"]
+    latest_lock = handle["latest_lock"]
+    points = handle["points"]
+    render = handle["render"]
+    map_dir = handle["map_dir"]
+    final_png = handle["final_png"]
+
+    last_consumed_ts = 0.0
+    while not state.abort_requested:
+        await asyncio.sleep(0.2)
+        with latest_lock:
+            ts = latest["ts"]
+            if ts == last_consumed_ts:
+                continue
+            depth = latest["depth"]
+            pose = latest["pose"]
+            last_consumed_ts = ts
+
+        if depth is None or pose is None:
+            continue
+        try:
+            xy_local = depth_to_xy_map(
+                depth, K,
+                cam_height=1.0, obs_h_min=0.1, obs_h_max=1.5,
+                z_min=0.3, z_max=8.0,
+            )
+        except Exception:
+            log.exception("depth_to_xy_map failed (skipping frame)")
+            continue
+        if xy_local is None or xy_local.shape[0] == 0:
+            continue
+
+        north, east, _down, yaw_deg = pose
+        yaw_rad = math.radians(float(yaw_deg))
+        global_pts = _local_to_ned_global(xy_local, north, east, yaw_rad, np)
+        # Append + cap (drop oldest if past MAX).
+        points = np.vstack([points, global_pts.astype(np.float32)])
+        if points.shape[0] > MAP_MAX_POINTS:
+            points = points[-MAP_MAX_POINTS:]
+        handle["points"] = points
+        state.map_points_count = int(points.shape[0])
+
+        # Throttled render so we don't burn CPU saving PNGs.
+        now = time.monotonic()
+        if now - handle["last_render"] >= MAP_RENDER_INTERVAL_S:
+            handle["last_render"] = now
+            handle["seq"] += 1
+            seq_path = map_dir / f"map_{handle['seq']:04d}.png"
+            # Offload to a thread — matplotlib PNG save is ~50 ms.
+            await asyncio.to_thread(render, points.copy(), pose, final_png)
+            # Also drop a numbered snapshot for the after-run viewer.
+            await asyncio.to_thread(render, points.copy(), pose, seq_path)
+
+
+def teardown_mapping(handle: Optional[dict], state: SharedState) -> None:
+    if handle is None:
+        return
+    pts = handle["points"]
+    state.map_points_count = int(pts.shape[0])
+    try:
+        handle["np"].save(handle["final_npy"], pts)
+        log.info(
+            "mapping: saved %d points to %s",
+            state.map_points_count, handle["final_npy"].name,
+        )
+    except Exception:
+        log.exception("could not save final map_points.npy")
+    # One last render so map.png is current at teardown.
+    try:
+        last_pose = handle["latest"]["pose"]
+        handle["render"](pts, last_pose, handle["final_png"])
+        log.info("mapping: final map saved to %s", handle["final_png"].name)
+    except Exception:
+        log.exception("final map render failed")
+    handle["node"] = None
+    handle["stop"].set()
+
+
+# ---------------------------------------------------------------------------
+# Run summary (Phase 7)
+# ---------------------------------------------------------------------------
+def write_run_summary(state: SharedState, run_dir: Path) -> None:
+    """Dump a small JSON with timing + detection stats. Used by A's
+    scoring script and by judges who want to see a single artifact per run."""
+    import json
+    summary = {
+        "run_ts": RUN_TS,
+        "takeoff_ts": state.takeoff_ts,
+        "land_ts": state.land_ts,
+        "flight_seconds": (
+            (state.land_ts - state.takeoff_ts)
+            if (state.takeoff_ts and state.land_ts) else None
+        ),
+        "detection_count": state.detection_count,
+        "detections": [
+            {
+                "seq": d.seq,
+                "ts": d.ts,
+                "class_name": d.class_name,
+                "confidence": d.confidence,
+                "bbox_xyxy": list(d.bbox_xyxy),
+                "pose_at_detect": list(d.pose_at_detect),
+                "saved_path": d.saved_path,
+            }
+            for d in state.detections
+        ],
+        "map_points_count": state.map_points_count,
+        "aborted": state.abort_requested,
+    }
+    out_path = run_dir / "run_summary.json"
+    try:
+        out_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        log.info("run summary written to %s", out_path.name)
+    except Exception:
+        log.exception("could not write run_summary.json")
+
+
+# ---------------------------------------------------------------------------
 # Fake-GCS heartbeat (Phase 6)
 # ---------------------------------------------------------------------------
 # PX4's preflight has a "GCS connection" check that fires when QGroundControl
@@ -710,11 +1019,17 @@ async def emergency_land(drone: Drone, state: SharedState) -> None:
     log.warning("emergency_land complete")
 
 
-async def run(detect_enabled: bool = True, fake_gcs_enabled: bool = True) -> int:
+async def run(
+    detect_enabled: bool = True,
+    fake_gcs_enabled: bool = True,
+    map_enabled: bool = True,
+) -> int:
     state = SharedState()
     drone = Drone()
     detect_handle: Optional[dict] = None
     fake_gcs_handle: Optional[dict] = None
+    map_handle: Optional[dict] = None
+    map_task: Optional[asyncio.Task] = None
     # This run's working dir for outputs (annotated detection frames, etc.)
     run_dir = LOG_DIR.parent / f"run_{RUN_TS}"
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -756,7 +1071,18 @@ async def run(detect_enabled: bool = True, fake_gcs_enabled: bool = True) -> int
         else:
             log.info("detection disabled by flag (--no-detect)")
 
+        # Stand up mapping pipeline the same way. Independent of detection —
+        # one can fail without taking the other down.
+        if map_enabled:
+            map_handle = setup_mapping(state, run_dir)
+            if map_handle is None:
+                log.warning("mapping unavailable — flight will proceed without map")
+        else:
+            log.info("mapping disabled by flag (--no-map)")
+
         await drone.arm_and_takeoff(altitude_m=abs(state.target_down))
+        state.takeoff_ts = time.time()
+        log.info("run clock started: takeoff at t=0")
 
         # Prime offboard with the current target, then start it + the pumper.
         await drone.begin_offboard(
@@ -765,15 +1091,20 @@ async def run(detect_enabled: bool = True, fake_gcs_enabled: bool = True) -> int
         pumper_task = asyncio.create_task(setpoint_pumper(drone, state), name="pumper")
         wd_task = asyncio.create_task(watchdog(state), name="watchdog")
         div_task = asyncio.create_task(divergence_watchdog(state), name="divergence")
+        if map_handle is not None:
+            map_task = asyncio.create_task(mapping_task(map_handle, state), name="mapping")
 
         # Run the scripted planner. Wraps in try so we always land afterward.
         try:
             await planner(state)
         finally:
             state.abort_requested = True
-            for t in (pumper_task, wd_task, div_task, telem_task):
+            bg_tasks = [pumper_task, wd_task, div_task, telem_task]
+            if map_task is not None:
+                bg_tasks.append(map_task)
+            for t in bg_tasks:
                 t.cancel()
-            for t in (pumper_task, wd_task, div_task, telem_task):
+            for t in bg_tasks:
                 try:
                     await t
                 except (asyncio.CancelledError, Exception):
@@ -781,22 +1112,34 @@ async def run(detect_enabled: bool = True, fake_gcs_enabled: bool = True) -> int
 
         await drone.end_offboard()
         await drone.land_and_disarm()
+        state.land_ts = time.time()
+        if state.takeoff_ts is not None:
+            log.info("run clock stopped: total flight time = %.1f s",
+                     state.land_ts - state.takeoff_ts)
         teardown_detection(detect_handle, state)
+        teardown_mapping(map_handle, state)
         stop_fake_gcs(fake_gcs_handle)
+        write_run_summary(state, run_dir)
         log.info("run finished cleanly")
         return 0
 
     except KeyboardInterrupt:
         log.warning("KeyboardInterrupt received")
         await emergency_land(drone, state)
+        state.land_ts = time.time()
         teardown_detection(detect_handle, state)
+        teardown_mapping(map_handle, state)
         stop_fake_gcs(fake_gcs_handle)
+        write_run_summary(state, run_dir)
         return 130
     except Exception:
         log.exception("fatal error in run()")
         await emergency_land(drone, state)
+        state.land_ts = time.time()
         teardown_detection(detect_handle, state)
+        teardown_mapping(map_handle, state)
         stop_fake_gcs(fake_gcs_handle)
+        write_run_summary(state, run_dir)
         return 1
 
 
@@ -815,17 +1158,26 @@ def main() -> int:
              "already running (port 14550 conflict) — though the script "
              "auto-detects that and skips cleanly anyway.",
     )
+    ap.add_argument(
+        "--no-map",
+        action="store_true",
+        help="Disable Phase 7 top-down mapping. Use this if matplotlib or "
+             "the gz depth topic is unavailable; flight proceeds without "
+             "the map (judges then observe 'no map' for tiebreakers).",
+    )
     args = ap.parse_args()
     logging.getLogger().setLevel(args.log_level)
 
-    log.info("==== searchctl controller v0.3 (Phase 1 + Phase 2 + fake-GCS) ====")
+    log.info("==== searchctl controller v0.4 (Phase 1 + Phase 2 + fake-GCS + mapping) ====")
     log.info("logs at %s", LOG_FILE)
     log.info("detection:  %s", "OFF (--no-detect)" if args.no_detect else "ON")
     log.info("fake-GCS:   %s", "OFF (--no-fake-gcs)" if args.no_fake_gcs else "ON")
+    log.info("mapping:    %s", "OFF (--no-map)" if args.no_map else "ON")
     try:
         return asyncio.run(run(
             detect_enabled=not args.no_detect,
             fake_gcs_enabled=not args.no_fake_gcs,
+            map_enabled=not args.no_map,
         ))
     except KeyboardInterrupt:
         return 130
