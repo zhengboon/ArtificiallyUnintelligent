@@ -377,6 +377,15 @@ async def divergence_watchdog(state: SharedState) -> None:
     """
     divergent_since: Optional[float] = None
     while not state.abort_requested:
+        # In velocity mode (e.g. K's wall-follow) the position setpoints
+        # state.target_north / target_east stay at takeoff origin while the
+        # drone actually translates around the arena. Comparing against them
+        # would trip the watchdog spuriously — disable the check while
+        # velocity mode is active.
+        if state.velocity_mode:
+            divergent_since = None
+            await asyncio.sleep(0.2)
+            continue
         err = math.hypot(
             state.north_m - state.target_north,
             state.east_m - state.target_east,
