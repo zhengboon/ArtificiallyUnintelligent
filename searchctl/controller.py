@@ -366,6 +366,26 @@ async def watchdog(state: SharedState, timeout_s: float = 30.0) -> None:
         await asyncio.sleep(1.0)
 
 
+async def flight_clock_logger(state: SharedState, interval_s: float = 5.0) -> None:
+    """Periodic visible status line so judges + screen-watcher see live
+    progress: elapsed flight time, detection counts by class, map points,
+    current pose. Runs alongside whichever planner is active."""
+    while not state.abort_requested:
+        await asyncio.sleep(interval_s)
+        if state.takeoff_ts is None:
+            continue  # not airborne yet
+        elapsed = time.time() - state.takeoff_ts
+        # Count detections by class for the visible summary
+        yellow_n = sum(1 for d in state.detections if "yellow" in d.class_name.lower())
+        red_n = sum(1 for d in state.detections if "red" in d.class_name.lower() and "toxic" not in d.class_name.lower())
+        log.info(
+            "flight: T+%5.1fs  detections: %dY/%dR (total %d)  map=%d  pos=(N=%.1f E=%.1f D=%.1f yaw=%.0f)",
+            elapsed, yellow_n, red_n, state.detection_count,
+            state.map_points_count,
+            state.north_m, state.east_m, state.down_m, state.yaw_deg,
+        )
+
+
 async def divergence_watchdog(state: SharedState) -> None:
     """Emergency-abort if measured position drifts far from the active target.
 
@@ -1494,6 +1514,7 @@ async def run(
         pumper_task = asyncio.create_task(setpoint_pumper(drone, state), name="pumper")
         wd_task = asyncio.create_task(watchdog(state), name="watchdog")
         div_task = asyncio.create_task(divergence_watchdog(state), name="divergence")
+        clock_task = asyncio.create_task(flight_clock_logger(state), name="flight_clock")
         if map_handle is not None:
             map_task = asyncio.create_task(mapping_task(map_handle, state), name="mapping")
 
@@ -1506,7 +1527,7 @@ async def run(
                 await planner(state)
         finally:
             state.abort_requested = True
-            bg_tasks = [pumper_task, wd_task, div_task, telem_task]
+            bg_tasks = [pumper_task, wd_task, div_task, clock_task, telem_task]
             if map_task is not None:
                 bg_tasks.append(map_task)
             for t in bg_tasks:
@@ -1591,7 +1612,7 @@ def main() -> int:
     global ACTIVE_WAYPOINTS
     ACTIVE_WAYPOINTS = SCAN_WAYPOINTS if args.pattern == "scan" else WAYPOINTS
 
-    log.info("==== searchctl controller v0.4 (Phase 1 + Phase 2 + fake-GCS + mapping) ====")
+    log.info("==== searchctl controller v0.5 (Phase 1 + 2 + 6 + 7 + wall + scan + escape) ====")
     log.info("logs at %s", LOG_FILE)
     log.info("detection:  %s", "OFF (--no-detect)" if args.no_detect else "ON")
     log.info("fake-GCS:   %s", "OFF (--no-fake-gcs)" if args.no_fake_gcs else "ON")
@@ -1604,6 +1625,30 @@ def main() -> int:
             return 1
     else:
         log.info("pattern:    %s (%d WPs)", args.pattern, len(ACTIVE_WAYPOINTS))
+
+    # Pre-load YOLO weights into the OS page cache BEFORE we touch PX4. The
+    # cold-cache YOLO load takes ~5-10 s and dominates the timing-sensitive
+    # setup window — if it runs after we've connected to mavsdk_server, the
+    # asyncio loop is starved long enough that mavsdk's telemetry callback
+    # queue backs up, heartbeats time out, and the gRPC channel resets
+    # (causing arm/begin_offboard to fail with "Connection reset by peer").
+    # Loading here moves the heavy disk I/O outside that window. Subsequent
+    # setup_detection() YOLO load reads from RAM, ~0.5 s.
+    if not args.no_detect:
+        try:
+            log.info("pre-loading YOLO weights to warm OS page cache...")
+            t0 = time.monotonic()
+            import sys as _sys, os as _os
+            if WORKSHOP_CODES_DIR not in _sys.path:
+                _sys.path.insert(0, WORKSHOP_CODES_DIR)
+            _os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+            from ultralytics import YOLO as _PreYOLO
+            _ = _PreYOLO(YOLO_WEIGHTS_DEFAULT)
+            del _
+            log.info("YOLO weights cached (%.1fs)", time.monotonic() - t0)
+        except Exception:
+            log.exception("YOLO pre-load failed (continuing — setup_detection will retry)")
+
     try:
         return asyncio.run(run(
             detect_enabled=not args.no_detect,
