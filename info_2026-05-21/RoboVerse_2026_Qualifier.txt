@@ -1,0 +1,68 @@
+RoboVerse Qualifier Challenge
+
+The Qualifier Challenge requires the teams to apply object detection and obstacle avoidance to
+execute missions without the use of Global Navigation Satellite System (GNSS).
+
+Challenge Overview
+
+The Challenge requires the team to navigate the quadcopter in a space port and search for fuel
+barrels. The teams are given 10 minutes. Within 10 minutes, the teams can make more than 1
+attempt. The score will be based on the best attempt.
+
+There are two types of fuel barrels: yellow and red. Red fuel barrels are not placed on ground
+level while yellow barrels are only placed on ground level.
+University category teams must detect at least one red fuel barrel and at least one yellow fuel
+barrel in order for their scores to be eligible for Qualifier ranking. Pre-U Category is to detect at
+least one yellow or one red fuel barrel in order for their scores to be eligible for Qualifier ranking.
+
+                                                               1
+Challenge Map
+
+The size of the space port is 40m (width) x 40m (breath) x 8m (high). Each grid is estimated to
+be 4m x 4m. The top down view of the space port is shown below. Locations of objects and grid
+layout may be different. The actual map will be released 1 day before the Qualifier.
+
+Challenge Scoring
+
+The judges award points for the following:
+
+Criterion                              Points
+                                       50
+Detect a yellow fuel barrel (a barrel
+can only be detected once)             100
+
+Detect red fuel barrel (a barrel can
+only be detected once)
+
+The judges award bonus points based on the following timing:
+
+Criterion                              Points
+
+Detects all yellow fuels within 5      20 points per every 30
+minutes.                               seconds in less than 5
+                                       minutes.
+
+                                            2
+ Detects all red fuels within 5 minutes. 20 points per every 30
+                                                      seconds in less than 5
+                                                      minutes.
+
+Teams who manually control quadcopter using a keyboard without/with mouse or using
+controller/joystick/gamepad/mouse will be disqualified.
+
+Qualifier Process
+
+Teams are to demonstrate the Qualifier challenge in person between 22 May 2026 and 23 May
+2026. Teams are to book a session from one of the Qualifier sessions on 22 May 2026 and 23
+May 2026. The coordinators will announce the timing of sessions and process to book a session.
+Teams are to arrive 15 minutes before the timing of their sessions.
+Teams are given 15 minutes to set up and test their codes to run on the computers provided by
+the coordinators. Teams are to bring their codes on a removable drive.
+Once ready, the team is to wait for the judge's instructions to start their run. When the run starts,
+the 10 minutes countdown starts. The judge will not stop the clock when the code crashes. The
+judge will only stop the clock when there are hardware issues with the computer.
+When the 10 minutes is up, the judge will brief the best attempt scores and the team is to
+acknowledge the result.
+
+                                                               3
+
