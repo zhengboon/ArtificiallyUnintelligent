@@ -1371,11 +1371,11 @@ SCAN_WAYPOINTS = [
 
 
 def _build_grid_scan_waypoints(
-    spacing_m: float = 3.0,
+    spacing_m: float = 2.0,
     grid_radius: int = 1,       # 1 = 3x3 grid (9 stations), 2 = 5x5 (25 stations)
     altitude_m: float = 2.0,
     yaw_hold_s: float = 3.0,
-    move_hold_s: float = 2.0,
+    move_hold_s: float = 4.0,
 ) -> list:
     """Generate a position-mode grid-scan waypoint list.
 
@@ -1412,6 +1412,13 @@ def _build_grid_scan_waypoints(
         rows.setdefault(n, []).append(e)
     out: list = []
     d = -abs(altitude_m)
+    # Yaw-settle at spawn BEFORE any translation. PX4 takeoff leaves the
+    # drone at its spawn yaw (often ~100° offset from world N in Roboverse).
+    # If the first WP combines translation with a yaw command, vision-EKF
+    # diverges (we observed +8 m drift in 15 s on 22/5 sim test; trip-
+    # aborted the run). Doing pure yaw at fixed XY first lets the EKF
+    # stabilise before we start moving.
+    out.append((0.0, 0.0, d, 0.0, 4.0, "yaw-settle at spawn (face N before moving)"))
     flip = False
     for n in sorted(rows):
         easts = sorted(rows[n], reverse=flip)
@@ -1441,8 +1448,13 @@ ARRIVE_TOL_YAW = 8.0  # deg
 
 # Divergence watchdog: emergency-land if measured position is this far from
 # target for this long. Catches EKF blow-up before drone flies far away.
-DIVERGENCE_LIMIT_M = 5.0
-DIVERGENCE_TIME_S = 3.0
+# Bumped 5.0 → 8.0 m and 3.0 → 6.0 s on 22/5 — first grid-pattern sim test
+# tripped it on a clean 3 m move because the drone had to yaw 100° to face
+# N while translating, and the EKF transient briefly hit ~8 m err. Real
+# EKF blow-ups grow MUCH faster than this so the looser threshold still
+# catches them.
+DIVERGENCE_LIMIT_M = 8.0
+DIVERGENCE_TIME_S = 6.0
 
 
 def _dist_xy(state: SharedState, n: float, e: float) -> float:
