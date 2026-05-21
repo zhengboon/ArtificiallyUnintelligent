@@ -1,0 +1,204 @@
+RoboVerse Supplementary 2 ­
+Visual Inertia Odometry
+
+                                                                                                                                                                                                         1
+AGENDA                       1. How does VIO work? What does VIO need?
+                             2. How does PX4 uses VIO?
+ Main goal: To provide
+ understanding on using VIO
+ with PX4
+
+                                                                        2
+1. How does VIO work?
+ What does VIO need?
+
+                                                                                                                                                                                              3
+XXX                                        vio-
+                                           node
+THIoTwLEdoes VIO work?
+
+SUBTITLE
+
+· Visual inertia odometry (VIO) estimates
+    drone position and orientation by
+    combining camera and IMU data.
+
+· OpenVINS is used to perform the VIO
+    function.
+
+· The vio_node feeds camera data and IMU
+    data to OpenVINS.
+
+· vio_node grabs camera data from gazebo
+    camera (if x500 virtual drone), or
+    Realsense (if physical drone).
+
+· vio_bridge grabs imu from gazebo or PX4
+    flight controller directly.
+
+                                                 4
+XXX
+
+TWIThaLtEis meant by camera data?
+
+SUBTITLE
+
+· VIO is only interested on features in the image
+    not everything in the image.
+
+· Features are some distinct visual points in the
+    image ­ sharp changes in brightness, corners
+    and edges.
+      · Plain feature environment might not be so
+          good.
+
+· Some popular feature extraction algorithms
+    are SIFT, ORB, Harris, Shi-Tomasi. Opencv has
+    libraries to do these algorithm.
+
+                                                                                                                                                                                                               5
+XXX
+
+WTIThaLtEdoes VIO do with the
+fSUeBTaITLtEure?
+
+· VIO algorithm matches and track
+     features across frames to analyse
+     how those features move.
+
+· Sparse Optical Flow algorithms like
+     Lucas-Kanade method (LK)
+      · A popular local method that
+           solves the brightness constraint
+           over a small 3x3 or 5x5 window
+           around a pixel, assuming
+           constant motion in that
+           neighborhood. It is fast and
+           suitable for real-time tracking
+           (often used with Shi-Tomasi
+           corner detection)
+
+· OpenCV has libraries that does optical
+     flow calculation.
+
+· In other words, movement is
+
+     important. Movement of camera is
+
+     especially needed during
+
+     initialization to trigger calculation.
+
+     Often we move the drone with the
+
+     camera by hand.                         6
+XXX
+
+ITMITULdEata and Pose Estimation
+
+S·UBTIATL3ED object is represented onto the Image Plane (2D image)
+      using Extrinsic Matrix and Intrinsic Matrix:
+        · Extrinsic Matrix: It is external to the camera describing
+              transformation with the World and camera.
+        · Intrinsic Matrix: It is internal to the camera describing
+              transformation from camera coordinate to image plane.
+
+· IMU data is fused with position estimation to determine the
+      position of the camera based on the movement.
+        · IMU data needs to transform to camera frame and from
+              camera frame back using extrinsic matrix, to fuse with
+              position and movement estimation.
+
+· Intrinsic Matrix is used for epipolar geometry calculation.
+
+· OpenVINS and other VIO algorithms need to be provided with
+      values for extrinsic matrix (transformation between IMU and
+      camera) and intrinsic matrix.
+
+· IMU-Camera calibration needs to be performed to determine
+      these matrix value.
+        · Calibration uses a 8 x 8 April tag board as the known
+              distance for the software to determine the values.
+        · Refer to https://docs.openvins.com/gs-calibration.html
+              if you like to know how it is being done.
+        · You do not need to perform this calibration process for
+              the Final Challenge drone. But need to be aware that
+              placement of camera on the drone must not be
+              changed as it will invalidate the calibration.
+
+                                                                                                                                                                                                              7
+1. How does PX4 uses
+ VIO?
+
+                                                                                                                                                                                              8
+XXX
+
+THIoTwLEdoes PX4 uses VIO?
+
+SUBTITLE
+
+· PX4 can use VIO instead of GPS as a source of
+      · Horizontal position
+      · Vertical position
+      · Velocity
+
+· You need to configure it.
+
+· PX4 uses EKF2 to fuse the inputs with IMU
+    data and barometer data, to provide the final
+    position estimation.
+
+· During startup, PX4 will wait for position
+    estimate from VIO (vio-node). If not received,
+    EKF2 will not be ready and PX4 unable to arm.
+
+· As such, it is important to make sure vio-node
+    is running and physically take up the drone to
+    do slight movement along all axis of the
+    drone to trigger VIO initialization. Perform
+    until the initialization is successful.
+
+· When initialization is successful, vio-node will
+
+     output position estimate.                      9
+XXX
+
+THIoTwLEto assess VIO position is ok?
+
+SUBTITLE
+
+· Observe the vio-node position estimate:
+      · If the position deviates too much from
+           ground truth when you move, bad
+           calibration.
+            · Solution: Restart and redo.
+      · If the position estimate drift infinitely, it is
+           no good due to bad physical initialization.
+           Wrong extrinsic and intrinsic.
+            · Solution: Recalibrate.
+      · If stuck at waiting for imu data, imu
+           source not ready.
+            · Solution: Check if wire between flight
+                 controller and offboard is intact.
+
+                                                                                                                                                                                                             10
+XXX
+
+TRIeTfLerEences
+
+SUBTITLE
+
+· Those who wish to start on programming your
+     VIO, this link is a good starting point:
+      · https://learnopencv.com/monocular-
+           slam-in-python/
+
+· Know more about Openvins:
+      · https://www.youtube.com/watch?v=dXN
+           2E38jvQM&t=294s
+
+                                                                                                                                                                                                             11
+THANK YOU
+
+                                                                                                                                 12
+
