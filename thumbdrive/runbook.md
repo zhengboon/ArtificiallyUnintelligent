@@ -113,16 +113,26 @@
       written every 5 s into the run dir).
 
 ### Step 6b — Fallback if bonus mode fails
-- [ ] If bonus run found < 1 of each colour OR crashed:
+- [ ] **Fallback A** — wall-follow worked but didn't find both colours
+      → defensive long run:
   ```bash
-  python3 controller.py --pattern wall          # long defensive 8-min run
+  python3 controller.py --pattern wall          # 8-min defensive
   ```
-- [ ] OR if wall-follow misbehaves, fall back to scan (yaw 360° at spawn):
+- [ ] **Fallback B (BACKUP STRATEGY)** — wall-follow misbehaved
+      (stuck, EKF diverged, depth pipeline crashed) → grid scan:
   ```bash
-  python3 controller.py --pattern scan
+  python3 controller.py --pattern grid --bonus  # 3×3 grid, position-mode
+  ```
+  Grid is position-mode (same code path as the proven smoke test) so
+  it can't inherit any wall-follow bug. 9 stations × 4 yaws each,
+  spans ~6m around spawn, ~3:45 total inside the bonus window.
+- [ ] **Fallback C** — quick detection probe only:
+  ```bash
+  python3 controller.py --pattern scan          # hover + 4 yaws, ~120 s
   ```
 - [ ] All features ON: detection + map + fake-GCS + planner.
-- [ ] Runtime: `wall` = up to 8 min then auto-lands. `scan` = ~120 sec.
+- [ ] Runtime: `wall` = up to 8 min then auto-lands. `grid` = ~3:45.
+      `scan` = ~120 sec.
 - [ ] Screen-watcher: call out every `[ctl] detection: class=yellow_barrel ...` or `red_barrel ...` line. Note the count.
 - [ ] Open `~/ArtificiallyUnintelligent/searchctl/run_*/map.png` in an image viewer with auto-refresh. Map updates every ~1 sec.
 - [ ] For wall: log lines `wall: state=follow_wall front=2.34 right=1.18 ...` print every 5 sec so judge sees the FSM in action.

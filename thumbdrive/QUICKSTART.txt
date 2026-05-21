@@ -33,10 +33,15 @@ Then YOU type these by hand:
     # window (+20 pts per 30s under 5 min per colour, per the PDF).
     python3 controller.py --pattern wall --bonus
 
-    # Fallback (if first attempt < 1 of each colour): defensive 8-min run
+    # Fallback A (if first attempt < 1 of each colour): defensive 8-min run
     python3 controller.py --pattern wall
 
-    # Alternative: hover at spawn, yaw 360 in 4 steps (detection probe only)
+    # Fallback B = BACKUP STRATEGY (if wall-follow misbehaves entirely):
+    # position-mode 3x3 grid scan around spawn. Pure waypoints, no
+    # velocity-mode, no dependency on K's wall_following.py. ~3:45 total.
+    python3 controller.py --pattern grid --bonus
+
+    # Fallback C: hover at spawn, yaw 360 in 4 steps (quick detection probe)
     python3 controller.py --pattern scan
 
     # Smoke test only (drone flies tiny square, no detection / no map):

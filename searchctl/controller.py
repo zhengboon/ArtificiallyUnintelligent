@@ -1369,6 +1369,70 @@ SCAN_WAYPOINTS = [
     ( 0.0,  0.0, -2.0, 359.9, 4.0, "yaw back to ~N (avoid wrap from 270 to 0)"),
 ]
 
+
+def _build_grid_scan_waypoints(
+    spacing_m: float = 3.0,
+    grid_radius: int = 1,       # 1 = 3x3 grid (9 stations), 2 = 5x5 (25 stations)
+    altitude_m: float = 2.0,
+    yaw_hold_s: float = 3.0,
+    move_hold_s: float = 2.0,
+) -> list:
+    """Generate a position-mode grid-scan waypoint list.
+
+    BACKUP STRATEGY: if K's wall_following.py misbehaves at venue (gets
+    stuck, EKF diverges, depth pipeline fails), this pattern is the
+    fallback. Pure position-mode flight (uses the proven `planner()`
+    code path), so it shares NO surface area with the velocity-mode
+    wall-follow planner. Cannot inherit wall-follow bugs.
+
+    Strategy: fly to each cell of a small grid centred on spawn, do a
+    full 360° in-place yaw at each cell so the camera covers every
+    cardinal angle from every position. Detection-driven early-exit
+    (added to planner() in the same patch) lands us as soon as both
+    colours have been seen, so the 'worst case' time is the full grid
+    sweep (~2-3 min, comfortably inside the 5-min bonus window).
+
+    The grid is in spawn-relative NED so it's safe regardless of where
+    in the 40x40 m arena the drone spawns — small radius (3 m by
+    default) keeps us well clear of arena walls in any spawn location.
+
+    Returns a list of (north, east, down, yaw_deg, hold_s, label)
+    waypoints. Yaw=0 entry per cell first (to drive position), then
+    four yaw steps without moving.
+    """
+    cells = []
+    for di in range(-grid_radius, grid_radius + 1):
+        for dj in range(-grid_radius, grid_radius + 1):
+            cells.append((di * spacing_m, dj * spacing_m))
+    # Visit cells in a boustrophedon order (snake), so the drone doesn't
+    # criss-cross. Sort by `north`, then alternate `east` direction.
+    cells.sort(key=lambda c: c[0])
+    rows: dict[float, list] = {}
+    for n, e in cells:
+        rows.setdefault(n, []).append(e)
+    out: list = []
+    d = -abs(altitude_m)
+    flip = False
+    for n in sorted(rows):
+        easts = sorted(rows[n], reverse=flip)
+        for e in easts:
+            label_pos = f"grid (N={n:+.1f}, E={e:+.1f})"
+            # Move-to: yaw=0, longer hold so position settles before yawing.
+            out.append((n, e, d, 0.0, move_hold_s, f"move to {label_pos}"))
+            # Four yaws covering 360° (90° at a time). 359.9 instead of 360
+            # so the wrap from yaw_err calc doesn't ping-pong.
+            for yaw in (90.0, 180.0, 270.0, 359.9):
+                out.append((n, e, d, yaw, yaw_hold_s,
+                            f"yaw {yaw:.0f}° at {label_pos}"))
+        flip = not flip
+    return out
+
+
+# 3×3 grid at 3 m spacing (covers ~6×6 m around spawn, ~12×12 m detectable
+# given the camera FOV). 9 stations × 5 WPs = 45 waypoints. Per WP: ~5 s
+# (arrive + hold). Total ~3:45, leaves margin inside the 5-min bonus window.
+GRID_SCAN_WAYPOINTS = _build_grid_scan_waypoints()
+
 # Which list to fly (set by main() from --pattern flag)
 ACTIVE_WAYPOINTS = WAYPOINTS
 
@@ -2013,7 +2077,7 @@ def main() -> int:
     ap.add_argument(
         "--pattern",
         default="square",
-        choices=("square", "scan", "wall"),
+        choices=("square", "scan", "wall", "grid"),
         help="Flight pattern. "
              "'square' = 2m smoke-test square (Phase 1 default, position mode). "
              "'scan' = hover at spawn, yaw 360° in 4×90° steps so the camera "
@@ -2021,7 +2085,12 @@ def main() -> int:
              "'wall' = K's wall-following algorithm "
              "(searchctl/wall_following.py). Velocity mode, reads depth "
              "frames from the Phase 7 mapping pipeline, so requires --no-map "
-             "to NOT be set.",
+             "to NOT be set. PRIMARY at qualifier. "
+             "'grid' = BACKUP STRATEGY. Position-mode 3×3 grid scan around "
+             "spawn (45 waypoints, ~3:45 total). Use this if --pattern wall "
+             "misbehaves at venue (gets stuck, EKF diverges, depth pipeline "
+             "fails). Shares NO surface area with wall-follow code, so it "
+             "can't inherit wall-follow bugs.",
     )
     ap.add_argument(
         "--altitude",
@@ -2058,7 +2127,13 @@ def main() -> int:
     logging.getLogger().setLevel(args.log_level)
 
     global ACTIVE_WAYPOINTS
-    ACTIVE_WAYPOINTS = SCAN_WAYPOINTS if args.pattern == "scan" else WAYPOINTS
+    if args.pattern == "scan":
+        ACTIVE_WAYPOINTS = SCAN_WAYPOINTS
+    elif args.pattern == "grid":
+        # Rebuild with the requested altitude so --altitude propagates.
+        ACTIVE_WAYPOINTS = _build_grid_scan_waypoints(altitude_m=args.altitude)
+    else:
+        ACTIVE_WAYPOINTS = WAYPOINTS
 
     log.info("==== searchctl controller v0.5 (Phase 1 + 2 + 6 + 7 + wall + scan + escape) ====")
     log.info("logs at %s", LOG_FILE)

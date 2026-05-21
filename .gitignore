@@ -11,6 +11,14 @@ discord_watcher/logs/
 discord_watcher/server_state.json
 info_*/
 
+# Transient host-side helper scripts and VM inspect outputs (zb session)
+/_inspect_out.log
+/_state.log
+/_validate_grid_vm.sh
+/_validate_out.log
+/_vm_inspect.sh
+/_ctl_show.log
+
 # Maze generator output (regenerable from seed)
 maze_gen/output/*.sdf
 maze_gen/output/*.json
