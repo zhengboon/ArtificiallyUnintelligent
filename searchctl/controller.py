@@ -521,13 +521,48 @@ def setup_detection(
     # org's verylousymodel.pt both use underscores ("yellow_barrel" /
     # "red_barrel"). Remap so saved bbox JPGs + log lines + run_summary.json
     # all match the format judges will be looking for.
+    # Patch class names so saved bbox JPGs read "yellow_barrel" (org example
+    # format) instead of K's training-time "yellow barrel" (with a space).
+    # Modern ultralytics makes `YOLO.names` a read-only property — the real
+    # backing dict lives on the inner DetectionModel (detector.model.model).
+    # Write to whichever paths accept the assignment; each is its own
+    # try/except so one failure doesn't skip the others.
+    remap = {0: "yellow_barrel", 1: "red_barrel", 2: "toxic_barrel"}
+    original = None
     try:
-        remap = {0: "yellow_barrel", 1: "red_barrel", 2: "toxic_barrel"}
-        original_names = dict(detector.model.names) if hasattr(detector.model, "names") else {}
-        detector.model.names = remap
-        log.info("detection: class names remapped: %s -> %s", original_names, remap)
+        original = dict(getattr(detector.model, "names", {}))
     except Exception:
-        log.warning("detection: could not remap class names; using model defaults")
+        pass
+    patched_paths = []
+    # Path 1: inner DetectionModel.names (this is the one result.plot() reads
+    # from in current ultralytics).
+    try:
+        if hasattr(detector.model, "model") and hasattr(detector.model.model, "names"):
+            detector.model.model.names = remap
+            patched_paths.append("model.model.names")
+    except Exception as e:
+        log.debug("remap path model.model.names failed: %s: %s", type(e).__name__, e)
+    # Path 2: top-level YOLO.names (older ultralytics).
+    try:
+        detector.model.names = remap
+        patched_paths.append("model.names")
+    except Exception as e:
+        log.debug("remap path model.names failed: %s: %s", type(e).__name__, e)
+    # Path 3: predictor's model.names (if predictor is initialised).
+    try:
+        if hasattr(detector.model, "predictor") and detector.model.predictor is not None:
+            pm = detector.model.predictor.model
+            if hasattr(pm, "names"):
+                pm.names = remap
+                patched_paths.append("model.predictor.model.names")
+    except Exception as e:
+        log.debug("remap path predictor.model.names failed: %s: %s", type(e).__name__, e)
+    if patched_paths:
+        log.info("detection: class names remapped (%s) %s -> %s",
+                 ",".join(patched_paths), original, remap)
+    else:
+        log.warning("detection: could NOT remap class names on any path; "
+                    "JPG bbox labels will use model defaults (%s)", original)
 
     # Shutdown flag: teardown_detection flips this, image_callback then
     # short-circuits, queue stops growing, Detector workers can drain + exit.
@@ -1317,28 +1352,34 @@ async def run(
         await asyncio.sleep(1.0)  # give params time to apply
         await drone.wait_until_armable(timeout_s=45.0)
 
-        # Telemetry must be live BEFORE we arm so the pumper has fresh pose data.
-        telem_task = asyncio.create_task(telemetry_monitor(drone, state), name="telemetry")
-        await asyncio.sleep(0.5)
-
-        # Stand up the detection pipeline after telemetry so the gz image
-        # callback already sees real pose data when stamping frames.
-        # Init BEFORE arm so the first frames during takeoff don't get dropped.
+        # Stand up the heavy setup BEFORE starting telemetry. setup_detection
+        # loads a ~30 MB YOLO model which takes 5-10 seconds. If we did this
+        # synchronously while a telemetry task was running, mavsdk_server's
+        # outbound callback queue would back up (we observed queue size 16),
+        # heartbeats would time out, and the gRPC channel to mavsdk_server
+        # would reset — causing begin_offboard to fail with
+        # "Connection reset by peer". Offloading to a worker thread keeps the
+        # asyncio loop responsive (it still services fake-GCS heartbeats and
+        # whatever other coroutines are waiting).
         if detect_enabled:
-            detect_handle = setup_detection(state, run_dir)
+            detect_handle = await asyncio.to_thread(setup_detection, state, run_dir)
             if detect_handle is None:
                 log.warning("detection unavailable — Phase 1-only flight")
         else:
             log.info("detection disabled by flag (--no-detect)")
 
-        # Stand up mapping pipeline the same way. Independent of detection —
-        # one can fail without taking the other down.
         if map_enabled:
-            map_handle = setup_mapping(state, run_dir)
+            map_handle = await asyncio.to_thread(setup_mapping, state, run_dir)
             if map_handle is None:
                 log.warning("mapping unavailable — flight will proceed without map")
         else:
             log.info("mapping disabled by flag (--no-map)")
+
+        # NOW start telemetry — after heavy setup is done, before arm.
+        # The pumper, watchdogs and planner all need fresh pose data; they're
+        # started further down right before begin_offboard.
+        telem_task = asyncio.create_task(telemetry_monitor(drone, state), name="telemetry")
+        await asyncio.sleep(0.5)
 
         await drone.arm_and_takeoff(altitude_m=abs(state.target_down))
         state.takeoff_ts = time.time()
