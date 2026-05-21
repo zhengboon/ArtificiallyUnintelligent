@@ -1,4 +1,15 @@
-# Team task list — RoboVerse Qualifier (T-15h, Thu night)
+# Team task list — RoboVerse Qualifier (T-14h, Thu night)
+
+> **✅ 2026-05-21 POST-CALL UPDATE (~23:55 SGT)** — T-14h. Z opened
+> branch `zb` from `main@750b1ff` for the audit + new-plans pass.
+> Landed on `zb` tonight (not yet flight-tested): arm + begin_offboard
+> retry (×3), detection dedup by NED position (1.5 m cluster), unique-
+> detection counts surfaced in `run_summary.json`, incremental writes
+> of `run_summary.json` + plain-text `STATUS.txt` every 5 s during
+> flight, and `thumbdrive/_smoke.sh` pre-flight integration check.
+> K continues tuning his model on `ks`; new `best.pt` will arrive by
+> Fri morning. Plan for tomorrow: USB copy, smoke test on org VM, then
+> `--pattern wall` → fall back to `scan` if wall misbehaves.
 
 > **✅ 2026-05-21 EVENING STATUS** — qualifier is TOMORROW 14:00.
 >

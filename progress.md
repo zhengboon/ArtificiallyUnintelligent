@@ -7,6 +7,47 @@ and commit hashes where they exist. Skim-able when looking back later.
 
 ---
 
+## 2026-05-21 (Thu, very late) — Post-call audit & polish on `zb` branch
+
+Team video call wrapped ~23:50. K is tuning his YOLO model overnight on
+the `ks` branch and will PR a new `best.pt` before Fri morning. Z opened
+a `zb` branch off `main@750b1ff` for the audit + new-plans pass.
+
+What landed on `zb` tonight (no flight-test yet — sim was acting flaky
+after multiple cumulative runs):
+
+- **arm + begin_offboard retry (×3 with backoff)** in `Drone.arm_and_takeoff`
+  and `Drone.begin_offboard`. Targets the same transient mavsdk gRPC blips
+  the `750b1ff` YOLO pre-load mitigates, but as defence-in-depth: if the
+  pre-load isn't enough, retries soak up one or two more failures before
+  giving up.
+- **Detection dedup by NED position** (Phase 4 lite): `compute_unique_detections()`
+  clusters detection records within 1.5 m of each other (same class) as
+  one physical barrel. `run_summary.json` gains a `unique_detections`
+  block (`yellow_barrel` / `red_barrel` / `toxic_barrel` / `total`). The
+  per-frame `detections` list still ships for full audit.
+- **Incremental run_summary.json + STATUS.txt** written every 5 s
+  during flight, not just at teardown. Crash-robust (if mavsdk dies
+  mid-run we still have the most recent snapshot on disk) AND judge-
+  friendly (plain-text STATUS.txt is `cat`-able without a terminal).
+- **`thumbdrive/_smoke.sh`** — ~90 s end-to-end smoke that boots
+  PX4+sim, runs `--pattern square`, then asserts run_summary.json,
+  STATUS.txt, map.png, detections/ all exist. Run this before
+  committing to a real qualifier slot run.
+
+Outstanding (knowingly carried into tomorrow):
+
+- ⚠ Flight-test the `zb` changes on the org VM at venue before the
+  scored run. They're parse-clean but no sim-tested yet.
+- ⓘ Plan 4 (live `cv2.imshow` map window) deferred — judges already
+  see `map.png` regenerated every second, which is enough signal.
+
+Branches: `main@750b1ff` (stable, what's on the thumbdrive), `ks` (K's
+model tune), `zb` (this session's audit pass — will rebase + ship if
+flight-tested, otherwise stays available as a fallback).
+
+---
+
 ## 2026-05-21 (Thu, night before qualifier) — Wall-follow integrated end-to-end
 
 T-15h sprint. K's `wall_following.py` (merged via PR #9) now wired into

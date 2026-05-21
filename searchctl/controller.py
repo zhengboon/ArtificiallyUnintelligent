@@ -203,11 +203,24 @@ class Drone:
             await asyncio.sleep(0.5)
 
     async def arm_and_takeoff(self, altitude_m: float = 2.0) -> None:
-        log.info("arming")
-        try:
-            await self.drone.action.arm()
-        except ActionError as e:
-            raise RuntimeError(f"arm failed: {e}") from e
+        # Retry arm up to 3 times. mavsdk_server occasionally drops the
+        # first request when its queue is hot (we saw this on 21/5 even with
+        # the YOLO pre-load mitigation). Half-second backoff between tries —
+        # if mavsdk_server is actually dead the loop won't help, but if it
+        # was a transient gRPC blip a retry usually succeeds.
+        last_err: Optional[Exception] = None
+        for attempt in range(1, 4):
+            log.info("arming (attempt %d/3)", attempt)
+            try:
+                await self.drone.action.arm()
+                last_err = None
+                break
+            except Exception as e:
+                last_err = e
+                log.warning("arm attempt %d failed: %s: %s", attempt, type(e).__name__, e)
+                await asyncio.sleep(0.5 * attempt)
+        if last_err is not None:
+            raise RuntimeError(f"arm failed after 3 attempts: {last_err}") from last_err
 
         try:
             await self.drone.action.set_takeoff_altitude(altitude_m)
@@ -228,13 +241,26 @@ class Drone:
         log.info("takeoff complete (assumed; pumper will hold altitude)")
 
     async def begin_offboard(self, initial: PositionNedYaw) -> None:
-        """Prime offboard with one setpoint, then start the mode."""
-        await self.drone.offboard.set_position_ned(initial)
-        try:
-            await self.drone.offboard.start()
-            log.info("offboard mode started")
-        except OffboardError as e:
-            raise RuntimeError(f"offboard.start() failed: {e}") from e
+        """Prime offboard with one setpoint, then start the mode.
+
+        Retries the start step up to 3 times. begin_offboard is the second
+        most common place we see transient mavsdk_server gRPC blips (the
+        first being arm). The prime setpoint is cheap to re-send; PX4 just
+        sees the same target again.
+        """
+        last_err: Optional[Exception] = None
+        for attempt in range(1, 4):
+            try:
+                await self.drone.offboard.set_position_ned(initial)
+                await self.drone.offboard.start()
+                log.info("offboard mode started (attempt %d/3)", attempt)
+                return
+            except Exception as e:
+                last_err = e
+                log.warning("offboard.start() attempt %d failed: %s: %s",
+                            attempt, type(e).__name__, e)
+                await asyncio.sleep(0.5 * attempt)
+        raise RuntimeError(f"offboard.start() failed after 3 attempts: {last_err}") from last_err
 
     async def end_offboard(self) -> None:
         try:
@@ -939,13 +965,66 @@ def teardown_mapping(handle: Optional[dict], state: SharedState) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Run summary (Phase 7)
+# Run summary (Phase 7) + detection dedup (Phase 4) + live STATUS.txt
 # ---------------------------------------------------------------------------
-def write_run_summary(state: SharedState, run_dir: Path) -> None:
-    """Dump a small JSON with timing + detection stats. Used by A's
-    scoring script and by judges who want to see a single artifact per run."""
-    import json
-    summary = {
+# Detection dedup rationale: K's wall-follow + scan can fire YOLO many times
+# on the same physical barrel as the drone moves past it. For scoring, the
+# judges care about "how many *unique* barrels did you find", not "how many
+# frames detected something". We cluster detection records by the drone's
+# NED pose at detect time — same hover-pose detections of the same class
+# are almost always the same physical barrel. Crude but good enough for
+# the qualifier; the per-frame list stays available in the JSON if anyone
+# wants to dig deeper.
+DETECTION_CLUSTER_RADIUS_M = 1.5
+
+
+def compute_unique_detections(detections: list, radius_m: float = DETECTION_CLUSTER_RADIUS_M) -> dict:
+    """Cluster detection records into unique physical barrels.
+
+    Two records of the same class within radius_m of each other (by
+    pose_at_detect[north, east]) are treated as the same barrel.
+
+    Returns: {"yellow_barrel": int, "red_barrel": int, "toxic_barrel": int, "total": int}.
+    """
+    counts = {"yellow_barrel": 0, "red_barrel": 0, "toxic_barrel": 0, "total": 0}
+    if not detections:
+        return counts
+    by_class: dict[str, list[tuple[float, float]]] = {}
+    for d in detections:
+        # Normalise class name to underscore form (defensive — should already
+        # be remapped by setup_detection's monkey patch, but harmless to redo).
+        cls = (d.class_name or "").lower().replace(" ", "_")
+        if cls not in ("yellow_barrel", "red_barrel", "toxic_barrel"):
+            # Unknown class — group under its raw name so it still counts.
+            counts[cls] = counts.get(cls, 0)
+        try:
+            n, e, *_ = d.pose_at_detect
+        except Exception:
+            continue
+        clusters = by_class.setdefault(cls, [])
+        merged = False
+        for cn, ce in clusters:
+            if math.hypot(n - cn, e - ce) <= radius_m:
+                merged = True
+                break
+        if not merged:
+            clusters.append((float(n), float(e)))
+    total = 0
+    for cls, pts in by_class.items():
+        if cls in counts:
+            counts[cls] = len(pts)
+        else:
+            counts[cls] = len(pts)  # unknown class still recorded
+        total += len(pts)
+    counts["total"] = total
+    return counts
+
+
+def _build_summary_dict(state: SharedState) -> dict:
+    """Shared between the incremental writer (every 5s) and the final
+    teardown writer. Cheap — just dict-building."""
+    unique = compute_unique_detections(state.detections)
+    return {
         "run_ts": RUN_TS,
         "takeoff_ts": state.takeoff_ts,
         "land_ts": state.land_ts,
@@ -954,6 +1033,7 @@ def write_run_summary(state: SharedState, run_dir: Path) -> None:
             if (state.takeoff_ts and state.land_ts) else None
         ),
         "detection_count": state.detection_count,
+        "unique_detections": unique,
         "detections": [
             {
                 "seq": d.seq,
@@ -969,12 +1049,81 @@ def write_run_summary(state: SharedState, run_dir: Path) -> None:
         "map_points_count": state.map_points_count,
         "aborted": state.abort_requested,
     }
+
+
+def write_run_summary(state: SharedState, run_dir: Path) -> None:
+    """Final summary written at teardown. Same shape as incremental writes,
+    but called after land_ts is set so flight_seconds is populated."""
+    import json
+    summary = _build_summary_dict(state)
     out_path = run_dir / "run_summary.json"
     try:
         out_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-        log.info("run summary written to %s", out_path.name)
+        log.info("run summary written to %s (unique: %s)",
+                 out_path.name, summary["unique_detections"])
     except Exception:
         log.exception("could not write run_summary.json")
+
+
+def _format_status_text(state: SharedState, summary: dict) -> str:
+    """Human-readable plain text dump of current flight state. Written to
+    run_<ts>/STATUS.txt every 5s. Judges can `cat` this without opening
+    a terminal viewer or a JSON parser."""
+    elapsed = None
+    if state.takeoff_ts is not None:
+        end = state.land_ts if state.land_ts is not None else time.time()
+        elapsed = end - state.takeoff_ts
+    unique = summary["unique_detections"]
+    lines = [
+        f"BrainHack 2026 RoboVerse — run {RUN_TS}",
+        f"  status: {'ABORTED' if state.abort_requested else 'RUNNING' if state.land_ts is None else 'LANDED'}",
+        f"  flight time: {('%.1f s' % elapsed) if elapsed is not None else '—'}",
+        f"  armed: {state.armed}  in_air: {state.in_air}  mode: {state.flight_mode}",
+        f"  pose: N={state.north_m:+.2f}m  E={state.east_m:+.2f}m  D={state.down_m:+.2f}m  yaw={state.yaw_deg:.0f}°",
+        "",
+        f"  unique barrels found:  yellow={unique.get('yellow_barrel', 0)}  red={unique.get('red_barrel', 0)}  toxic={unique.get('toxic_barrel', 0)}",
+        f"  raw detection frames:  {state.detection_count}",
+        f"  map points accumulated: {state.map_points_count}",
+        "",
+    ]
+    # Show last 3 detections so judges can see recent activity at a glance.
+    last = state.detections[-3:]
+    if last:
+        lines.append("  recent detections:")
+        for d in last:
+            n, e, _, _ = (list(d.pose_at_detect) + [0, 0, 0, 0])[:4]
+            lines.append(f"    #{d.seq:03d} {d.class_name:<14s} conf={d.confidence:.2f} at N={n:+.1f} E={e:+.1f}")
+    return "\n".join(lines) + "\n"
+
+
+async def incremental_status_writer(state: SharedState, run_dir: Path, interval_s: float = 5.0) -> None:
+    """Periodically write run_summary.json and STATUS.txt during flight.
+
+    Robust to crashes mid-run: if the controller dies before the teardown
+    write_run_summary call, judges still get the most recent ~5s-stale
+    snapshot of detections + timings on disk. Also gives them a live human-
+    readable file to `cat` while the run is in progress.
+    """
+    import json
+    json_path = run_dir / "run_summary.json"
+    status_path = run_dir / "STATUS.txt"
+    while not state.abort_requested:
+        try:
+            summary = _build_summary_dict(state)
+            # Write JSON + text via to_thread so the I/O can't stall the loop.
+            await asyncio.to_thread(
+                json_path.write_text,
+                json.dumps(summary, indent=2),
+                encoding="utf-8",
+            )
+            await asyncio.to_thread(
+                status_path.write_text,
+                _format_status_text(state, summary),
+                encoding="utf-8",
+            )
+        except Exception:
+            log.exception("incremental_status_writer tick failed (continuing)")
+        await asyncio.sleep(interval_s)
 
 
 # ---------------------------------------------------------------------------
@@ -1515,6 +1664,9 @@ async def run(
         wd_task = asyncio.create_task(watchdog(state), name="watchdog")
         div_task = asyncio.create_task(divergence_watchdog(state), name="divergence")
         clock_task = asyncio.create_task(flight_clock_logger(state), name="flight_clock")
+        status_task = asyncio.create_task(
+            incremental_status_writer(state, run_dir), name="status_writer",
+        )
         if map_handle is not None:
             map_task = asyncio.create_task(mapping_task(map_handle, state), name="mapping")
 
@@ -1527,7 +1679,7 @@ async def run(
                 await planner(state)
         finally:
             state.abort_requested = True
-            bg_tasks = [pumper_task, wd_task, div_task, clock_task, telem_task]
+            bg_tasks = [pumper_task, wd_task, div_task, clock_task, status_task, telem_task]
             if map_task is not None:
                 bg_tasks.append(map_task)
             for t in bg_tasks:
