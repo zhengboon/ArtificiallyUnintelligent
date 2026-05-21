@@ -55,6 +55,11 @@ from mavsdk.offboard import OffboardError, VelocityNedYaw
 # Make codes/Codes/ importable from searchctl/
 CODES_DIR = os.path.join(os.path.dirname(__file__), '..', 'codes', 'Codes')
 sys.path.insert(0, CODES_DIR)
+# gz.msgs10 needs the pure-Python protobuf parser; without this env var the
+# import explodes with "Descriptors cannot be created directly" on the VM's
+# protobuf version. Set BEFORE depth_receiver / depthcloud imports so the
+# transitive gz.msgs10 imports see it.
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
 # wall_following.py is in the same directory as controller.py
 from wall_following import get_wall_distances, WallFollower, VelocitySmoother, body_to_ned
 from depth_receiver import DepthReceiver
