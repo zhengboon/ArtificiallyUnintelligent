@@ -28,10 +28,15 @@ Then YOU type these by hand:
   (Terminal 2 — pick ONE)
     cd ~/ArtificiallyUnintelligent/searchctl
 
-    # Recommended for qualifier: K's wall-following (8-min cap, auto-lands)
+    # FIRST attempt: bonus-mode wall-follow. Hard-lands ~4:20, auto-exits
+    # when both yellow + red detected. Targets the 5-min qualifier bonus
+    # window (+20 pts per 30s under 5 min per colour, per the PDF).
+    python3 controller.py --pattern wall --bonus
+
+    # Fallback (if first attempt < 1 of each colour): defensive 8-min run
     python3 controller.py --pattern wall
 
-    # Alternative: hover at spawn, yaw 360 in 4 steps (good for detection probe)
+    # Alternative: hover at spawn, yaw 360 in 4 steps (detection probe only)
     python3 controller.py --pattern scan
 
     # Smoke test only (drone flies tiny square, no detection / no map):

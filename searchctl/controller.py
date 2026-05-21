@@ -1274,12 +1274,61 @@ def _yaw_err(state: SharedState, target_yaw: float) -> float:
     return abs(err)
 
 
-async def planner(state: SharedState) -> None:
-    """Step through the scripted waypoint list, writing targets for the pumper."""
-    log.info("planner started; %d waypoints", len(ACTIVE_WAYPOINTS))
+def _should_early_exit_on_detections(state: SharedState, bonus_mode: bool) -> Optional[str]:
+    """Shared between planner() and planner_wall() — returns a reason string
+    if the run should exit early based on the current detection state, else
+    None. Cheap: O(N) over state.detections via compute_unique_detections.
+
+    Logic:
+      * Need >=1 yellow + >=1 red (eligibility floor — without it, exiting
+        early just forfeits the run; keep flying).
+      * Bonus mode: once both are seen, hold BONUS_DUAL_COLOUR_HOLD_S then exit.
+      * Default mode: exit if no new unique cluster for PLATEAU_S_DEFAULT secs.
+    The first-seen / last-change timestamps are stored on `state` as attrs so
+    they survive across calls.
+    """
+    unique = compute_unique_detections(state.detections)
+    total = unique["total"]
+    now = time.monotonic()
+    # Lazy-init timestamps as state attrs (avoids changing SharedState dataclass).
+    if not hasattr(state, "_unique_total_cached"):
+        state._unique_total_cached = -1
+        state._unique_last_change = now
+        state._unique_dual_first = None
+    if total != state._unique_total_cached:
+        state._unique_total_cached = total
+        state._unique_last_change = now
+    have_both = unique.get("yellow_barrel", 0) >= 1 and unique.get("red_barrel", 0) >= 1
+    if have_both and state._unique_dual_first is None:
+        state._unique_dual_first = now
+        log.info("EARLY-EXIT armed: both colours detected (yellow=%d, red=%d) at T-monotonic+%.1f",
+                 unique["yellow_barrel"], unique["red_barrel"], now)
+    if not have_both:
+        return None
+    if bonus_mode:
+        if state._unique_dual_first is not None and (now - state._unique_dual_first) >= BONUS_DUAL_COLOUR_HOLD_S:
+            return f"bonus: dual-colour hold complete ({BONUS_DUAL_COLOUR_HOLD_S:.0f}s)"
+    quiet_for = now - state._unique_last_change
+    window = BONUS_PLATEAU_S if bonus_mode else PLATEAU_S_DEFAULT
+    if quiet_for >= window:
+        return f"plateau: no new unique for {quiet_for:.1f}s (>= {window:.0f}s, {unique['yellow_barrel']}Y/{unique['red_barrel']}R)"
+    return None
+
+
+async def planner(state: SharedState, bonus_mode: bool = False) -> None:
+    """Step through the scripted waypoint list, writing targets for the pumper.
+
+    Honors detection-driven early exit (same logic as planner_wall) so scan
+    mode can also bank a fast finish if YOLO fires early.
+    """
+    log.info("planner started; %d waypoints (bonus=%s)", len(ACTIVE_WAYPOINTS), bonus_mode)
     for i, (n, e, d, yaw, hold, label) in enumerate(ACTIVE_WAYPOINTS):
         if state.abort_requested:
             log.info("planner aborting before waypoint %d", i)
+            return
+        reason = _should_early_exit_on_detections(state, bonus_mode)
+        if reason is not None:
+            log.info("planner EARLY EXIT before WP %d: %s", i + 1, reason)
             return
         log.info("WP %d/%d — %s   target=(N=%.1f E=%.1f D=%.1f yaw=%.0f)",
                  i + 1, len(ACTIVE_WAYPOINTS), label, n, e, d, yaw)
@@ -1314,6 +1363,12 @@ async def planner(state: SharedState) -> None:
         for _ in range(int(hold * 4)):
             if state.abort_requested:
                 return
+            # Re-check early-exit during the hold (most detections fire while
+            # we're stationary, so this is when the signal usually appears).
+            reason = _should_early_exit_on_detections(state, bonus_mode)
+            if reason is not None:
+                log.info("planner EARLY EXIT during WP %d hold: %s", i + 1, reason)
+                return
             state.last_planner_progress = time.monotonic()
             await asyncio.sleep(0.25)
 
@@ -1341,9 +1396,32 @@ async def planner(state: SharedState) -> None:
 
 WALL_FOLLOW_BUDGET_S      = 480.0   # 8 minutes, leaves headroom inside the 10-min run cap
 WALL_FOLLOW_HZ            = 10.0    # match K's tick rate assumptions in WallFollower
-WALL_SCAN_EVERY_S         = 30.0    # do a periodic 360° scan every N seconds
+WALL_SCAN_EVERY_S         = 25.0    # do a periodic 360° scan every N seconds
 WALL_SCAN_YAW_RATE_DEG    = 60.0    # deg/s during scan (full 360 takes 6 s)
 WALL_SCAN_DURATION_S      = 7.0     # slightly longer than 360/rate so we overshoot a bit
+
+# --- Bonus-mode tuning ---
+# Per qualifier PDF: 20 pts / 30 s for finding ALL of a colour in <5 min.
+# Hard-land buffer (4:20 instead of 4:30) gives ~10 s of margin for the actual
+# landing sequence to complete before the bonus deadline fires at 5:00.
+BONUS_HARD_LAND_S         = 260.0
+# When both colours have been detected, hold for this long to let YOLO fire
+# on additional barrels of the same colour we haven't seen yet, then land.
+BONUS_DUAL_COLOUR_HOLD_S  = 25.0
+# Detection plateau: if no NEW unique cluster has been added for this long
+# (in either colour) AND we have >=1 of each colour, assume "found all".
+BONUS_PLATEAU_S           = 30.0
+# Speed boosts when --bonus is active — wall-follow at K's defaults (0.7 m/s
+# linear, 0.4 m/s strafe) caps the perimeter we can sweep inside the 5 min
+# bonus window. We override on the WallFollower instance so K's file stays
+# untouched.
+BONUS_WALL_LINEAR_SPEED   = 1.0
+BONUS_WALL_STRAFE_SPEED   = 0.5
+BONUS_WALL_CORNER_TURN    = 0.45    # K's was 0.35
+# Floor (regardless of bonus): even in non-bonus runs, exit early if BOTH
+# colours found AND nothing new for this long. Lets a regular --pattern wall
+# run still bank a fast finish if it gets lucky.
+PLATEAU_S_DEFAULT         = 60.0    # more conservative outside bonus mode
 # Stuck detector (escape K's "corner stuck" / depth-filter oscillation):
 WALL_STUCK_WINDOW_S       = 10.0    # if drone hasn't moved much for this long, escape
 WALL_STUCK_DISTANCE_M     = 0.5     # threshold for "hasn't moved"
@@ -1355,9 +1433,14 @@ WALL_ESCAPE_FWD_S         = 2.0     # then forward push to leave the stuck spot
 WALL_ESCAPE_FWD_SPEED     = 0.6     # m/s forward
 
 
-async def planner_wall(state: SharedState, map_handle: Optional[dict]) -> None:
+async def planner_wall(state: SharedState, map_handle: Optional[dict], bonus_mode: bool = False) -> None:
     """K's wall-following loop. Requires the mapping pipeline to be active
-    (we reuse its depth subscription instead of opening a second one)."""
+    (we reuse its depth subscription instead of opening a second one).
+
+    bonus_mode: if True, hard-land at BONUS_HARD_LAND_S (~4:20) to stay
+      inside the qualifier's 5-min bonus window, override K's WallFollower
+      speeds with the BONUS_* tunings, and tighten the plateau early-exit.
+    """
     if map_handle is None:
         log.error(
             "planner_wall requires the Phase 7 mapping pipeline "
@@ -1379,6 +1462,18 @@ async def planner_wall(state: SharedState, map_handle: Optional[dict]) -> None:
 
     follower = WallFollower()
     smoother = VelocitySmoother()
+    if bonus_mode:
+        # Per-instance overrides — K's class attributes stay untouched, but
+        # this WallFollower runs faster for our bonus-mode attempt. K's FSM
+        # still reads these via `self.LINEAR_SPEED` etc., so instance attrs
+        # shadow class attrs cleanly.
+        follower.LINEAR_SPEED  = BONUS_WALL_LINEAR_SPEED
+        follower.STRAFE_SPEED  = BONUS_WALL_STRAFE_SPEED
+        follower.CORNER_TURN   = BONUS_WALL_CORNER_TURN
+        log.info(
+            "planner_wall: BONUS MODE — speeds linear=%.1f strafe=%.1f corner_turn=%.2f",
+            follower.LINEAR_SPEED, follower.STRAFE_SPEED, follower.CORNER_TURN,
+        )
     np = map_handle["np"]
     K = map_handle["K"]
     latest = map_handle["latest"]
@@ -1386,16 +1481,24 @@ async def planner_wall(state: SharedState, map_handle: Optional[dict]) -> None:
 
     state.velocity_mode = True
     state.vel_fwd = state.vel_right = state.vel_down = state.yaw_rate_deg = 0.0
+    # Pick the right time budget + plateau window for this run mode.
+    effective_budget = BONUS_HARD_LAND_S if bonus_mode else WALL_FOLLOW_BUDGET_S
+    plateau_window   = BONUS_PLATEAU_S    if bonus_mode else PLATEAU_S_DEFAULT
     log.info(
-        "planner_wall: started (budget=%.0fs, hz=%.0f, scan every %.0fs)",
-        WALL_FOLLOW_BUDGET_S, WALL_FOLLOW_HZ, WALL_SCAN_EVERY_S,
+        "planner_wall: started (budget=%.0fs, hz=%.0f, scan every %.0fs, bonus=%s)",
+        effective_budget, WALL_FOLLOW_HZ, WALL_SCAN_EVERY_S, bonus_mode,
     )
     period = 1.0 / WALL_FOLLOW_HZ
     start_ts = time.monotonic()
-    deadline = start_ts + WALL_FOLLOW_BUDGET_S
+    deadline = start_ts + effective_budget
     next_scan_at = start_ts + WALL_SCAN_EVERY_S
     ticks = 0
     last_log = 0.0
+    # Early-exit bookkeeping
+    last_unique_change_at: Optional[float] = None
+    last_unique_total: int = 0
+    dual_colour_first_seen_at: Optional[float] = None
+    early_exit_reason: Optional[str] = None
 
     async def _do_360_scan() -> None:
         """Stop wall-follow, yaw in place ~360° so the camera sees all
@@ -1483,6 +1586,45 @@ async def planner_wall(state: SharedState, map_handle: Optional[dict]) -> None:
     ESCAPE_COOLDOWN = 15.0  # at least this long between escapes
 
     while time.monotonic() < deadline and not state.abort_requested:
+        # --- Detection-driven early exit ---
+        # Recompute unique counts every tick. The function is cheap (small list
+        # + math.hypot per record). We watch for two conditions:
+        #   1. plateau: no NEW unique cluster for plateau_window seconds AND
+        #      we already have >=1 yellow + >=1 red → "probably found all".
+        #   2. dual-colour cooldown (bonus mode only): once both colours are
+        #      seen, hold for BONUS_DUAL_COLOUR_HOLD_S to give YOLO a chance
+        #      to spot additional barrels of either colour, then land.
+        unique = compute_unique_detections(state.detections)
+        now = time.monotonic()
+        if unique["total"] != last_unique_total:
+            last_unique_change_at = now
+            last_unique_total = unique["total"]
+        elif last_unique_change_at is None:
+            last_unique_change_at = start_ts  # initialise on first tick
+        have_both = unique.get("yellow_barrel", 0) >= 1 and unique.get("red_barrel", 0) >= 1
+        if have_both and dual_colour_first_seen_at is None:
+            dual_colour_first_seen_at = now
+            log.info(
+                "planner_wall: BOTH COLOURS DETECTED at T+%.1fs (yellow=%d, red=%d) — "
+                "starting %.0fs hold before early-land",
+                now - start_ts, unique["yellow_barrel"], unique["red_barrel"],
+                BONUS_DUAL_COLOUR_HOLD_S if bonus_mode else plateau_window,
+            )
+        # Bonus-mode: short hold after dual colour, then land.
+        if bonus_mode and dual_colour_first_seen_at is not None:
+            if now - dual_colour_first_seen_at >= BONUS_DUAL_COLOUR_HOLD_S:
+                early_exit_reason = "bonus-mode: dual-colour hold complete"
+                break
+        # Both modes: plateau exit (no new uniques for window seconds + have both)
+        if have_both and last_unique_change_at is not None:
+            quiet_for = now - last_unique_change_at
+            if quiet_for >= plateau_window:
+                early_exit_reason = (
+                    f"detection plateau: no new unique for {quiet_for:.1f}s, "
+                    f"have {unique['yellow_barrel']}Y/{unique['red_barrel']}R"
+                )
+                break
+
         # Periodic 360 — K's hybrid plan (wall-follow + scan stations)
         if time.monotonic() >= next_scan_at:
             await _do_360_scan()
@@ -1559,10 +1701,11 @@ async def planner_wall(state: SharedState, map_handle: Optional[dict]) -> None:
     state.target_down = state.down_m
     state.target_yaw = state.yaw_deg
     state.velocity_mode = False
+    elapsed = time.monotonic() - start_ts
     log.info(
-        "planner_wall: exiting (ticks=%d, elapsed=%.1fs, hold pos N=%.2f E=%.2f)",
-        ticks, WALL_FOLLOW_BUDGET_S - (deadline - time.monotonic()),
-        state.target_north, state.target_east,
+        "planner_wall: exiting (ticks=%d, elapsed=%.1fs, hold pos N=%.2f E=%.2f) reason=%s",
+        ticks, elapsed, state.target_north, state.target_east,
+        early_exit_reason or "budget/abort",
     )
 
 
@@ -1589,6 +1732,7 @@ async def run(
     fake_gcs_enabled: bool = True,
     map_enabled: bool = True,
     pattern: str = "square",
+    bonus_mode: bool = False,
 ) -> int:
     state = SharedState()
     drone = Drone()
@@ -1673,10 +1817,10 @@ async def run(
         # Run the chosen planner. Wraps in try so we always land afterward.
         try:
             if pattern == "wall":
-                await planner_wall(state, map_handle)
+                await planner_wall(state, map_handle, bonus_mode=bonus_mode)
             else:
                 # 'square' and 'scan' both walk ACTIVE_WAYPOINTS
-                await planner(state)
+                await planner(state, bonus_mode=bonus_mode)
         finally:
             state.abort_requested = True
             bg_tasks = [pumper_task, wd_task, div_task, clock_task, status_task, telem_task]
@@ -1758,6 +1902,19 @@ def main() -> int:
              "frames from the Phase 7 mapping pipeline, so requires --no-map "
              "to NOT be set.",
     )
+    ap.add_argument(
+        "--bonus",
+        action="store_true",
+        help="Tune the run for the qualifier 5-min bonus window. "
+             "Hard-lands at ~4:20 (BONUS_HARD_LAND_S) so the landing sequence "
+             "completes before the 5-min deadline. Early-exits as soon as "
+             "both yellow AND red have been detected (plus a short hold to "
+             "let YOLO find additional barrels of either colour). With "
+             "--pattern wall, also bumps K's LINEAR_SPEED/STRAFE_SPEED/"
+             "CORNER_TURN so we cover more ground in the bonus window. "
+             "Use this for the FIRST qualifier attempt — if it doesn't "
+             "bank enough, fall back to a long defensive run without --bonus.",
+    )
     args = ap.parse_args()
     logging.getLogger().setLevel(args.log_level)
 
@@ -1801,12 +1958,16 @@ def main() -> int:
         except Exception:
             log.exception("YOLO pre-load failed (continuing — setup_detection will retry)")
 
+    if args.bonus:
+        log.info("bonus:      ON (hard-land at %.0fs, dual-colour hold %.0fs)",
+                 BONUS_HARD_LAND_S, BONUS_DUAL_COLOUR_HOLD_S)
     try:
         return asyncio.run(run(
             detect_enabled=not args.no_detect,
             fake_gcs_enabled=not args.no_fake_gcs,
             map_enabled=not args.no_map,
             pattern=args.pattern,
+            bonus_mode=args.bonus,
         ))
     except KeyboardInterrupt:
         return 130

@@ -98,10 +98,24 @@
 - [ ] **If this works, controller + sim are healthy. Move to Step 6.**
 - [ ] **If it crashes** — go to "Step 5 failed" in cheatsheet below.
 
-### Step 6 (T+14–24 min): First REAL run
-- [ ] Keyboard (Terminal 2) — **recommended: wall-follow mode for coverage**:
+### Step 6 (T+14–24 min): First REAL run — BONUS-MODE attempt
+- [ ] Keyboard (Terminal 2) — **bonus mode first** (target the 5-min bonus window):
   ```bash
-  python3 controller.py --pattern wall
+  python3 controller.py --pattern wall --bonus
+  ```
+- [ ] Runtime: ≤4:20 hard cap. Auto-lands earlier when both yellow + red detected
+      (plus a short hold for additional barrels), OR when detection plateaus.
+- [ ] Per qualifier PDF: bonus = +20 pts per 30 s under the 5-min mark for
+      finding ALL of a colour. We can't know "all" so the heuristic exit
+      triggers on dual-colour-found OR detection-rate plateau.
+- [ ] Screen-watcher: call out every `detection: class=yellow_barrel ...` /
+      `red_barrel ...` line. Note the unique count from `STATUS.txt` (it's
+      written every 5 s into the run dir).
+
+### Step 6b — Fallback if bonus mode fails
+- [ ] If bonus run found < 1 of each colour OR crashed:
+  ```bash
+  python3 controller.py --pattern wall          # long defensive 8-min run
   ```
 - [ ] OR if wall-follow misbehaves, fall back to scan (yaw 360° at spawn):
   ```bash

@@ -7,6 +7,59 @@ and commit hashes where they exist. Skim-able when looking back later.
 
 ---
 
+## 2026-05-22 (Fri, T-14h) — Max-marks strategy on `zb`
+
+Found and read the actual qualifier PDF (
+[info_2026-05-21/RoboVerse_2026_Qualifier.pdf](info_2026-05-21/RoboVerse_2026_Qualifier.pdf)
+). Real scoring formula:
+- Eligibility: ≥1 red + ≥1 yellow detected (else score = 0)
+- 50 pts per unique yellow, 100 pts per unique red (each only counts once)
+- Bonus: +20 pts per 30 s under 5 min for finding ALL of a colour
+- Top 26 teams advance to the Final (10-11 June, MBS)
+
+Implications: an 8-min `--pattern wall` run lands AFTER the 5-min bonus
+deadline. With nothing else changed we forfeit both bonuses regardless of
+detection quality.
+
+What landed on `zb` to address this:
+
+- **`--bonus` CLI flag** + `bonus_mode` threaded through `run()` →
+  `planner()` and `planner_wall()`.
+- **`planner_wall` bonus tuning**:
+  - Budget capped at `BONUS_HARD_LAND_S = 260 s` (~4:20, ~40 s of land
+    headroom before the 5-min deadline).
+  - K's `WallFollower` overridden at instance level: `LINEAR_SPEED 0.7→1.0`,
+    `STRAFE_SPEED 0.4→0.5`, `CORNER_TURN 0.35→0.45`. K's file untouched.
+  - Periodic 360° scan interval shortened 30s→25s (more angular coverage
+    inside the smaller window).
+- **Detection-driven early-exit** (both planners): once ≥1 yellow + ≥1
+  red have been detected, hold for `BONUS_DUAL_COLOUR_HOLD_S = 25 s`
+  (bonus) or watch for a `BONUS_PLATEAU_S = 30 s` / `PLATEAU_S_DEFAULT
+  = 60 s` plateau (default), then land. Heuristic — we don't know
+  N_yellow / N_red, but if YOLO has gone quiet AND we have both colours,
+  more flying probably doesn't help.
+- **`thumbdrive/_vm_run_bonus.sh`** — VM helper that launches the
+  bonus-mode wall-follow run. Mirrors `_vm_run_wall.sh` but adds `--bonus`.
+- **Runbook + QUICKSTART updated** with the two-stage strategy: bonus run
+  first → defensive long run if first didn't bank ≥1 of each colour.
+
+Strategy for the 40-min slot:
+
+1. **T+12 min** smoke test (`--no-detect --no-map`, ~30 s).
+2. **T+14 min** first scored run: `--pattern wall --bonus` (≤4:20).
+   If both colours found → bank base 150 + however much bonus.
+3. **T+22 min** second scored run: `--pattern wall` (defensive 8 min).
+   If first run didn't bank both colours, this is the eligibility shot.
+4. **T+34 min** third run if time: swap to `verylousymodel.pt` if K's
+   model isn't firing, OR repeat best-performing pattern.
+
+Still NOT flight-tested. The bonus mode in particular is logic-only —
+no sim runs since the WallFollower speed bump may interact with K's
+stuck-escape heuristics. Smoke test (`_smoke.sh`) at venue will catch
+gross regressions.
+
+---
+
 ## 2026-05-21 (Thu, very late) — Post-call audit & polish on `zb` branch
 
 Team video call wrapped ~23:50. K is tuning his YOLO model overnight on
