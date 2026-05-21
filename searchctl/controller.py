@@ -489,9 +489,17 @@ def setup_detection(
         log.exception("Detector failed to init; running without detection")
         return None
 
+    # Shutdown flag: teardown_detection flips this, image_callback then
+    # short-circuits, queue stops growing, Detector workers can drain + exit.
+    # Without this gate, Detector.stop()'s t.join() blocks forever because
+    # gz keeps feeding the queue.
+    shutting_down = {"v": False}
+
     def image_callback(msg):
         """Runs in gz-transport's own thread. Push frame -> Detector queue.
         Detector internally has its own worker thread, so this returns fast."""
+        if shutting_down["v"]:
+            return
         try:
             frame = np.frombuffer(msg.data, dtype=np.uint8)
             frame = frame.reshape((msg.height, msg.width, 3))
@@ -515,17 +523,27 @@ def setup_detection(
         return None
     log.info("detection: subscribed to %s", image_topic)
 
-    return {"detector": detector, "node": node}
+    return {"detector": detector, "node": node, "shutting_down": shutting_down}
 
 
 def teardown_detection(handle: Optional[dict], state: SharedState) -> None:
     if handle is None:
         return
     log.info("detection: total fired = %d", state.detection_count)
+    # First: stop accepting new frames so the Detector queue can drain.
+    handle["shutting_down"]["v"] = True
+    # Drain any in-flight frames quickly with a hard cap so we exit.
     try:
-        handle["detector"].stop()
+        det = handle["detector"]
+        det.stop_event.set()
+        # Manually join workers with a per-worker timeout instead of
+        # Detector.stop()'s unbounded join (which can block if queue is huge).
+        for t in det.workers:
+            t.join(timeout=5.0)
+            if t.is_alive():
+                log.warning("detection: worker thread still alive after 5s; abandoning")
     except Exception:
-        log.exception("Detector.stop() failed during teardown")
+        log.exception("Detector teardown failed")
     # gz-transport Node has no clean unsubscribe API; it'll exit with the
     # process. Drop our reference so it can be garbage-collected.
     handle["node"] = None
@@ -611,8 +629,14 @@ def setup_mapping(
 
     K = np.array(DEPTH_K, dtype=np.float32)
 
+    # Shutdown flag — same pattern as detection. Lets the mapping task drain
+    # its current depth frame and exit without the callback re-arming work.
+    shutting_down = {"v": False}
+
     def depth_callback(msg):
         """Runs in gz-transport's own thread."""
+        if shutting_down["v"]:
+            return
         try:
             depth = np.frombuffer(msg.data, dtype=np.float32)
             depth = depth.reshape((msg.height, msg.width))
@@ -675,6 +699,7 @@ def setup_mapping(
         "last_render": 0.0,
         "seq": 0,
         "stop": threading.Event(),
+        "shutting_down": shutting_down,
     }
     return handle
 
@@ -762,6 +787,8 @@ async def mapping_task(handle: Optional[dict], state: SharedState) -> None:
 def teardown_mapping(handle: Optional[dict], state: SharedState) -> None:
     if handle is None:
         return
+    # Stop accepting new depth frames first.
+    handle["shutting_down"]["v"] = True
     pts = handle["points"]
     state.map_points_count = int(pts.shape[0])
     try:
@@ -937,6 +964,21 @@ WAYPOINTS = [
     ( 0.0,  0.0, -2.0, 0.0,  3.0, "left 2 m, back to start"),
 ]
 
+# Scan pattern: hold position at spawn, spin 360° in 4× 90° steps with long
+# holds so the camera + detector can settle on each cardinal view. Pure yaw
+# at fixed XY should not trip the EKF the way yaw+translation did on v1.
+SCAN_WAYPOINTS = [
+    # (north, east, down, yaw_deg, hold_s, label)
+    ( 0.0,  0.0, -2.0,   0.0, 4.0, "hover, face N"),
+    ( 0.0,  0.0, -2.0,  90.0, 6.0, "yaw to E (face barrels on right wall)"),
+    ( 0.0,  0.0, -2.0, 180.0, 6.0, "yaw to S"),
+    ( 0.0,  0.0, -2.0, 270.0, 6.0, "yaw to W (face barrels on left wall)"),
+    ( 0.0,  0.0, -2.0, 359.9, 4.0, "yaw back to ~N (avoid wrap from 270 to 0)"),
+]
+
+# Which list to fly (set by main() from --pattern flag)
+ACTIVE_WAYPOINTS = WAYPOINTS
+
 ARRIVE_TOL_XY = 0.4   # m
 ARRIVE_TOL_YAW = 8.0  # deg
 
@@ -957,13 +999,13 @@ def _yaw_err(state: SharedState, target_yaw: float) -> float:
 
 async def planner(state: SharedState) -> None:
     """Step through the scripted waypoint list, writing targets for the pumper."""
-    log.info("planner started; %d waypoints", len(WAYPOINTS))
-    for i, (n, e, d, yaw, hold, label) in enumerate(WAYPOINTS):
+    log.info("planner started; %d waypoints", len(ACTIVE_WAYPOINTS))
+    for i, (n, e, d, yaw, hold, label) in enumerate(ACTIVE_WAYPOINTS):
         if state.abort_requested:
             log.info("planner aborting before waypoint %d", i)
             return
         log.info("WP %d/%d — %s   target=(N=%.1f E=%.1f D=%.1f yaw=%.0f)",
-                 i + 1, len(WAYPOINTS), label, n, e, d, yaw)
+                 i + 1, len(ACTIVE_WAYPOINTS), label, n, e, d, yaw)
         state.target_north = n
         state.target_east = e
         state.target_down = d
@@ -1165,14 +1207,26 @@ def main() -> int:
              "the gz depth topic is unavailable; flight proceeds without "
              "the map (judges then observe 'no map' for tiebreakers).",
     )
+    ap.add_argument(
+        "--pattern",
+        default="square",
+        choices=("square", "scan"),
+        help="Flight pattern. 'square' = 2m smoke-test square (Phase 1 default). "
+             "'scan' = hover at spawn, yaw 360° in 4×90° steps so the camera "
+             "sees all cardinal directions (detection probe).",
+    )
     args = ap.parse_args()
     logging.getLogger().setLevel(args.log_level)
+
+    global ACTIVE_WAYPOINTS
+    ACTIVE_WAYPOINTS = SCAN_WAYPOINTS if args.pattern == "scan" else WAYPOINTS
 
     log.info("==== searchctl controller v0.4 (Phase 1 + Phase 2 + fake-GCS + mapping) ====")
     log.info("logs at %s", LOG_FILE)
     log.info("detection:  %s", "OFF (--no-detect)" if args.no_detect else "ON")
     log.info("fake-GCS:   %s", "OFF (--no-fake-gcs)" if args.no_fake_gcs else "ON")
     log.info("mapping:    %s", "OFF (--no-map)" if args.no_map else "ON")
+    log.info("pattern:    %s (%d WPs)", args.pattern, len(ACTIVE_WAYPOINTS))
     try:
         return asyncio.run(run(
             detect_enabled=not args.no_detect,

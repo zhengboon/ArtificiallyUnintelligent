@@ -19,6 +19,17 @@ maze_gen/output/*.png
 # Team logistics — not for public repo
 challenge/qualifier_booking.md
 
+# Thumbdrive build artifacts (regenerable via make_thumbdrive.sh)
+thumbdrive/ArtificiallyUnintelligent.tar.gz
+thumbdrive/best.pt
+thumbdrive/wheels/
+
+# YOLO training output (huge)
+runs/
+
+# Jupyter checkpoints
+**/.ipynb_checkpoints/
+
 # Python build artifacts
 **/__pycache__/
 *.pyc
