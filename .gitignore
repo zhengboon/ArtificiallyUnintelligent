@@ -22,6 +22,7 @@ challenge/qualifier_booking.md
 # Thumbdrive build artifacts (regenerable via make_thumbdrive.sh)
 thumbdrive/ArtificiallyUnintelligent.tar.gz
 thumbdrive/best.pt
+thumbdrive/verylousymodel.pt
 thumbdrive/wheels/
 
 # YOLO training output (huge)

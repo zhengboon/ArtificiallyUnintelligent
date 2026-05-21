@@ -53,7 +53,7 @@ from typing import Any, Optional
 
 from mavsdk import System
 from mavsdk.action import ActionError
-from mavsdk.offboard import OffboardError, PositionNedYaw, VelocityNedYaw
+from mavsdk.offboard import OffboardError, PositionNedYaw, VelocityNedYaw, VelocityBodyYawspeed
 
 # Detection deps are imported lazily inside setup_detection() so the
 # controller still runs Phase-1-only without them installed.
@@ -116,6 +116,15 @@ class SharedState:
 
     # ---- Mapping state (Phase 7; populated by mapping task) ----
     map_points_count: int = 0       # rolling count of accumulated obstacle points
+
+    # ---- Wall-following / velocity-mode state (K's planner) ----
+    # When True, setpoint_pumper sends VelocityBodyYawspeed (forward / right /
+    # down / yaw-rate) instead of PositionNedYaw. Set by planner_wall().
+    velocity_mode: bool = False
+    vel_fwd: float = 0.0       # m/s, body-frame forward
+    vel_right: float = 0.0     # m/s, body-frame right (positive = strafe right)
+    vel_down: float = 0.0      # m/s, body-frame down (positive = descend)
+    yaw_rate_deg: float = 0.0  # deg/s
 
 
 @dataclass
@@ -264,19 +273,34 @@ async def setpoint_pumper(drone: Drone, state: SharedState, hz: float = 10.0) ->
 
     This is the lifeline — PX4 must see a setpoint at least every 0.5 s or
     it'll failsafe-land. We send at 10 Hz with plenty of margin.
+
+    Branches on state.velocity_mode:
+      False (default): sends PositionNedYaw — used by 'square' / 'scan' planners
+      True:            sends VelocityBodyYawspeed — used by K's wall-follow
+                       planner (forward / right / down / yawspeed_deg)
     """
     period = 1.0 / hz
     sent = 0
     while not state.abort_requested:
         try:
-            await drone.drone.offboard.set_position_ned(
-                PositionNedYaw(
-                    state.target_north,
-                    state.target_east,
-                    state.target_down,
-                    state.target_yaw,
+            if state.velocity_mode:
+                await drone.drone.offboard.set_velocity_body(
+                    VelocityBodyYawspeed(
+                        state.vel_fwd,
+                        state.vel_right,
+                        state.vel_down,
+                        state.yaw_rate_deg,
+                    )
                 )
-            )
+            else:
+                await drone.drone.offboard.set_position_ned(
+                    PositionNedYaw(
+                        state.target_north,
+                        state.target_east,
+                        state.target_down,
+                        state.target_yaw,
+                    )
+                )
             sent += 1
             if sent % (int(hz) * 5) == 0:  # every ~5 seconds
                 log.debug(
@@ -398,7 +422,10 @@ IMAGE_TOPIC_DEFAULT = (
 
 WORKSHOP_CODES_DIR = os.path.expanduser("~/ArtificiallyUnintelligent/codes/Codes")
 YOLO_WEIGHTS_DEFAULT = os.path.expanduser("~/ArtificiallyUnintelligent/models/best.pt")
-DETECT_CONFIDENCE_DEFAULT = 0.5
+# 0.35 (was 0.5). Org confirmed 21/5/2026 no penalty for incorrect detections,
+# so we err on the side of firing more often. Verylousymodel fired at 0.50-0.52
+# in our 20/5 test, right at the old threshold's edge.
+DETECT_CONFIDENCE_DEFAULT = 0.35
 
 # WORKSHOP_CODES_DIR = os.path.expanduser("~/Desktop/codes")
 # YOLO_WEIGHTS_DEFAULT = os.path.join(WORKSHOP_CODES_DIR, "yolov10n.pt")
@@ -488,6 +515,19 @@ def setup_detection(
     except Exception:
         log.exception("Detector failed to init; running without detection")
         return None
+
+    # K's best.pt names classes with spaces ("yellow barrel" / "red barrel" /
+    # "toxic barrel"). Org's example image (the qualifier reference) and
+    # org's verylousymodel.pt both use underscores ("yellow_barrel" /
+    # "red_barrel"). Remap so saved bbox JPGs + log lines + run_summary.json
+    # all match the format judges will be looking for.
+    try:
+        remap = {0: "yellow_barrel", 1: "red_barrel", 2: "toxic_barrel"}
+        original_names = dict(detector.model.names) if hasattr(detector.model, "names") else {}
+        detector.model.names = remap
+        log.info("detection: class names remapped: %s -> %s", original_names, remap)
+    except Exception:
+        log.warning("detection: could not remap class names; using model defaults")
 
     # Shutdown flag: teardown_detection flips this, image_callback then
     # short-circuits, queue stops growing, Detector workers can drain + exit.
@@ -717,6 +757,30 @@ def _local_to_ned_global(local_xy, north, east, yaw_rad, np_mod):
     north_g = north + Zc * c - Xc * s
     east_g = east + Zc * s + Xc * c
     return np_mod.column_stack([north_g, east_g])
+
+
+def _depth_to_points_3d(depth, K, np_mod, stride=2):
+    """Convert HxW depth image -> Nx3 point cloud in camera optical frame.
+
+    Output columns: [x_right, y_down, z_forward] in metres. Same convention
+    as the workshop's depthcloud.PointCloud.convert (which K's
+    wall_following.get_wall_distances expects).
+
+    'stride' downsamples by every-other-pixel for speed (matches workshop).
+    """
+    d = depth[::stride, ::stride]
+    h, w = d.shape
+    fx = float(K[0, 0])
+    fy = float(K[1, 1])
+    cx = float(K[0, 2]) / stride
+    cy = float(K[1, 2]) / stride
+    i, j = np_mod.meshgrid(np_mod.arange(w), np_mod.arange(h))
+    z = d.astype(np_mod.float32)
+    x = (i - cx) * z / fx
+    y = (j - cy) * z / fy
+    # Drop invalid (zero / NaN / very-far) returns to keep the cloud sane.
+    mask = (z > 0.05) & (z < 15.0) & np_mod.isfinite(z)
+    return np_mod.stack((x[mask], y[mask], z[mask]), axis=-1)
 
 
 async def mapping_task(handle: Optional[dict], state: SharedState) -> None:
@@ -1044,6 +1108,159 @@ async def planner(state: SharedState) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Wall-following planner — K's algorithm (searchctl/wall_following.py)
+# ---------------------------------------------------------------------------
+#
+# Flow:
+#   1. Pull the latest depth frame from the mapping pipeline's `latest` dict
+#      (mapping must be ON — otherwise we have no depth source)
+#   2. Project depth -> Nx3 point cloud (camera optical frame)
+#   3. K's get_wall_distances() -> {front, front_right, right} in metres
+#   4. K's WallFollower.compute() -> (vx, vy, vz, yaw_rate)  [body frame]
+#   5. Smooth via K's VelocitySmoother
+#   6. Write into state (with yaw_rate converted rad/s -> deg/s)
+#   7. Flip state.velocity_mode = True so the setpoint pumper sends
+#      VelocityBodyYawspeed instead of PositionNedYaw
+#   8. Loop at ~10 Hz until time budget hits or abort flag flips
+#
+# Time-cap defaults to 8 min so the controller ALWAYS gets to landing within
+# the 10-min qualifier run. Land + teardown takes another ~15 s.
+
+WALL_FOLLOW_BUDGET_S      = 480.0   # 8 minutes, leaves headroom inside the 10-min run cap
+WALL_FOLLOW_HZ            = 10.0    # match K's tick rate assumptions in WallFollower
+WALL_SCAN_EVERY_S         = 30.0    # do a periodic 360° scan every N seconds
+WALL_SCAN_YAW_RATE_DEG    = 60.0    # deg/s during scan (full 360 takes 6 s)
+WALL_SCAN_DURATION_S      = 7.0     # slightly longer than 360/rate so we overshoot a bit
+
+
+async def planner_wall(state: SharedState, map_handle: Optional[dict]) -> None:
+    """K's wall-following loop. Requires the mapping pipeline to be active
+    (we reuse its depth subscription instead of opening a second one)."""
+    if map_handle is None:
+        log.error(
+            "planner_wall requires the Phase 7 mapping pipeline "
+            "(don't pass --no-map). Aborting wall planner."
+        )
+        state.abort_requested = True
+        return
+
+    try:
+        # Live import so the controller still parses + runs --pattern square
+        # even if wall_following.py is missing for some reason.
+        from wall_following import WallFollower, get_wall_distances, VelocitySmoother
+    except Exception:
+        log.exception(
+            "could not import searchctl/wall_following.py; aborting wall planner"
+        )
+        state.abort_requested = True
+        return
+
+    follower = WallFollower()
+    smoother = VelocitySmoother()
+    np = map_handle["np"]
+    K = map_handle["K"]
+    latest = map_handle["latest"]
+    latest_lock = map_handle["latest_lock"]
+
+    state.velocity_mode = True
+    state.vel_fwd = state.vel_right = state.vel_down = state.yaw_rate_deg = 0.0
+    log.info(
+        "planner_wall: started (budget=%.0fs, hz=%.0f, scan every %.0fs)",
+        WALL_FOLLOW_BUDGET_S, WALL_FOLLOW_HZ, WALL_SCAN_EVERY_S,
+    )
+    period = 1.0 / WALL_FOLLOW_HZ
+    start_ts = time.monotonic()
+    deadline = start_ts + WALL_FOLLOW_BUDGET_S
+    next_scan_at = start_ts + WALL_SCAN_EVERY_S
+    ticks = 0
+    last_log = 0.0
+
+    async def _do_360_scan() -> None:
+        """Stop wall-follow, yaw in place ~360° so the camera sees all
+        directions, then return so wall-follow can resume. K's planned
+        'wall + periodic scan' strategy. Detection callback fires from
+        a separate thread so YOLO keeps running through this."""
+        log.info("wall: pausing for 360° scan (%.1fs at %.0f deg/s)",
+                 WALL_SCAN_DURATION_S, WALL_SCAN_YAW_RATE_DEG)
+        scan_end = time.monotonic() + WALL_SCAN_DURATION_S
+        while time.monotonic() < scan_end and not state.abort_requested:
+            state.vel_fwd = 0.0
+            state.vel_right = 0.0
+            state.vel_down = 0.0
+            state.yaw_rate_deg = WALL_SCAN_YAW_RATE_DEG
+            state.last_planner_progress = time.monotonic()
+            await asyncio.sleep(period)
+        # Stop yawing, brief settle before wall-follow resumes.
+        state.yaw_rate_deg = 0.0
+        await asyncio.sleep(0.5)
+        # Reset K's FSM so it re-acquires the wall cleanly post-rotation.
+        try:
+            follower.state = "find_wall"
+            follower._corner_ticks = 0
+            follower._avoid_cooldown = 0
+        except Exception:
+            pass
+        log.info("wall: scan complete; resuming wall-follow")
+
+    while time.monotonic() < deadline and not state.abort_requested:
+        # Periodic 360 — K's hybrid plan (wall-follow + scan stations)
+        if time.monotonic() >= next_scan_at:
+            await _do_360_scan()
+            next_scan_at = time.monotonic() + WALL_SCAN_EVERY_S
+            continue  # back to top of loop, re-check abort/deadline
+
+        with latest_lock:
+            depth = latest["depth"]
+        if depth is None:
+            await asyncio.sleep(0.1)
+            continue
+
+        try:
+            pts = _depth_to_points_3d(depth, K, np)
+            regions = get_wall_distances(pts)
+            vx_body, vy_body, vz_body, yaw_rate_rad = follower.compute(regions)
+            smoothed = smoother.smooth((vx_body, vy_body, vz_body, yaw_rate_rad))
+            state.vel_fwd       = float(smoothed[0])
+            state.vel_right     = float(smoothed[1])
+            state.vel_down      = float(smoothed[2])
+            state.yaw_rate_deg  = float(smoothed[3]) * 180.0 / math.pi
+            state.last_planner_progress = time.monotonic()
+            ticks += 1
+            now = time.monotonic()
+            if now - last_log > 5.0:
+                log.info(
+                    "wall: state=%s front=%.2f right=%.2f "
+                    "vel=(fwd=%.2f, right=%.2f, yawrate=%.0f deg/s) ticks=%d "
+                    "next_scan_in=%.1fs",
+                    follower.state, regions["front"], regions["right"],
+                    state.vel_fwd, state.vel_right, state.yaw_rate_deg,
+                    ticks, max(0.0, next_scan_at - now),
+                )
+                last_log = now
+        except Exception:
+            log.exception("planner_wall tick failed (continuing)")
+
+        await asyncio.sleep(period)
+
+    # Zero out the velocity setpoint cleanly before handing back to land path.
+    state.vel_fwd = state.vel_right = state.vel_down = state.yaw_rate_deg = 0.0
+    # Hold position for half a second by sending zero velocity, then flip
+    # back to position mode targeting current pose (so the land step has a
+    # stable position setpoint to fall back on if needed).
+    await asyncio.sleep(0.5)
+    state.target_north = state.north_m
+    state.target_east = state.east_m
+    state.target_down = state.down_m
+    state.target_yaw = state.yaw_deg
+    state.velocity_mode = False
+    log.info(
+        "planner_wall: exiting (ticks=%d, elapsed=%.1fs, hold pos N=%.2f E=%.2f)",
+        ticks, WALL_FOLLOW_BUDGET_S - (deadline - time.monotonic()),
+        state.target_north, state.target_east,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Main + signal handling
 # ---------------------------------------------------------------------------
 async def emergency_land(drone: Drone, state: SharedState) -> None:
@@ -1065,6 +1282,7 @@ async def run(
     detect_enabled: bool = True,
     fake_gcs_enabled: bool = True,
     map_enabled: bool = True,
+    pattern: str = "square",
 ) -> int:
     state = SharedState()
     drone = Drone()
@@ -1136,9 +1354,13 @@ async def run(
         if map_handle is not None:
             map_task = asyncio.create_task(mapping_task(map_handle, state), name="mapping")
 
-        # Run the scripted planner. Wraps in try so we always land afterward.
+        # Run the chosen planner. Wraps in try so we always land afterward.
         try:
-            await planner(state)
+            if pattern == "wall":
+                await planner_wall(state, map_handle)
+            else:
+                # 'square' and 'scan' both walk ACTIVE_WAYPOINTS
+                await planner(state)
         finally:
             state.abort_requested = True
             bg_tasks = [pumper_task, wd_task, div_task, telem_task]
@@ -1210,10 +1432,15 @@ def main() -> int:
     ap.add_argument(
         "--pattern",
         default="square",
-        choices=("square", "scan"),
-        help="Flight pattern. 'square' = 2m smoke-test square (Phase 1 default). "
+        choices=("square", "scan", "wall"),
+        help="Flight pattern. "
+             "'square' = 2m smoke-test square (Phase 1 default, position mode). "
              "'scan' = hover at spawn, yaw 360° in 4×90° steps so the camera "
-             "sees all cardinal directions (detection probe).",
+             "sees all cardinal directions (position mode, detection probe). "
+             "'wall' = K's wall-following algorithm "
+             "(searchctl/wall_following.py). Velocity mode, reads depth "
+             "frames from the Phase 7 mapping pipeline, so requires --no-map "
+             "to NOT be set.",
     )
     args = ap.parse_args()
     logging.getLogger().setLevel(args.log_level)
@@ -1226,12 +1453,20 @@ def main() -> int:
     log.info("detection:  %s", "OFF (--no-detect)" if args.no_detect else "ON")
     log.info("fake-GCS:   %s", "OFF (--no-fake-gcs)" if args.no_fake_gcs else "ON")
     log.info("mapping:    %s", "OFF (--no-map)" if args.no_map else "ON")
-    log.info("pattern:    %s (%d WPs)", args.pattern, len(ACTIVE_WAYPOINTS))
+    if args.pattern == "wall":
+        log.info("pattern:    wall (K's wall-following; velocity mode)")
+        if args.no_map:
+            log.error("--pattern wall requires the mapping pipeline (it reads "
+                      "depth frames from there). Don't pass --no-map.")
+            return 1
+    else:
+        log.info("pattern:    %s (%d WPs)", args.pattern, len(ACTIVE_WAYPOINTS))
     try:
         return asyncio.run(run(
             detect_enabled=not args.no_detect,
             fake_gcs_enabled=not args.no_fake_gcs,
             map_enabled=not args.no_map,
+            pattern=args.pattern,
         ))
     except KeyboardInterrupt:
         return 130

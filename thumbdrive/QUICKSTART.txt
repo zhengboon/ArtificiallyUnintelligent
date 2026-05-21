@@ -1,0 +1,70 @@
+==============================================================
+  ArtificiallyUnintelligent — Qualifier-day Quick Start
+  Fri 22 May 2026 14:00 SGT  |  Orchard Grand Court, Lloyd I/II
+==============================================================
+
+PLUG ME IN. Then in the VM terminal:
+
+  cp -r /media/$USER/<USB_LABEL>/* ~/thumbdrive/
+  cd ~/thumbdrive
+  bash setup.sh
+
+setup.sh will:
+  1. Untar the repo to ~/ArtificiallyUnintelligent
+  2. Copy K's best.pt weights into models/
+  3. pip install --user from offline wheels (pymavlink, onnxruntime, etc)
+  4. Print the next commands to type
+
+Then YOU type these by hand:
+
+  (Terminal 1)
+    ~/start_px4.sh
+    -> 1 (x500_vision)
+    -> 1 (roboverse)
+    -> 2 (skip QGC, fake-GCS handles it)
+    Wait for `pxh>` prompt, then:
+    commander set_ekf_origin 47.397742 8.545594 488.0
+
+  (Terminal 2 — pick ONE)
+    cd ~/ArtificiallyUnintelligent/searchctl
+
+    # Recommended for qualifier: K's wall-following (8-min cap, auto-lands)
+    python3 controller.py --pattern wall
+
+    # Alternative: hover at spawn, yaw 360 in 4 steps (good for detection probe)
+    python3 controller.py --pattern scan
+
+    # Smoke test only (drone flies tiny square, no detection / no map):
+    python3 controller.py --no-detect --no-map --no-fake-gcs
+
+DETECTION MODEL: K's best.pt is the default (3 classes — yellow/red/toxic
+oil-drums, toxic filtered out at output, label names remapped to underscores
+to match the org's example image: 'yellow_barrel' / 'red_barrel').
+Confidence threshold = 0.35 (org confirmed no penalty for false positives).
+
+Outputs land at: ~/ArtificiallyUnintelligent/searchctl/run_<ts>/
+  map.png            <- show the judge
+  detections/*.jpg   <- show the judge (bbox images)
+  run_summary.json   <- has total flight time + detection count
+
+DISK HYGIENE (if you see "no space left" or VM is >90% full):
+  rm -rf ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*
+  rm -rf ~/ArtificiallyUnintelligent/searchctl/run_*
+  rm -f ~/ArtificiallyUnintelligent/searchctl/logs/run_*.log
+  pip cache purge
+
+IF SOMETHING BREAKS:
+  - USB #1 broken -> try USB #2 (identical copy)
+  - Drone won't arm -> did you set EKF origin? Re-do it in pxh> console
+  - QGC needed -> our fake-GCS heartbeat should make PX4 happy without it
+  - Camera missing -> python3 controller.py --no-detect (still flies + maps)
+  - Map crash -> python3 controller.py --no-map (still flies + detects)
+  - Everything else -> python3 controller.py --no-detect --no-map --no-fake-gcs
+
+  Per org 18/5: judges will NOT help with setup. We're on our own.
+  Per org 18/5: 40-min slot total, multiple 10-min runs allowed.
+  Per org 20/5: VM reset between teams (ask judge if you need a fresh one).
+
+==============================================================
+  More detail in:  ~/thumbdrive/README.md  (and runbook.md)
+==============================================================
