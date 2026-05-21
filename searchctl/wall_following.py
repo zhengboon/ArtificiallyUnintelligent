@@ -48,10 +48,18 @@ def get_wall_distances(points):
     else:
         right = 10.0
 
+    # # 'left' uses lateral x distance directly — wall beside drone on left
+    # # only consider points in the forward-left quadrant (z > 0, x < 0)
+    # left_mask = (x < 0) & (z > 0.6) & (angle <= -25)
+    # if np.any(left_mask):
+    #     left = float(np.min(np.abs(x[left_mask])))
+    # else:
+    #     left = 10.0
+
     return {
         'front':       front,
         'front_right': front_right,
-        'right':       right,
+        'right':       right
     }
 
 
@@ -62,12 +70,12 @@ class WallFollower:
     DESIRED_DIST  = 1.2
     LINEAR_SPEED  = 0.7
     STRAFE_SPEED  = 0.4
-    TURN_SPEED    = 0.5   # rad/s for corner yaw
+    TURN_SPEED    = 0.7   # rad/s for corner yaw
     KP            = 0.7
     WALL_LOST_DIST = DESIRED_DIST + 0.3
-    CORNER_PHASE1_TICKS = 177   # forward: 257 originally
-    CORNER_PHASE2_TICKS = 90   # yaw (added on top)
-    CORNER_PHASE3_TICKS = 20   # forward (added on top)
+    CORNER_PHASE1_TICKS = 140   # forward: 257 originally
+    CORNER_PHASE2_TICKS = 105   # yaw (added on top)
+    CORNER_PHASE3_TICKS = 15   # forward (added on top)
     CORNER_TURN = 0.35
 
     def __init__(self):
@@ -81,7 +89,7 @@ class WallFollower:
         right = regions['right']
 
         # --- State transitions ---
-        if self.state != 'avoid_front' and self.state != 'outer_corner' and front < 2.8:
+        if self.state != 'avoid_front' and self.state != 'outer_corner' and front < 2.0:
             self._pre_avoid_state = self.state
             self.state = 'avoid_front'
         elif self.state == 'avoid_front' and front >= 1.8:
