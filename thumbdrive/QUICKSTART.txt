@@ -48,9 +48,18 @@ to match the org's example image: 'yellow_barrel' / 'red_barrel').
 Confidence threshold = 0.35 (org confirmed no penalty for false positives).
 
 Outputs land at: ~/ArtificiallyUnintelligent/searchctl/run_<ts>/
-  map.png            <- show the judge
+  STATUS.txt         <- live status: eligibility + bonus countdown + base score
+  map.png            <- show the judge (now has detection markers!)
   detections/*.jpg   <- show the judge (bbox images)
-  run_summary.json   <- has total flight time + detection count
+  run_summary.json   <- has total flight time + unique counts + per-pose
+
+After all runs, pick the best:
+  cd ~/ArtificiallyUnintelligent/searchctl
+  python3 slot_summary.py   <- estimates scores across all runs, shows winner
+
+At-venue tuning (no code edits needed):
+  --altitude 2.5    higher cruise if locker barrels look too high
+  --conf 0.25       lower confidence if K's model isn't firing
 
 DISK HYGIENE (if you see "no space left" or VM is >90% full):
   rm -rf ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*

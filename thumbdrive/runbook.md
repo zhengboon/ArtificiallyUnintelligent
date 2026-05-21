@@ -140,12 +140,22 @@
 - [ ] Per org: drone restarts at takeoff after each run. State doesn't persist.
 
 ### Step 8 (T+34–38 min): Show the judge
-- [ ] Judge-talker opens `~/ArtificiallyUnintelligent/searchctl/run_<latest>/`
+- [ ] Judge-talker runs the slot summary first:
+  ```bash
+  cd ~/ArtificiallyUnintelligent/searchctl
+  python3 slot_summary.py
+  ```
+  This scans every run we did and identifies the best by estimated score.
+  Output also lands in `slot_summary.txt` — show that to the judge.
+- [ ] Open `~/ArtificiallyUnintelligent/searchctl/run_<latest>/`
 - [ ] Show:
+  - `STATUS.txt` — plain-text live status, includes ELIGIBLE / base score / next-action
   - `detections/*.jpg` — bbox images with `yellow_barrel` / `red_barrel` labels
-  - `map.png` — the top-down obstacle map (proves "mapping is being done")
-  - `run_summary.json` — flight time + detection count + per-detection poses
-- [ ] Say: "We detected N barrels (X yellow, Y red), built a map of the arena, total flight time was Z seconds across N runs."
+  - `map.png` — top-down obstacle map WITH colored detection markers
+    (yellow circles = yellow_barrel finds, red squares = red_barrel finds)
+  - `run_summary.json` — flight time + per-detection poses + unique counts
+- [ ] Say: "We detected N unique barrels (X yellow, Y red), built a map of
+  the arena with marker positions, total best-attempt flight time was Z s."
 
 ### Step 9 (T+38–40 min): Pack up
 - [ ] Keyboard: copy outputs to USB:

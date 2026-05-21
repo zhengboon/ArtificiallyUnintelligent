@@ -788,7 +788,13 @@ def setup_mapping(
     log.info("mapping: subscribed to %s", depth_topic)
 
     def _render_png(pts, drone_pose, out_path: Path) -> None:
-        """Save a top-down obstacle map to PNG. Runs in a worker thread."""
+        """Save a top-down obstacle map to PNG. Runs in a worker thread.
+
+        Includes detection markers so the judge looking at the live map.png
+        sees concrete visual proof of WHAT the drone found and WHERE — the
+        scoring 'observation' criterion ('how many objects detected') is
+        directly answered by the colored dots on this image.
+        """
         try:
             fig, ax = plt.subplots(figsize=(8, 8))
             if pts.shape[0] > 0:
@@ -798,16 +804,42 @@ def setup_mapping(
                     pts[:, 0],  # north on Y axis
                     c=dists, s=2, cmap="viridis", edgecolors="none",
                 )
+            # Detection markers: cluster by NED pose at-detect, draw a marker
+            # per UNIQUE cluster (not per raw frame — otherwise repeat firings
+            # on the same barrel produce a blob of markers). We use the same
+            # 1.5 m cluster radius as compute_unique_detections so what the
+            # judge sees on the map matches the count in STATUS.txt.
+            try:
+                clusters_y, clusters_r, clusters_t = _detection_clusters(state.detections)
+                for n, e in clusters_y:
+                    ax.plot(e, n, marker="o", markersize=12, markerfacecolor="gold",
+                            markeredgecolor="black", markeredgewidth=1.2, linestyle="None",
+                            label="yellow_barrel" if (n, e) == clusters_y[0] else None)
+                for n, e in clusters_r:
+                    ax.plot(e, n, marker="s", markersize=12, markerfacecolor="red",
+                            markeredgecolor="black", markeredgewidth=1.2, linestyle="None",
+                            label="red_barrel" if (n, e) == clusters_r[0] else None)
+                for n, e in clusters_t:
+                    ax.plot(e, n, marker="x", markersize=10, color="dimgray",
+                            label="toxic_barrel" if (n, e) == clusters_t[0] else None)
+            except Exception:
+                log.exception("detection-marker overlay failed (continuing map render)")
             if drone_pose is not None:
-                ax.plot(drone_pose[1], drone_pose[0], "r*", markersize=14, label="drone")
-                ax.legend(loc="upper right")
+                ax.plot(drone_pose[1], drone_pose[0], marker="*", markersize=18,
+                        markerfacecolor="cyan", markeredgecolor="black",
+                        linestyle="None", label="drone")
+            # Always show a legend if we drew anything other than the cloud.
+            if drone_pose is not None or any(state.detections):
+                ax.legend(loc="upper right", fontsize=9)
             ax.set_xlabel("East [m]")
             ax.set_ylabel("North [m]")
             ax.set_aspect("equal")
             ax.grid(alpha=0.3)
+            unique = compute_unique_detections(state.detections)
             ax.set_title(
-                f"top-down map  |  points={pts.shape[0]}  |  "
-                f"detections={state.detection_count}"
+                f"top-down map  |  points={pts.shape[0]}  |  unique: "
+                f"{unique.get('yellow_barrel', 0)}Y {unique.get('red_barrel', 0)}R "
+                f"(raw {state.detection_count})"
             )
             fig.savefig(out_path, dpi=90, bbox_inches="tight")
             plt.close(fig)
@@ -978,6 +1010,40 @@ def teardown_mapping(handle: Optional[dict], state: SharedState) -> None:
 DETECTION_CLUSTER_RADIUS_M = 1.5
 
 
+def _detection_clusters(detections: list, radius_m: float = DETECTION_CLUSTER_RADIUS_M) -> tuple:
+    """Return three lists of (north, east) cluster centroids, one per class.
+
+    Same clustering logic as compute_unique_detections but exposes the
+    *positions* (not just counts) so the map renderer can draw a marker
+    per unique barrel at its approximate location. The position used is
+    the drone's pose at detect time — proxy for the barrel's true world
+    position, accurate to a few metres since the drone tends to fly
+    close-ish when YOLO fires.
+
+    Returns: (yellow_clusters, red_clusters, toxic_clusters) where each
+    element is a list of (north, east) tuples.
+    """
+    by_class: dict[str, list[tuple[float, float]]] = {
+        "yellow_barrel": [], "red_barrel": [], "toxic_barrel": [],
+    }
+    for d in detections:
+        cls = (d.class_name or "").lower().replace(" ", "_")
+        if cls not in by_class:
+            continue
+        try:
+            n, e, *_ = d.pose_at_detect
+        except Exception:
+            continue
+        merged = False
+        for cn, ce in by_class[cls]:
+            if math.hypot(n - cn, e - ce) <= radius_m:
+                merged = True
+                break
+        if not merged:
+            by_class[cls].append((float(n), float(e)))
+    return by_class["yellow_barrel"], by_class["red_barrel"], by_class["toxic_barrel"]
+
+
 def compute_unique_detections(detections: list, radius_m: float = DETECTION_CLUSTER_RADIUS_M) -> dict:
     """Cluster detection records into unique physical barrels.
 
@@ -1068,22 +1134,72 @@ def write_run_summary(state: SharedState, run_dir: Path) -> None:
 def _format_status_text(state: SharedState, summary: dict) -> str:
     """Human-readable plain text dump of current flight state. Written to
     run_<ts>/STATUS.txt every 5s. Judges can `cat` this without opening
-    a terminal viewer or a JSON parser."""
+    a terminal viewer or a JSON parser.
+
+    Includes a per-attempt score estimate using the qualifier PDF rubric:
+    50 pts per unique yellow, 100 pts per unique red, eligibility floor of
+    >=1 of each. Bonus is NOT shown live (we can't know N_yellow / N_red
+    so the 'found all of a colour' bonus is unverifiable mid-flight) — but
+    the bonus-window countdown is shown so the screen-watcher knows whether
+    we're still inside the 5-min deadline.
+    """
     elapsed = None
     if state.takeoff_ts is not None:
         end = state.land_ts if state.land_ts is not None else time.time()
         elapsed = end - state.takeoff_ts
     unique = summary["unique_detections"]
+    y_uniq = unique.get("yellow_barrel", 0)
+    r_uniq = unique.get("red_barrel", 0)
+    eligible = y_uniq >= 1 and r_uniq >= 1
+    base_score = 50 * y_uniq + 100 * r_uniq if eligible else 0
+    bonus_remaining = max(0.0, 300.0 - elapsed) if elapsed is not None else None
+    bonus_window_status = (
+        "EXPIRED" if (bonus_remaining is not None and bonus_remaining <= 0)
+        else (f"{bonus_remaining:5.1f}s remaining" if bonus_remaining is not None else "—")
+    )
+
+    if state.land_ts is not None:
+        run_state = "LANDED"
+    elif state.abort_requested:
+        run_state = "ABORTED"
+    else:
+        run_state = "RUNNING"
+
+    # Next-action hint — keeps the screen-watcher from guessing.
+    if run_state == "LANDED":
+        next_hint = "RUN COMPLETE — copy run dir to USB, show judge."
+    elif state.abort_requested:
+        next_hint = "ABORT IN PROGRESS — wait for land + disarm."
+    elif not eligible:
+        if y_uniq == 0 and r_uniq == 0:
+            next_hint = "no detections yet — keep flying, scan more angles"
+        elif y_uniq == 0:
+            next_hint = "need a YELLOW for eligibility — keep searching"
+        else:
+            next_hint = "need a RED for eligibility — keep searching"
+    else:
+        if bonus_remaining and bonus_remaining > 30:
+            next_hint = "ELIGIBLE — bonus window open, look for more barrels"
+        elif bonus_remaining and bonus_remaining > 0:
+            next_hint = "ELIGIBLE — bonus closing, consider early-land"
+        else:
+            next_hint = "ELIGIBLE — bonus window closed, just maximise count"
+
     lines = [
         f"BrainHack 2026 RoboVerse — run {RUN_TS}",
-        f"  status: {'ABORTED' if state.abort_requested else 'RUNNING' if state.land_ts is None else 'LANDED'}",
+        f"  status: {run_state}",
         f"  flight time: {('%.1f s' % elapsed) if elapsed is not None else '—'}",
+        f"  bonus window (<5:00): {bonus_window_status}",
         f"  armed: {state.armed}  in_air: {state.in_air}  mode: {state.flight_mode}",
         f"  pose: N={state.north_m:+.2f}m  E={state.east_m:+.2f}m  D={state.down_m:+.2f}m  yaw={state.yaw_deg:.0f}°",
         "",
-        f"  unique barrels found:  yellow={unique.get('yellow_barrel', 0)}  red={unique.get('red_barrel', 0)}  toxic={unique.get('toxic_barrel', 0)}",
+        f"  ELIGIBLE FOR SCORING: {'YES' if eligible else 'NO (need >=1 yellow AND >=1 red)'}",
+        f"  unique barrels found:  yellow={y_uniq}  red={r_uniq}  toxic={unique.get('toxic_barrel', 0)}",
+        f"  base score estimate:   {base_score} pts ({y_uniq}*50 + {r_uniq}*100, only counts if eligible)",
         f"  raw detection frames:  {state.detection_count}",
         f"  map points accumulated: {state.map_points_count}",
+        "",
+        f"  NEXT: {next_hint}",
         "",
     ]
     # Show last 3 detections so judges can see recent activity at a glance.
@@ -1733,8 +1849,11 @@ async def run(
     map_enabled: bool = True,
     pattern: str = "square",
     bonus_mode: bool = False,
+    altitude_m: float = 2.0,
+    confidence: float = DETECT_CONFIDENCE_DEFAULT,
 ) -> int:
     state = SharedState()
+    state.target_down = -abs(altitude_m)  # CLI override; default -2.0 (=2m up)
     drone = Drone()
     detect_handle: Optional[dict] = None
     fake_gcs_handle: Optional[dict] = None
@@ -1777,7 +1896,9 @@ async def run(
         # asyncio loop responsive (it still services fake-GCS heartbeats and
         # whatever other coroutines are waiting).
         if detect_enabled:
-            detect_handle = await asyncio.to_thread(setup_detection, state, run_dir)
+            detect_handle = await asyncio.to_thread(
+                setup_detection, state, run_dir, YOLO_WEIGHTS_DEFAULT, confidence,
+            )
             if detect_handle is None:
                 log.warning("detection unavailable — Phase 1-only flight")
         else:
@@ -1903,6 +2024,24 @@ def main() -> int:
              "to NOT be set.",
     )
     ap.add_argument(
+        "--altitude",
+        type=float,
+        default=2.0,
+        help="Cruise altitude in metres (positive number — converted to "
+             "NED down = -altitude internally). Default 2.0. Bump to 2.5–3.0 "
+             "if the red barrels look like they're sitting higher in the "
+             "lockers than expected at venue.",
+    )
+    ap.add_argument(
+        "--conf",
+        type=float,
+        default=DETECT_CONFIDENCE_DEFAULT,
+        help=f"YOLO confidence threshold. Default {DETECT_CONFIDENCE_DEFAULT}. "
+             "Org confirmed no penalty for incorrect detections (21/5), so we "
+             "can be aggressive. Drop to 0.20–0.25 if K's model isn't firing "
+             "on the actual venue barrels.",
+    )
+    ap.add_argument(
         "--bonus",
         action="store_true",
         help="Tune the run for the qualifier 5-min bonus window. "
@@ -1961,6 +2100,7 @@ def main() -> int:
     if args.bonus:
         log.info("bonus:      ON (hard-land at %.0fs, dual-colour hold %.0fs)",
                  BONUS_HARD_LAND_S, BONUS_DUAL_COLOUR_HOLD_S)
+    log.info("altitude:   %.1f m   conf threshold: %.2f", args.altitude, args.conf)
     try:
         return asyncio.run(run(
             detect_enabled=not args.no_detect,
@@ -1968,6 +2108,8 @@ def main() -> int:
             map_enabled=not args.no_map,
             pattern=args.pattern,
             bonus_mode=args.bonus,
+            altitude_m=args.altitude,
+            confidence=args.conf,
         ))
     except KeyboardInterrupt:
         return 130
