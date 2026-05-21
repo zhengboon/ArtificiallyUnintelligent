@@ -8,7 +8,19 @@ Channel is `#support-ticket` unless noted otherwise.
 
 ---
 
-## DS-1 — Demo-day machine: ultralytics pre-installed? bring own laptop OK? — **DRAFT (v2, sharpened 2026-05-15)**
+## DS-1 — Demo-day machine: ultralytics pre-installed? bring own laptop OK? — **RESOLVED 2026-05-21 (answered by org's public announcements; ticket never sent)**
+
+**Resolution summary** (via org's #general posts, not this ticket):
+- ultralytics + torch ARE pre-installed in qualifier VM (org 16/5 11:32am)
+- Bring own laptop NOT allowed (org 18/5 6:39am rule #1)
+- Deploy via USB stick (`thumbdrive/`), no internet needed (org 18/5 rule #3)
+- No setup help from judges; judges only reset VM on request (org 18/5 rule #4)
+- VM specs: up to 8 cores, 8GB RAM, 50GB disk, reset between teams (org 21/5)
+- No points deduction for incorrect detections (org 21/5)
+
+---
+
+**Original draft (kept for record, NOT sent)**
 
 (v1 was broader, including the general "disk fills up" question. That's been answered separately by the OP in `#general`/`#tech-discussion` on 13/5/2026 6:00 PM — it's PX4 SITL logs; cleanup with `rm -rf ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*`. This v2 focuses on the install-time question that's still open.)
 

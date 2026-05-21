@@ -7,6 +7,61 @@ and commit hashes where they exist. Skim-able when looking back later.
 
 ---
 
+## 2026-05-21 (Thu, night before qualifier) — Wall-follow integrated end-to-end
+
+T-15h sprint. K's `wall_following.py` (merged via PR #9) now wired into
+the controller as `--pattern wall`. Now three planner modes: square (smoke
+test), scan (hover + 4 cardinal yaws — proven detection-probe), wall
+(K's algo + safety net).
+
+Integration code on main (commits `edf187a`, `617249a`, `2e5727a`):
+- velocity-mode pumper: `set_velocity_body(VelocityBodyYawspeed)` branch on
+  `state.velocity_mode`, alongside the existing position-mode path
+- `planner_wall()`: 10 Hz loop running K's `WallFollower.compute()`
+- depth → Nx3 point cloud (`_depth_to_points_3d`, same math as workshop's
+  `depthcloud.PointCloud.convert`)
+- periodic 360° scan every 30s (yaw 60°/s for 7s) so camera sweeps all angles
+- stuck detection + escape maneuver (back 2s + yaw 240° + fwd 2s) if drone
+  hasn't drifted > 0.5m XY in 10s — counters K's known corner-stuck
+- label remap to `yellow_barrel` / `red_barrel` underscores (org example
+  format); modern ultralytics makes `.names` read-only so we patch the
+  underlying `detector.model.model.names`
+- mavsdk_server crash fix: `setup_detection` was blocking the asyncio loop
+  during YOLO load → mavsdk callback queue overflow → gRPC reset → arm()
+  failed. Fixed by `await asyncio.to_thread(setup_detection,…)`. Order also
+  flipped: setup BEFORE telemetry starts.
+- confidence threshold 0.5 → 0.35 (org confirmed 21/5: no points deduction
+  for incorrect detections)
+
+### Sim test results tonight
+
+| Time | Pattern | Result |
+|---|---|---|
+| 21:01 | square + verylousymodel | ✅ baseline. 5-WP, 2 yellow_barrel detections, map+summary saved, exit 0 |
+| 21:11 | square + K's best.pt | ✅ ran clean but 0 detections (K's threshold = 0.5, square doesn't yaw) |
+| 21:38 | wall (no to_thread) | ❌ mavsdk grpc reset during begin_offboard |
+| 21:49 | wall (no to_thread) | ❌ same mavsdk crash, takeoff_ts null |
+| 21:56 | wall + to_thread fix | ✅ takeoff OK, planner_wall ran 90+s, 360 scan triggered + recovered, K's FSM corner-stuck observed, 0 detections |
+| post-fix | wall + stuck-escape | pending verification at commit time |
+
+### Thumbdrive packed (`thumbdrive/`, 116 MB)
+
+- `ArtificiallyUnintelligent.tar.gz` (64 MB, repo minus bulk)
+- `best.pt` + `verylousymodel.pt` (6 MB each)
+- `wheels/` (41 MB: pymavlink, onnxruntime, deps for py3.10/manylinux2014)
+- `setup.sh` + `QUICKSTART.txt` + `runbook.md` + helper scripts
+
+Copy to 2 USBs before bed.
+
+### Critical-path open items
+
+- Wall stuck-detection verification (running at commit time)
+- Decide at 23:30 team call: ship scan-first or wall-first as the demo
+- K's wall corner-stuck root cause = `z > 1.5` filter; algorithm-level,
+  not addressing tonight, escape maneuver papers over it
+
+---
+
 ## 2026-05-20 (Tue) — Phase 7: mapping + run timer (Z's half of K's 18/5 ask)
 
 K's 18/5 ask had two parts: (a) wall-following navigation, which K is

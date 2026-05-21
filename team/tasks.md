@@ -1,18 +1,34 @@
-# Team task list — RoboVerse Qualifier (T-6 days)
+# Team task list — RoboVerse Qualifier (T-15h, Thu night)
 
-> **🚨 2026-05-16 RULE CHANGES** (see `info_2026-05-16/qualifier-update.md`)
+> **✅ 2026-05-21 EVENING STATUS** — qualifier is TOMORROW 14:00.
 >
-> 1. **Map**: same as Roboverse workshop sim. Geometry unchanged.
-> 2. **Targets changed**: NOT the workshop oil-drums anymore. New targets =
->    **red gas cylinder inside a locker (elevated ~1–2 m)** + **small yellow
->    banana-shaped object on the floor**. **K's existing weights / planned
->    dataset are now obsolete.**
-> 3. **Compute mandated**: all teams run on **org laptop + org VM** (workshop
->    v3 image with ultralytics). Our `vmrun` deploy path is dead. New deploy
->    path = git clone (or USB) into the org VM at our 14:00 slot.
+> **What's done and verified in sim end-to-end**:
+> - Phase 1 flight + Phase 2 detection + Phase 6 fake-GCS + Phase 7 mapping
+> - K's wall-following integrated as `--pattern wall` (velocity mode)
+> - Periodic 360° scan every 30s during wall-follow
+> - Stuck-detection + escape maneuver (back/yaw/fwd) so K's known
+>   corner-stuck doesn't kill the demo
+> - Label remap to `yellow_barrel` / `red_barrel` (org example format)
+> - Teardown shutdown-flag fix (clean exit, all artifacts saved)
+> - `asyncio.to_thread` for setup_detection/setup_mapping so YOLO load
+>   doesn't crash mavsdk_server
 >
-> See *Action items spawned* at the bottom of the info-dump file for the
-> per-person impact. The sections below have been updated.
+> **Thumbdrive packed at `thumbdrive/`** (116 MB): tarball, K's `best.pt`,
+> verylousymodel (org reference), offline pip wheels (pymavlink +
+> onnxruntime + deps), `setup.sh`, `runbook.md`, `QUICKSTART.txt`. Copy
+> to 2 USB sticks before bed.
+>
+> **At venue**: `bash setup.sh` → start sim → `commander set_ekf_origin`
+> → `python3 controller.py --pattern scan` (proven) OR `--pattern wall`.
+> Multi-run allowed within the 40-min slot.
+>
+> Old context (still accurate):
+> 1. Map = Roboverse workshop sim.
+> 2. Targets = red gas cylinder in locker + yellow gas cylinder on floor.
+>    Workshop oil-drums are distractors (no points either way).
+> 3. Org laptop + org VM mandatory. No internet guarantee — USB-stick everything.
+> 4. No deduction for incorrect detection (org confirmed 21/5).
+> 5. Wall collisions: no penalty.
 
 Three of us. Roles roughly carved by domain so we don't merge-conflict:
 

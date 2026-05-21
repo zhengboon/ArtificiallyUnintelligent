@@ -9,12 +9,12 @@ on any failure path, file-based logs.
 | Phase | Status | Scope |
 |---|---|---|
 | **1** | **✅ DONE 2026-05-13** | Heartbeat + scripted-waypoint smoke flight. v2: yaw locked at 0°, 2 m moves, divergence watchdog. Flew clean 5-WP square in 33 s, sub-0.5 m pos err on every WP. |
-| **2** | **DONE — K integrated trained weights 2026-05-17** | YOLO detector running in a worker thread. Subscribes to IMX214 camera via gz-transport, frames stamped with NED pose, annotated `.jpg`s saved per run, detections logged. Opt-out via `--no-detect`. Filters toxic class out of detections. |
-| 3 | in progress (K, wall-following) | Search strategy. K's pivot 2026-05-18: wall-following with periodic 360° scans, replacing the earlier lawnmower plan. Lives in a separate module K is writing. |
+| **2** | **✅ DONE 2026-05-21** | YOLO detector in worker thread (`setup_detection` offloaded via `asyncio.to_thread` so the YOLO load doesn't stall mavsdk's callback queue). Subscribes to IMX214 camera, frames stamped with NED pose, annotated `.jpg`s saved per run. K's `best.pt` (3 classes with spaces) loaded, then class names monkey-patched at runtime to `yellow_barrel` / `red_barrel` / `toxic_barrel` (underscores per org example image). Detector.py filters class 2 (toxic). Confidence threshold = 0.35 (org confirmed no points deduction for false positives 21/5). Opt-out via `--no-detect`. |
+| **3** | **✅ DONE 2026-05-21** | `--pattern wall` calls K's `searchctl/wall_following.py` in velocity mode. Periodic 360° scan every 30s (yaw 60°/s for 7s). Stuck detection: if drone hasn't drifted > 0.5m XY in 10s, an escape maneuver (back 2s → yaw 240° → fwd 2s) breaks out of K's known corner-stuck failure mode. `--pattern scan` (hover + 4× cardinal yaws) is the proven detection-probe fallback. `--pattern square` is the smoke test. |
 | 4 | later | Detection dedup by NED position; restart-resilient state (persist found barrels to disk). |
 | 5 | later | Frontier exploration (port from `pastproject/`) for irregular maps. |
-| **6** | **scaffolding done 2026-05-15; needs end-to-end test** | Pymavlink fake-GCS heartbeat — sends MAV_TYPE_GCS on UDP 14550 @ 1 Hz so PX4's preflight passes without QGC. Auto-skips if QGC is already binding 14550. Opt-out via `--no-fake-gcs`. |
-| **7** | **scaffolding done 2026-05-20; needs end-to-end test** | Top-down obstacle mapping (depth camera → global NED → live PNG) + per-run timing + `run_summary.json`. Judges observe "is mapping being done" as a tiebreaker per org's 18/5/2026 clarification. Opt-out via `--no-map`. |
+| **6** | **✅ DONE 2026-05-21** | Pymavlink fake-GCS heartbeat — sends MAV_TYPE_GCS on UDP 14550 @ 1 Hz so PX4's preflight passes without QGC. Auto-skips if QGC is already binding 14550. Opt-out via `--no-fake-gcs`. Confirmed working: PX4 logs "Ready for takeoff" without QGC. |
+| **7** | **✅ DONE 2026-05-21** | Top-down obstacle mapping (depth camera → global NED → live PNG) + per-run timing + `run_summary.json`. Judges observe "is mapping being done" as a tiebreaker per org's 18/5/2026 clarification. Confirmed: 200k points / map.png renders / map_points.npy + run_summary.json saved cleanly via teardown shutdown-flag fix. Opt-out via `--no-map`. |
 
 ## Prereqs (one-time in the VM)
 
