@@ -1166,6 +1166,15 @@ WALL_FOLLOW_HZ            = 10.0    # match K's tick rate assumptions in WallFol
 WALL_SCAN_EVERY_S         = 30.0    # do a periodic 360° scan every N seconds
 WALL_SCAN_YAW_RATE_DEG    = 60.0    # deg/s during scan (full 360 takes 6 s)
 WALL_SCAN_DURATION_S      = 7.0     # slightly longer than 360/rate so we overshoot a bit
+# Stuck detector (escape K's "corner stuck" / depth-filter oscillation):
+WALL_STUCK_WINDOW_S       = 10.0    # if drone hasn't moved much for this long, escape
+WALL_STUCK_DISTANCE_M     = 0.5     # threshold for "hasn't moved"
+WALL_ESCAPE_BACK_S        = 2.0     # back up for this long
+WALL_ESCAPE_BACK_SPEED    = 0.5     # m/s reverse
+WALL_ESCAPE_YAW_S         = 3.0     # then yaw for this long
+WALL_ESCAPE_YAW_RATE_DEG  = 80.0    # deg/s during escape yaw (~240° in 3s — breaks out of the loop)
+WALL_ESCAPE_FWD_S         = 2.0     # then forward push to leave the stuck spot
+WALL_ESCAPE_FWD_SPEED     = 0.6     # m/s forward
 
 
 async def planner_wall(state: SharedState, map_handle: Optional[dict]) -> None:
@@ -1237,12 +1246,96 @@ async def planner_wall(state: SharedState, map_handle: Optional[dict]) -> None:
             pass
         log.info("wall: scan complete; resuming wall-follow")
 
+    async def _do_escape() -> None:
+        """Stuck-recovery: K's WallFollower can deadlock when the depth
+        filter (z > 1.5) puts every visible wall right at the filter
+        boundary — drone oscillates avoid_front <-> find_wall and barely
+        moves. We detect 'no XY progress for N seconds' upstream and
+        kick into this escape: back up, yaw ~240°, then go forward. Most
+        of the time this breaks the geometric trap and the FSM sees a
+        new region of the world to react to."""
+        log.warning("wall: STUCK detected — running escape (back %.1fs + yaw %.1fs + fwd %.1fs)",
+                    WALL_ESCAPE_BACK_S, WALL_ESCAPE_YAW_S, WALL_ESCAPE_FWD_S)
+        # Phase 1: reverse straight back
+        end = time.monotonic() + WALL_ESCAPE_BACK_S
+        while time.monotonic() < end and not state.abort_requested:
+            state.vel_fwd = -WALL_ESCAPE_BACK_SPEED
+            state.vel_right = 0.0
+            state.vel_down = 0.0
+            state.yaw_rate_deg = 0.0
+            state.last_planner_progress = time.monotonic()
+            await asyncio.sleep(period)
+        # Phase 2: yaw in place
+        end = time.monotonic() + WALL_ESCAPE_YAW_S
+        while time.monotonic() < end and not state.abort_requested:
+            state.vel_fwd = 0.0
+            state.vel_right = 0.0
+            state.vel_down = 0.0
+            state.yaw_rate_deg = WALL_ESCAPE_YAW_RATE_DEG
+            state.last_planner_progress = time.monotonic()
+            await asyncio.sleep(period)
+        # Phase 3: drive forward to leave the stuck pocket
+        end = time.monotonic() + WALL_ESCAPE_FWD_S
+        while time.monotonic() < end and not state.abort_requested:
+            state.vel_fwd = WALL_ESCAPE_FWD_SPEED
+            state.vel_right = 0.0
+            state.vel_down = 0.0
+            state.yaw_rate_deg = 0.0
+            state.last_planner_progress = time.monotonic()
+            await asyncio.sleep(period)
+        # Brief settle, then reset K's FSM so it re-acquires fresh.
+        state.vel_fwd = state.vel_right = state.vel_down = state.yaw_rate_deg = 0.0
+        await asyncio.sleep(0.5)
+        try:
+            follower.state = "find_wall"
+            follower._corner_ticks = 0
+            follower._avoid_cooldown = 0
+        except Exception:
+            pass
+        # Reset smoother (avoid leftover velocity from before escape)
+        try:
+            smoother.prev = np.zeros(4)
+        except Exception:
+            pass
+        log.warning("wall: escape complete; resuming wall-follow")
+
+    # Stuck-detector buffer: list of (timestamp, north, east) sampled @ ~1 Hz.
+    pos_history = []  # rolling, trimmed in the loop
+    last_escape_at = 0.0   # cooldown so we don't escape back-to-back
+    ESCAPE_COOLDOWN = 15.0  # at least this long between escapes
+
     while time.monotonic() < deadline and not state.abort_requested:
         # Periodic 360 — K's hybrid plan (wall-follow + scan stations)
         if time.monotonic() >= next_scan_at:
             await _do_360_scan()
             next_scan_at = time.monotonic() + WALL_SCAN_EVERY_S
+            # After a scan we'll have moved (yawed), reset stuck buffer.
+            pos_history.clear()
             continue  # back to top of loop, re-check abort/deadline
+
+        # Stuck detection: are we still where we were 10 sec ago?
+        now = time.monotonic()
+        pos_history.append((now, state.north_m, state.east_m))
+        # Trim to the WALL_STUCK_WINDOW_S window
+        cutoff = now - WALL_STUCK_WINDOW_S
+        pos_history = [p for p in pos_history if p[0] >= cutoff]
+        if len(pos_history) >= 5 and (now - last_escape_at) > ESCAPE_COOLDOWN:
+            # Max XY drift in the window
+            n_min = min(p[1] for p in pos_history)
+            n_max = max(p[1] for p in pos_history)
+            e_min = min(p[2] for p in pos_history)
+            e_max = max(p[2] for p in pos_history)
+            drift = math.hypot(n_max - n_min, e_max - e_min)
+            window = pos_history[-1][0] - pos_history[0][0]
+            if window >= WALL_STUCK_WINDOW_S * 0.9 and drift < WALL_STUCK_DISTANCE_M:
+                log.warning(
+                    "wall: stuck check tripped — drift=%.2fm over %.1fs (threshold %.2fm/%.1fs)",
+                    drift, window, WALL_STUCK_DISTANCE_M, WALL_STUCK_WINDOW_S,
+                )
+                await _do_escape()
+                last_escape_at = time.monotonic()
+                pos_history.clear()
+                continue
 
         with latest_lock:
             depth = latest["depth"]
