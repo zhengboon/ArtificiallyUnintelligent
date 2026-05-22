@@ -997,11 +997,14 @@ async def run(
         else:
             log.info("detection disabled by flag (--no-detect)")
 
-        # Prime offboard with a zero velocity setpoint, then start
-        await drone.begin_offboard(VelocityNedYaw(0.0, 0.0, 0.0, 0.0))
-
-        # Prime offboard with a zero velocity setpoint, then start
-        await drone.begin_offboard(VelocityNedYaw(0.0, 0.0, 0.0, 0.0))
+        # Snapshot the current yaw FIRST so the initial offboard setpoint
+        # doesn't command an absolute yaw=0 (which would spin the drone
+        # to face north the moment offboard starts).
+        await asyncio.sleep(0.2)  # let telemetry stream populate yaw_deg
+        state.target_yaw = state.yaw_deg
+        state.current_yaw_cmd = state.yaw_deg
+        # Prime offboard with a zero-velocity, current-yaw setpoint, then start
+        await drone.begin_offboard(VelocityNedYaw(0.0, 0.0, 0.0, state.yaw_deg))
         pumper_task = asyncio.create_task(setpoint_pumper(drone, state), name="pumper")
         # wd_task     = asyncio.create_task(watchdog(state), name="watchdog")
         wd_task = asyncio.create_task(watchdog(state, timeout_s=60.0), name="watchdog")
@@ -1231,7 +1234,7 @@ def main() -> int:
     args = ap.parse_args()
     logging.getLogger().setLevel(args.log_level)
 
-    log.info("==== searchctl controller v0.5 (K wall-follow + periodic scan + zb safe features) ====")
+    log.info("==== searchctl controller v0.6 (K wall-follow + FSM stuck-escape + slow gated scan + bonus) ====")
     log.info("logs at %s", LOG_FILE)
     log.info("detection:  %s", "OFF (--no-detect)" if args.no_detect else "ON")
     log.info("fake-GCS:   %s", "OFF (--no-fake-gcs)" if args.no_fake_gcs else "ON")
