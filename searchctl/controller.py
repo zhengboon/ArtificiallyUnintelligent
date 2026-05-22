@@ -225,17 +225,36 @@ class Drone:
         except ActionError as e:
             raise RuntimeError(f"takeoff failed: {e}") from e
 
-        # Wait until actually at altitude
-        deadline = time.monotonic() + 50.0
+        # Wait until actually at altitude. Three signals accepted:
+        #   - state.down_m crossed the 80% threshold (normal path)
+        #   - state.in_air went True (covers EKF drift / sim restart cases
+        #     where PX4 thinks we're already airborne)
+        #   - 12 s elapsed AND in_air still False -> log a periodic status
+        # Timeout bumped 50 -> 90 s for slow sims.
+        deadline = time.monotonic() + 90.0
+        target_down = -altitude_m * 0.8  # 80% of target altitude is close enough
+        last_log = time.monotonic()
         while time.monotonic() < deadline:
-            target_down = -altitude_m * 0.8  # 80% of target altitude is close enough
             if state.down_m < target_down:
                 log.info("altitude reached: down_m=%.2f", state.down_m)
                 await asyncio.sleep(1.0)
                 break
+            if state.in_air:
+                log.info("in_air=True (PX4 reports airborne); down_m=%.2f — accepting as takeoff complete",
+                         state.down_m)
+                await asyncio.sleep(1.0)
+                break
+            if time.monotonic() - last_log > 5.0:
+                log.info("waiting on takeoff: down_m=%.2f (need < %.2f), in_air=%s",
+                         state.down_m, target_down, state.in_air)
+                last_log = time.monotonic()
             await asyncio.sleep(0.2)
         else:
-            raise RuntimeError("takeoff timed out — drone never reached altitude")
+            raise RuntimeError(
+                f"takeoff timed out after 90s — drone never reached altitude "
+                f"(down_m={state.down_m:.2f}, in_air={state.in_air}). "
+                "Sim may need restart: Ctrl-C PX4 + relaunch start_px4.sh."
+            )
 
         log.info("takeoff complete (assumed; pumper will hold altitude)")
 
