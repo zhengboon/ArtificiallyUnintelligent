@@ -749,7 +749,11 @@ def teardown_mapping(handle: Optional[dict], state: SharedState) -> None:
 # so we cluster detections within 1.5 m (drone pose at detect time, NED) as
 # "same physical barrel". Crude but useful — the per-frame list still ships
 # in the JSON for full audit.
-DETECTION_CLUSTER_RADIUS_M = 1.5
+DETECTION_CLUSTER_RADIUS_M = 3.0  # was 1.5 — too tight: drone moves past one
+                                   # physical barrel at ~0.15 m/s effective and
+                                   # logged 4 "unique" reds for 1 real one. 3 m
+                                   # groups them correctly while still
+                                   # distinguishing barrels several m apart.
 
 
 def compute_unique_detections(detections: list, radius_m: float = DETECTION_CLUSTER_RADIUS_M) -> dict:
@@ -1094,6 +1098,17 @@ async def run(
 
         # Wall-following loop
         wall_follower = WallFollower()
+        # Speed tuning overrides (per-instance; K's wall_following.py untouched).
+        # Run analysis 22/5 showed:
+        #   - 29.3% of wall-follow time in outer_corner (mostly stationary yaw)
+        #   - 34.6% of follow_wall time at front > 3 m (clear straights)
+        # The corner-turn rate was 0.35 rad/s — doubling it shaves ~15 s per run
+        # without risk (corners are at safe distance from walls anyway).
+        wall_follower.CORNER_TURN = 0.7
+        # Forward speed during the corner P1/P3 ticks — these are pure forward
+        # motion, so bumping LINEAR_SPEED also speeds up the corner sweep.
+        # K used 0.7; we go 1.0 (still conservative vs PX4's max ~2 m/s).
+        wall_follower.LINEAR_SPEED = 1.0
         wf_smoother   = VelocitySmoother()
         depth_cam     = DepthReceiver("/depth_camera")
         pc            = PointCloud(320, 320, 320, 240)
@@ -1184,6 +1199,16 @@ async def run(
                 # Overlay obstacle avoidance
                 if regions['front'] < 2.0:
                     vx -= 0.7 * (2.0 - regions['front'])
+
+                # CLEAR-STRAIGHT SPEED BOOST: 34.6% of follow_wall time was
+                # spent with front > 3 m (per 22/5 run analysis). Scale vx
+                # up linearly with clearance, capped at 1.8 m/s. Only applies
+                # in follow_wall — leaves K's outer_corner / find_wall /
+                # avoid_front behavior untouched. Falls back to the <2 m
+                # slow-down above as the drone approaches a wall.
+                if wall_follower.state == 'follow_wall' and regions['front'] > 3.0 and vx > 0:
+                    boost = min(0.8, (regions['front'] - 3.0) * 0.4)
+                    vx = min(1.8, vx + boost)
                 # if regions['left'] < 1.0:
                 #     vy += 0.3 * (1.0 - regions['left'])
 
