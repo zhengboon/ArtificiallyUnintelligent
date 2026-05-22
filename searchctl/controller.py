@@ -225,29 +225,35 @@ class Drone:
         except ActionError as e:
             raise RuntimeError(f"takeoff failed: {e}") from e
 
-        # Wait until actually at altitude. Three signals accepted:
-        #   - state.down_m crossed the 80% threshold (normal path)
-        #   - state.in_air went True (covers EKF drift / sim restart cases
-        #     where PX4 thinks we're already airborne)
-        #   - 12 s elapsed AND in_air still False -> log a periodic status
+        # Wait until actually at altitude. Two signals accepted:
+        #   - down_m crossed the 80% threshold (normal path)
+        #   - in_air=True AND down_m at least 1.0 m off ground AND >= 15 s
+        #     elapsed (covers EKF drift, but excludes the ground-stuck case
+        #     where PX4 reports in_air=True at T+4 s with down_m ~= 0)
         # Timeout bumped 50 -> 90 s for slow sims.
-        deadline = time.monotonic() + 90.0
+        start = time.monotonic()
+        deadline = start + 90.0
         target_down = -altitude_m * 0.8  # 80% of target altitude is close enough
-        last_log = time.monotonic()
+        in_air_threshold = -1.0          # require at least 1 m altitude
+        in_air_min_elapsed = 15.0        # AND at least 15 s since takeoff cmd
+        last_log = start
         while time.monotonic() < deadline:
+            now = time.monotonic()
             if state.down_m < target_down:
                 log.info("altitude reached: down_m=%.2f", state.down_m)
                 await asyncio.sleep(1.0)
                 break
-            if state.in_air:
-                log.info("in_air=True (PX4 reports airborne); down_m=%.2f — accepting as takeoff complete",
-                         state.down_m)
+            if (state.in_air
+                    and state.down_m < in_air_threshold
+                    and (now - start) >= in_air_min_elapsed):
+                log.info("in_air=True AND down_m=%.2f < %.1f AND elapsed=%.1fs — accepting as takeoff complete",
+                         state.down_m, in_air_threshold, now - start)
                 await asyncio.sleep(1.0)
                 break
-            if time.monotonic() - last_log > 5.0:
-                log.info("waiting on takeoff: down_m=%.2f (need < %.2f), in_air=%s",
-                         state.down_m, target_down, state.in_air)
-                last_log = time.monotonic()
+            if now - last_log > 5.0:
+                log.info("waiting on takeoff: down_m=%.2f (need < %.2f), in_air=%s, elapsed=%.1fs",
+                         state.down_m, target_down, state.in_air, now - start)
+                last_log = now
             await asyncio.sleep(0.2)
         else:
             raise RuntimeError(
