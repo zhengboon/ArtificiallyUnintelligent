@@ -212,19 +212,36 @@ class Drone:
         except ActionError as e:
             raise RuntimeError(f"takeoff failed: {e}") from e
 
-        # Wait until actually at altitude
-        deadline = time.monotonic() + 50.0
+        # Wait until actually at altitude. PX4 takeoff stops climbing once
+        # it reaches set_takeoff_altitude; if we hand control to offboard
+        # before then, PX4 holds at whatever altitude the drone was at
+        # when offboard started -> drone hovers BELOW the commanded altitude
+        # for the rest of the run. Wait for 95% target with a 1.5s settle.
+        target_down = -altitude_m * 0.95
+        deadline = time.monotonic() + 60.0
+        reached = False
         while time.monotonic() < deadline:
-            target_down = -altitude_m * 0.8  # 80% of target altitude is close enough
             if state.down_m < target_down:
-                log.info("altitude reached: down_m=%.2f", state.down_m)
-                await asyncio.sleep(1.0)
+                log.info("altitude reached: down_m=%.2f (target_down=%.2f)",
+                         state.down_m, target_down)
+                await asyncio.sleep(1.5)  # settle so vz~0 when offboard takes over
+                reached = True
                 break
             await asyncio.sleep(0.2)
-        else:
-            raise RuntimeError("takeoff timed out — drone never reached altitude")
+        if not reached:
+            # Soft fallback: accept "in_air + climbed at least 1m + 20s elapsed"
+            # so a flaky takeoff doesn't abort the whole slot.
+            if state.in_air and state.down_m < -1.0:
+                log.warning("takeoff: never hit %.2fm but drone is in_air at down=%.2f -- accepting",
+                            -target_down, state.down_m)
+            else:
+                raise RuntimeError(
+                    f"takeoff timed out — drone never reached altitude "
+                    f"(down_m={state.down_m:.2f}, target_down={target_down:.2f})"
+                )
 
-        log.info("takeoff complete (assumed; pumper will hold altitude)")
+        log.info("takeoff complete (down=%.2fm, commanded=%.2fm)",
+                 state.down_m, -altitude_m)
 
     async def begin_offboard(self, initial: VelocityNedYaw) -> None:
         await self.drone.offboard.set_velocity_ned(initial)
@@ -1264,7 +1281,7 @@ def main() -> int:
     args = ap.parse_args()
     logging.getLogger().setLevel(args.log_level)
 
-    log.info("==== searchctl controller v0.7.1 (K wall-follow + FSM stuck-escape + slow gated scan + bonus + relaxed watchdog) ====")
+    log.info("==== searchctl controller v0.7.2 (K wall-follow + FSM stuck-escape + 95%% takeoff altitude + slow gated scan + bonus + relaxed watchdog) ====")
     log.info("logs at %s", LOG_FILE)
     log.info("detection:  %s", "OFF (--no-detect)" if args.no_detect else "ON")
     log.info("fake-GCS:   %s", "OFF (--no-fake-gcs)" if args.no_fake_gcs else "ON")
