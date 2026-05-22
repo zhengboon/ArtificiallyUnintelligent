@@ -1018,11 +1018,15 @@ async def run(
         pc            = PointCloud(320, 320, 320, 240)
         LOOP_DT       = 0.05
 
-        # REMOVED 22/5: all 360 scans (spawn-scan A, periodic-scan B, peek
-        # end-scan, turnaround C). User reported drone crashing into walls
-        # during these maneuvers. Going back to pure K wall-follow with
-        # ONLY the safe data-layer features above (DetectionRecord append,
-        # class remap, STATUS.txt writer, --bonus early-exit decision logic).
+        # Periodic 360 scan station — SLOW version (was 120 deg/s for 3.5s in
+        # 9f5428a + 4066293 which the user reported caused wall crashes).
+        # Now 60 deg/s for 6 s = exactly 360 deg, no overshoot. Slower yaw
+        # = better vision-EKF tracking. Pure rotation at fixed XY, no
+        # altitude wiggle, no descent.
+        SCAN_EVERY_S      = 60.0
+        SCAN_DURATION_S   = 6.0
+        SCAN_YAW_RATE_DEG = 60.0
+        scan_start_at = time.monotonic() + SCAN_EVERY_S
 
         await asyncio.sleep(0.1)              # brief wait for telemetry
         state.target_yaw = state.yaw_deg     # prevent pumper from yawing to 0
@@ -1070,9 +1074,24 @@ async def run(
                     early_exit_reason = f"plateau: no new unique for {now-last_unique_change_at:.1f}s"
                     break
 
-                # REMOVED 22/5: periodic 360 scan + altitude wiggle (B) + hard
-                # turnaround (C). User reported drone crashing into walls
-                # during these maneuvers. Pure K wall-follow only now.
+                # Periodic 360 scan station (SLOW: 60 deg/s for 6s = 360 deg).
+                # Pure yaw at fixed XY, no descent, no overshoot.
+                if time.monotonic() >= scan_start_at:
+                    log.info("scan: starting slow 360 (%.1fs @ %.0f deg/s)",
+                             SCAN_DURATION_S, SCAN_YAW_RATE_DEG)
+                    scan_end = time.monotonic() + SCAN_DURATION_S
+                    while time.monotonic() < scan_end and not state.abort_requested:
+                        state.current_yaw_cmd += SCAN_YAW_RATE_DEG * LOOP_DT
+                        state.current_yaw_cmd = (state.current_yaw_cmd + 180) % 360 - 180
+                        state.target_vel_north = 0.0
+                        state.target_vel_east  = 0.0
+                        state.target_vel_down  = 0.0
+                        state.target_yaw       = state.current_yaw_cmd
+                        state.last_planner_progress = time.monotonic()
+                        await asyncio.sleep(LOOP_DT)
+                    log.info("scan: done, resuming wall-follow")
+                    scan_start_at = time.monotonic() + SCAN_EVERY_S
+                    continue
 
                 depth = depth_cam.get_frame()
                 if depth is None:
