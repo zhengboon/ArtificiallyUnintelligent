@@ -1099,16 +1099,12 @@ async def run(
         # Wall-following loop
         wall_follower = WallFollower()
         # Speed tuning overrides (per-instance; K's wall_following.py untouched).
-        # Run analysis 22/5 showed:
-        #   - 29.3% of wall-follow time in outer_corner (mostly stationary yaw)
-        #   - 34.6% of follow_wall time at front > 3 m (clear straights)
-        # The corner-turn rate was 0.35 rad/s — doubling it shaves ~15 s per run
-        # without risk (corners are at safe distance from walls anyway).
-        wall_follower.CORNER_TURN = 0.7
-        # Forward speed during the corner P1/P3 ticks — these are pure forward
-        # motion, so bumping LINEAR_SPEED also speeds up the corner sweep.
-        # K used 0.7; we go 1.0 (still conservative vs PX4's max ~2 m/s).
-        wall_follower.LINEAR_SPEED = 1.0
+        # 22/5 attempt at LINEAR_SPEED=1.0 + clear-straight boost to 1.8 m/s
+        # blew up vision-EKF (altitude estimate went to +877 m). Vision
+        # odometry can't track that fast. Back off to modest tweaks:
+        #   CORNER_TURN: 0.35 -> 0.5  (slight bump, still safe)
+        #   LINEAR_SPEED: keep K's 0.7 (do NOT push)
+        wall_follower.CORNER_TURN = 0.5
         wf_smoother   = VelocitySmoother()
         depth_cam     = DepthReceiver("/depth_camera")
         pc            = PointCloud(320, 320, 320, 240)
@@ -1200,15 +1196,10 @@ async def run(
                 if regions['front'] < 2.0:
                     vx -= 0.7 * (2.0 - regions['front'])
 
-                # CLEAR-STRAIGHT SPEED BOOST: 34.6% of follow_wall time was
-                # spent with front > 3 m (per 22/5 run analysis). Scale vx
-                # up linearly with clearance, capped at 1.8 m/s. Only applies
-                # in follow_wall — leaves K's outer_corner / find_wall /
-                # avoid_front behavior untouched. Falls back to the <2 m
-                # slow-down above as the drone approaches a wall.
-                if wall_follower.state == 'follow_wall' and regions['front'] > 3.0 and vx > 0:
-                    boost = min(0.8, (regions['front'] - 3.0) * 0.4)
-                    vx = min(1.8, vx + boost)
+                # REMOVED 22/5: clear-straight boost up to 1.8 m/s blew up
+                # vision-EKF (altitude estimate went to +877 m). Vision
+                # odometry can't track that fast. K's LINEAR_SPEED 0.7 +
+                # the <2m slow-down above is the safe envelope.
                 # if regions['left'] < 1.0:
                 #     vy += 0.3 * (1.0 - regions['left'])
 
