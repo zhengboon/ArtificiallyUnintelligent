@@ -28,26 +28,18 @@ Then YOU type these by hand:
   (Terminal 2 — pick ONE)
     cd ~/ArtificiallyUnintelligent/searchctl
 
-    # FIRST attempt: bonus-mode wall-follow. Hard-lands ~4:20, auto-exits
-    # when both yellow + red detected. Targets the 5-min qualifier bonus
-    # window (+20 pts per 30s under 5 min per colour, per the PDF).
-    # Backup behaviours (stuck-escape + periodic 360 scan + detect-nudge)
-    # are always on.
-    python3 controller.py --bonus
-
-    # Fallback A (if first attempt < 1 of each colour): defensive long run
-    # — same algorithm, no bonus hard-land. Runs until plateau or Ctrl-C.
-    python3 controller.py
-
-    # Fallback B = BACKUP NAV ALGO (if wall-follow stuck or didn't find
-    # the yellow): scan-and-walk explorer. Hovers, yaws 360 to catch
-    # barrels, walks forward 10s along direction with most depth clearance,
-    # repeats. Covers ARENA INTERIOR (where K's wall-follow never goes).
-    # Vision-EKF safe, pure body-frame velocity.
-    python3 controller.py --backup --bonus
-
-    # Fallback C: chase yellow by dropping altitude + threshold
+    # PRIMARY (proven 350 pts in sim earlier today):
+    # K's wall-follow + FSM stuck-escape + bonus 4:20 hard-land + slow
+    # gated periodic 360 scan + lower altitude + lower YOLO threshold.
     python3 controller.py --bonus --altitude 2.0 --conf 0.5
+
+    # Fallback A — same as primary but higher altitude (3.0m default).
+    # Try if 2.0m altitude is hitting low obstacles.
+    python3 controller.py --bonus --conf 0.5
+
+    # Fallback B — Hail-Mary: very low altitude + very aggressive YOLO.
+    # Use if both primary + Fallback A failed to find yellow.
+    python3 controller.py --bonus --altitude 1.5 --conf 0.35
 
     # Smoke test only (no detect / no map / no fake-GCS): just flight
     python3 controller.py --no-detect --no-map --no-fake-gcs
@@ -74,7 +66,6 @@ At-venue tuning (no code edits needed):
   --conf 0.5        lower confidence if K's model isn't firing
   --conf 0.35       even more aggressive (no penalty for false positives)
   --bonus           4:20 hard-land + early-exit on dual-colour detected
-  --backup          BACKUP NAV: scan-and-walk explorer (different algo)
 
 DISK HYGIENE (if you see "no space left" or VM is >90% full):
   rm -rf ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*
@@ -88,6 +79,9 @@ IF SOMETHING BREAKS:
   - QGC needed -> our fake-GCS heartbeat should make PX4 happy without it
   - Camera missing -> python3 controller.py --no-detect (still flies + maps)
   - Map crash -> python3 controller.py --no-map (still flies + detects)
+  - Drone stuck at a wall -> wait ~3s; FSM stuck-escape will kick in
+                             (rotates 80° CCW in place, then re-acquires
+                             wall — no translation, EKF-safe)
   - Everything else -> python3 controller.py --no-detect --no-map --no-fake-gcs
 
   Per org 18/5: judges will NOT help with setup. We're on our own.

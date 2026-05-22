@@ -8,7 +8,7 @@
 #   5. Artifacts (run_summary.json, STATUS.txt, map.png, detections/) all
 #      present and non-empty after exit
 #
-# ~90 seconds end-to-end. If this passes, real --bonus / --backup runs
+# ~90 seconds end-to-end. If this passes, real --bonus runs
 # are safe to attempt. If this fails, do NOT burn a qualifier slot on
 # debugging — fall back to --no-detect --no-map if at all possible.
 #

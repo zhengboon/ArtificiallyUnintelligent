@@ -116,31 +116,28 @@
       live unique counts + eligibility flag.
 
 ### Step 6b — Fallback if bonus mode fails
-- [ ] **Fallback A** — wall-follow worked but didn't find both colours
-      → defensive long run (no bonus cap):
+- [ ] **Fallback A** — same proven config but higher altitude (3.0m default).
+      Use if 2.0m altitude is hitting low obstacles or red barrel is on top
+      of a locker (org clarified red lives in a locker).
   ```bash
-  python3 controller.py
+  python3 controller.py --bonus --conf 0.5
   ```
-  Same algorithm, runs until plateau or Ctrl-C. Max coverage of
-  the perimeter K's algo follows.
-- [ ] **Fallback B (BACKUP NAV ALGO)** — wall-follow stuck or didn't
-      cover where the yellow lives → scan-and-walk explorer:
+- [ ] **Fallback B** — Hail-Mary: very low altitude + very aggressive YOLO
+      threshold. Use if both PRIMARY + Fallback A failed to find yellow.
   ```bash
-  python3 controller.py --backup --bonus
+  python3 controller.py --bonus --altitude 1.5 --conf 0.35
   ```
-  Different algorithm entirely: hovers, yaws 360° to catch barrels,
-  walks forward 10 s in the most-clear direction, repeats. Covers
-  ARENA INTERIOR (where K's wall-follow never goes — yellow barrels
-  on floor may be in interior, not along walls). Pure body-frame
-  velocity, vision-EKF safe.
-- [ ] **Fallback C** — chase yellow by dropping altitude + threshold:
-  ```bash
-  python3 controller.py --bonus --altitude 2.0 --conf 0.5
-  ```
-  Lower altitude (2 m vs 3 m) brings camera closer to floor-level
-  yellow. Lower confidence threshold (0.5 vs 0.7 default) lets K's
-  model fire more aggressively. Org confirmed no penalty for
+  Lower altitude (1.5 m) brings camera even closer to floor-level
+  yellow. Lower confidence threshold (0.35 vs 0.7 default) lets K's
+  model fire on weaker signals. Org confirmed no penalty for
   incorrect detections.
+- [ ] **Fallback C** — defensive long run (no bonus cap), e.g. if you've
+      already banked one good run and just want to extend coverage:
+  ```bash
+  python3 controller.py --altitude 2.0 --conf 0.5
+  ```
+  Same algorithm, runs until plateau (60s with both colours found) or
+  Ctrl-C. Max coverage of the perimeter K's algo follows.
 - [ ] All features ON by default: detection + map + fake-GCS.
 - [ ] Screen-watcher: open `STATUS.txt` of latest run, watch ELIGIBLE
       flag flip to YES and unique counts increase.
@@ -150,8 +147,8 @@
 ### Step 7 (T+24–34 min): Re-run if needed
 - [ ] If first run found both `yellow_barrel` AND `red_barrel`: STOP, save artifacts. Go to Step 8.
 - [ ] If only one colour found or zero: try one of the fallbacks from
-      Step 6b (the BACKUP NAV ALGO is the highest-value retry — it
-      explores arena interior, which K's wall-follow never does).
+      Step 6b. Fallback B (lower altitude + lower threshold) is the
+      highest-value retry when yellow is missing.
 - [ ] Per org: drone restarts at takeoff after each run. State doesn't persist.
 - [ ] **Sim restart between runs**: in Terminal 1, Ctrl-C the PX4
       session, re-run `~/start_px4.sh` + `1` + `1` + `2` +
