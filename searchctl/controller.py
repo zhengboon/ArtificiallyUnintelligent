@@ -1018,87 +1018,17 @@ async def run(
         pc            = PointCloud(320, 320, 320, 240)
         LOOP_DT       = 0.05
 
-        # Periodic fast 360 scan station: every SCAN_EVERY_S of flight,
-        # pause wall-follow and yaw a full 360 in place. Fast = 120 deg/s
-        # for 3.5 s = 420 deg (full sweep + a little overshoot). Pure yaw
-        # at fixed XY is vision-EKF safe and doesn't translate the drone
-        # into walls. K's wall-follower stays in its current state during
-        # the scan; we just hijack the velocity setpoint briefly.
-        SCAN_EVERY_S      = 60.0
-        SCAN_DURATION_S   = 3.5
-        SCAN_YAW_RATE_DEG = 120.0
-        scan_start_at = time.monotonic() + SCAN_EVERY_S
-        # B. Altitude wiggle on each periodic scan: descend to SCAN_LOW_ALT_M
-        # for the rotation so the camera catches floor-level yellow targets,
-        # then climb back to wall-follow altitude after.
-        SCAN_LOW_ALT_M    = 1.5  # absolute altitude in metres (NED: -1.5)
-        SCAN_RAMP_S       = 1.0  # ramp down/up duration
-        wall_follow_alt_down = state.down_m  # snapshot current alt for return
-        # C. Hard turnaround at T+TURNAROUND_AT_S (bonus mode only): one-shot
-        # yaw 180 + reverse wall-follow side so we head back toward spawn
-        # before the bonus hard-land. Helps the post-bonus landing happen
-        # closer to spawn (better artifact recovery).
-        TURNAROUND_AT_S   = 210.0  # T+3:30
-        turnaround_done   = False
+        # REMOVED 22/5: all 360 scans (spawn-scan A, periodic-scan B, peek
+        # end-scan, turnaround C). User reported drone crashing into walls
+        # during these maneuvers. Going back to pure K wall-follow with
+        # ONLY the safe data-layer features above (DetectionRecord append,
+        # class remap, STATUS.txt writer, --bonus early-exit decision logic).
 
         await asyncio.sleep(0.1)              # brief wait for telemetry
         state.target_yaw = state.yaw_deg     # prevent pumper from yawing to 0
         state.current_yaw_cmd = state.yaw_deg
         await asyncio.sleep(2.0)             # let drone stabilize at altitude
         state.current_yaw_cmd = state.yaw_deg  # re-snapshot after stabilize
-        wall_follow_alt_down = state.down_m  # refresh after stabilise
-
-        # --- A. INITIAL SPAWN 360 SCAN (before wall-follow starts) ---
-        # Drone literally spawns next to barrels per the screenshot. A
-        # pre-flight 360 scan catches spawn-area barrels (including
-        # floor-level yellows that wall-follow would fly past). Pure yaw
-        # in place, vision-EKF safe.
-        SPAWN_SCAN_DURATION_S   = 5.0
-        SPAWN_SCAN_YAW_RATE_DEG = 80.0  # slower than periodic (80*5=400deg)
-        log.info("spawn scan: 360 in place at takeoff (%.1fs @ %.0f deg/s)",
-                 SPAWN_SCAN_DURATION_S, SPAWN_SCAN_YAW_RATE_DEG)
-        spawn_scan_end = time.monotonic() + SPAWN_SCAN_DURATION_S
-        while time.monotonic() < spawn_scan_end and not state.abort_requested:
-            state.current_yaw_cmd += SPAWN_SCAN_YAW_RATE_DEG * LOOP_DT
-            state.current_yaw_cmd = (state.current_yaw_cmd + 180) % 360 - 180
-            state.target_vel_north = 0.0
-            state.target_vel_east  = 0.0
-            state.target_vel_down  = 0.0
-            state.target_yaw       = state.current_yaw_cmd
-            state.last_planner_progress = time.monotonic()
-            await asyncio.sleep(LOOP_DT)
-        log.info("spawn scan: done")
-
-        # --- D. FRONT-OF-TAKEOFF PEEK (drive 2m fwd + brief scan) ---
-        # Drone moves forward to clear the spawn block + does a quick scan
-        # from the new vantage. Catches barrels just in front of spawn.
-        # Pure body-frame velocity (already validated by wall-follow).
-        PEEK_FWD_SPEED   = 0.4   # slow for safety
-        PEEK_FWD_S       = 4.0   # 0.4 m/s * 4s = 1.6m
-        PEEK_SCAN_S      = 3.0
-        PEEK_SCAN_DPS    = 100.0
-        log.info("peek: driving fwd %.1fs @ %.1f m/s then scan %.1fs",
-                 PEEK_FWD_S, PEEK_FWD_SPEED, PEEK_SCAN_S)
-        end = time.monotonic() + PEEK_FWD_S
-        while time.monotonic() < end and not state.abort_requested:
-            n_, e_ = body_to_ned(PEEK_FWD_SPEED, 0.0, state.current_yaw_cmd)
-            state.target_vel_north = n_
-            state.target_vel_east  = e_
-            state.target_vel_down  = 0.0
-            state.target_yaw       = state.current_yaw_cmd
-            state.last_planner_progress = time.monotonic()
-            await asyncio.sleep(LOOP_DT)
-        end = time.monotonic() + PEEK_SCAN_S
-        while time.monotonic() < end and not state.abort_requested:
-            state.current_yaw_cmd += PEEK_SCAN_DPS * LOOP_DT
-            state.current_yaw_cmd = (state.current_yaw_cmd + 180) % 360 - 180
-            state.target_vel_north = 0.0
-            state.target_vel_east  = 0.0
-            state.target_vel_down  = 0.0
-            state.target_yaw       = state.current_yaw_cmd
-            state.last_planner_progress = time.monotonic()
-            await asyncio.sleep(LOOP_DT)
-        log.info("peek: done, handing off to wall-follow")
 
         # Bonus-mode bookkeeping: hard-land at deadline, exit early on
         # dual-colour found (after a short hold), or on detection plateau.
@@ -1140,79 +1070,9 @@ async def run(
                     early_exit_reason = f"plateau: no new unique for {now-last_unique_change_at:.1f}s"
                     break
 
-                # Periodic fast 360 scan station
-                if time.monotonic() >= scan_start_at:
-                    log.info("scan+wiggle: descend to %.1fm + 360 (%.1fs @ %.0f deg/s) + climb back",
-                             SCAN_LOW_ALT_M, SCAN_DURATION_S, SCAN_YAW_RATE_DEG)
-                    # B. Altitude wiggle: descend to SCAN_LOW_ALT_M, scan at
-                    # low altitude (better floor-yellow visibility), climb
-                    # back to wall-follow altitude.
-                    # Phase 1: descend (positive vz = down in body frame)
-                    desc_end = time.monotonic() + SCAN_RAMP_S
-                    while time.monotonic() < desc_end and not state.abort_requested:
-                        state.target_vel_north = 0.0
-                        state.target_vel_east  = 0.0
-                        state.target_vel_down  = 0.5  # 0.5 m/s descent
-                        state.target_yaw       = state.current_yaw_cmd
-                        state.last_planner_progress = time.monotonic()
-                        await asyncio.sleep(LOOP_DT)
-                    # Phase 2: scan in place at lower altitude
-                    scan_end = time.monotonic() + SCAN_DURATION_S
-                    while time.monotonic() < scan_end and not state.abort_requested:
-                        state.current_yaw_cmd += SCAN_YAW_RATE_DEG * LOOP_DT
-                        state.current_yaw_cmd = (state.current_yaw_cmd + 180) % 360 - 180
-                        state.target_vel_north = 0.0
-                        state.target_vel_east  = 0.0
-                        state.target_vel_down  = 0.0
-                        state.target_yaw       = state.current_yaw_cmd
-                        state.last_planner_progress = time.monotonic()
-                        await asyncio.sleep(LOOP_DT)
-                    # Phase 3: climb back (negative vz = up in NED)
-                    climb_end = time.monotonic() + SCAN_RAMP_S
-                    while time.monotonic() < climb_end and not state.abort_requested:
-                        state.target_vel_north = 0.0
-                        state.target_vel_east  = 0.0
-                        state.target_vel_down  = -0.5  # 0.5 m/s climb
-                        state.target_yaw       = state.current_yaw_cmd
-                        state.last_planner_progress = time.monotonic()
-                        await asyncio.sleep(LOOP_DT)
-                    log.info("scan+wiggle: done, resuming wall-follow")
-                    scan_start_at = time.monotonic() + SCAN_EVERY_S
-                    continue
-
-                # --- C. Hard turnaround at T+TURNAROUND_AT_S (bonus only) ---
-                # One-shot 180 yaw in place + reverse current_yaw_cmd setpoint
-                # so K's wall-follow drives the drone back toward spawn before
-                # the bonus hard-land. Pure yaw — vision-EKF safe.
-                if (bonus_mode and not turnaround_done
-                        and (now - loop_start_ts) >= TURNAROUND_AT_S):
-                    log.warning("turnaround: T+%.0fs >= %.0fs — yawing 180 deg to head back",
-                                now - loop_start_ts, TURNAROUND_AT_S)
-                    target_yaw = state.current_yaw_cmd + 180.0
-                    target_yaw = (target_yaw + 180) % 360 - 180
-                    yaw_rate_deg = 90.0  # 90 deg/s -> 2s for full 180
-                    yaw_steps = int(180.0 / (yaw_rate_deg * LOOP_DT))
-                    for _ in range(yaw_steps):
-                        if state.abort_requested:
-                            break
-                        state.current_yaw_cmd += yaw_rate_deg * LOOP_DT
-                        state.current_yaw_cmd = (state.current_yaw_cmd + 180) % 360 - 180
-                        state.target_vel_north = 0.0
-                        state.target_vel_east  = 0.0
-                        state.target_vel_down  = 0.0
-                        state.target_yaw       = state.current_yaw_cmd
-                        state.last_planner_progress = time.monotonic()
-                        await asyncio.sleep(LOOP_DT)
-                    # Reset K's FSM so it re-acquires wall in new direction
-                    try:
-                        wall_follower.state = 'find_wall'
-                        wall_follower._corner_ticks = 0
-                        wall_follower._avoid_cooldown = 0
-                    except Exception:
-                        pass
-                    turnaround_done = True
-                    log.warning("turnaround: complete, K's FSM reset, wall-follow resumes")
-                    continue
+                # REMOVED 22/5: periodic 360 scan + altitude wiggle (B) + hard
+                # turnaround (C). User reported drone crashing into walls
+                # during these maneuvers. Pure K wall-follow only now.
 
                 depth = depth_cam.get_frame()
                 if depth is None:
