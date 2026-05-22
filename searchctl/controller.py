@@ -400,6 +400,30 @@ def setup_detection(state, run_dir, weights_path=YOLO_WEIGHTS_DEFAULT, confidenc
     model = YOLO(weights_path)
     log.info("YOLO model loaded")
 
+    # K's best.pt names classes with spaces ('yellow barrel' / 'red barrel' /
+    # 'toxic barrel'). Org's example image + verylousymodel use underscores
+    # ('yellow_barrel' / 'red_barrel'). Remap so saved bbox JPGs + log lines
+    # + run_summary.json all match the format judges will be looking for.
+    # Modern ultralytics makes YOLO.names a read-only property — the real
+    # backing dict lives on the inner DetectionModel.
+    remap = {0: "yellow_barrel", 1: "red_barrel", 2: "toxic_barrel"}
+    patched = []
+    try:
+        if hasattr(model, "model") and hasattr(model.model, "names"):
+            model.model.names = remap
+            patched.append("model.model.names")
+    except Exception as e:
+        log.debug("remap model.model.names failed: %s", e)
+    try:
+        model.names = remap
+        patched.append("model.names")
+    except Exception as e:
+        log.debug("remap model.names failed: %s", e)
+    if patched:
+        log.info("detection: class names remapped (%s) -> %s", ",".join(patched), remap)
+    else:
+        log.warning("detection: class name remap failed on all paths")
+
     seq_counter = {"n": 0}
 
     processing = {"busy": False}
@@ -427,11 +451,37 @@ def setup_detection(state, run_dir, weights_path=YOLO_WEIGHTS_DEFAULT, confidenc
                     annotated = results.plot()
                     filename = str(det_dir / f"detected_{seq_counter['n']:04d}.jpg")
                     cv2.imwrite(filename, annotated)
-                    state.detection_count += 1
                     state.last_detection_at = time.monotonic()
+                    # Append a DetectionRecord per box so compute_unique_detections()
+                    # + STATUS.txt + run_summary.json actually see something.
+                    # K's original callback only bumped state.detection_count and
+                    # saved JPGs — leaving state.detections empty so scoring
+                    # reported 0 unique barrels even with 29 raw detections.
+                    name_map = getattr(model, "names", None) or {}
+                    for b in boxes:
+                        try:
+                            cls_id = int(b.cls)
+                            cls_name = name_map.get(cls_id, f"cls{cls_id}")
+                            conf_val = float(b.conf[0] if hasattr(b.conf, "__len__") else b.conf)
+                            xyxy = b.xyxy[0].tolist() if hasattr(b.xyxy, "tolist") else list(b.xyxy)
+                        except Exception:
+                            cls_name = "unknown"
+                            conf_val = 0.0
+                            xyxy = [0, 0, 0, 0]
+                        state.detection_count += 1
+                        state.detections.append(DetectionRecord(
+                            seq=state.detection_count,
+                            ts=time.time(),
+                            class_name=cls_name,
+                            confidence=conf_val,
+                            bbox_xyxy=tuple(xyxy),
+                            pose_at_detect=pose,
+                            saved_path=filename,
+                        ))
                     log.info(
-                        "detection: count=%d pose=(N=%.2f E=%.2f D=%.2f yaw=%.0f) -> %s",
-                        state.detection_count, pose[0], pose[1], pose[2], pose[3],
+                        "detection: frame=%d boxes=%d total=%d pose=(N=%.2f E=%.2f D=%.2f yaw=%.0f) -> %s",
+                        seq_counter['n'], len(boxes), state.detection_count,
+                        pose[0], pose[1], pose[2], pose[3],
                         os.path.basename(filename),
                     )
             except Exception:
