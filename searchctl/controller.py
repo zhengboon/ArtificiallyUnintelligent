@@ -1076,9 +1076,16 @@ async def run(
 
                 # Periodic 360 scan station (SLOW: 60 deg/s for 6s = 360 deg).
                 # Pure yaw at fixed XY, no descent, no overshoot.
-                if time.monotonic() >= scan_start_at:
-                    log.info("scan: starting slow 360 (%.1fs @ %.0f deg/s)",
-                             SCAN_DURATION_S, SCAN_YAW_RATE_DEG)
+                # SAFETY: only trigger when K's wall-follow velocity command
+                # is ~zero (drone naturally hovering — e.g. avoid_front or
+                # outer_corner phase 2 of K's FSM). Avoids the "moving +
+                # rotating" condition that disrupts vision-EKF tracking.
+                # If K never stops, we just skip the scan; better to miss
+                # one than crash.
+                vel_mag = math.hypot(state.target_vel_north, state.target_vel_east)
+                if time.monotonic() >= scan_start_at and vel_mag < 0.1:
+                    log.info("scan: vel=%.2fm/s ~0, starting slow 360 (%.1fs @ %.0f deg/s)",
+                             vel_mag, SCAN_DURATION_S, SCAN_YAW_RATE_DEG)
                     scan_end = time.monotonic() + SCAN_DURATION_S
                     while time.monotonic() < scan_end and not state.abort_requested:
                         state.current_yaw_cmd += SCAN_YAW_RATE_DEG * LOOP_DT
