@@ -1049,14 +1049,15 @@ async def run(
         dual_colour_first_seen_at: Optional[float] = None
         early_exit_reason: Optional[str] = None
 
-        # Position-stuck watchdog: if drone moved <0.5m in last 15s AND we're
-        # past the initial 30s grace window, FSM has failed to make progress.
+        # Position-stuck watchdog: if drone moved <0.3m in last 20s AND we're
+        # past the initial 45s grace window, FSM has failed to make progress.
         # Bail GRACEFULLY (clean land, preserve score) instead of letting K's
         # FSM keep grinding the drone into a wall until EKF blows up.
-        # This is independent of K's FSM state — catches all stuck conditions.
-        STUCK_WATCHDOG_WINDOW_S = 15.0
-        STUCK_WATCHDOG_MOVE_M   = 0.5
-        STUCK_WATCHDOG_GRACE_S  = 30.0
+        # Tuned to be "essentially stationary for 20s" — corner-turn
+        # maneuvers and FSM escape recoveries should still slip under it.
+        STUCK_WATCHDOG_WINDOW_S = 20.0
+        STUCK_WATCHDOG_MOVE_M   = 0.3
+        STUCK_WATCHDOG_GRACE_S  = 45.0
         pos_history: list = []  # list of (monotonic_ts, north, east)
 
         if bonus_mode:
@@ -1263,7 +1264,7 @@ def main() -> int:
     args = ap.parse_args()
     logging.getLogger().setLevel(args.log_level)
 
-    log.info("==== searchctl controller v0.7 (K wall-follow + FSM stuck-escape + slow gated scan + bonus + stuck watchdog) ====")
+    log.info("==== searchctl controller v0.7.1 (K wall-follow + FSM stuck-escape + slow gated scan + bonus + relaxed watchdog) ====")
     log.info("logs at %s", LOG_FILE)
     log.info("detection:  %s", "OFF (--no-detect)" if args.no_detect else "ON")
     log.info("fake-GCS:   %s", "OFF (--no-fake-gcs)" if args.no_fake_gcs else "ON")
