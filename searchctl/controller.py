@@ -174,7 +174,15 @@ class Drone:
             log.warning("could not set SIM_BAT_MIN_PCT: %s", e)
 
     async def wait_until_armable(self, timeout_s: float = 30.0) -> None:
-        log.info("waiting for is_armable...")
+        """Wait for PX4 to declare ready-to-arm.
+
+        For x500_vision (no GPS) `is_armable` may stay False forever because
+        it includes a global-position check that vision-only drones can't
+        satisfy. We accept the equivalent vision-drone armable condition:
+        home_position_ok AND local_position_ok. PX4 will reject the actual
+        arm() call if anything else is still wrong, so this is safe.
+        """
+        log.info("waiting for armable (is_armable OR (home_ok AND local_ok))...")
         deadline = time.monotonic() + timeout_s
         async for h in self.drone.telemetry.health():
             armable = bool(getattr(h, "is_armable", False))
@@ -187,10 +195,13 @@ class Drone:
             if armable:
                 log.info("is_armable=True; OK to arm")
                 return
+            if home_ok and local_ok:
+                log.info("home_ok=True AND local_ok=True (vision-drone armable); OK to arm")
+                return
             if time.monotonic() > deadline:
                 raise TimeoutError(
-                    f"is_armable still False after {timeout_s}s "
-                    f"(home_ok={home_ok}, local_ok={local_ok}). "
+                    f"not armable after {timeout_s}s "
+                    f"(armable={armable}, home_ok={home_ok}, local_ok={local_ok}). "
                     "Did you run `commander set_ekf_origin 47.397742 8.545594 488.0` "
                     "in the px4> console?"
                 )
