@@ -111,6 +111,13 @@ class SharedState:
     # Wall follower state
     current_yaw_cmd:  float = 0.0   # integrated yaw heading (degrees)
 
+    # Backup C — detection-driven yaw nudge channel. The image_callback
+    # writes a target yaw delta (degrees) here when YOLO fires on a barrel
+    # near a frame edge; the main loop reads + zeros it on next tick and
+    # applies the delta to current_yaw_cmd.
+    pending_yaw_nudge_deg: float = 0.0
+    last_nudge_at:         float = 0.0
+
     # Heartbeat / liveness
     last_planner_progress: float = field(default_factory=time.monotonic)
     abort_requested: bool = False
@@ -509,6 +516,26 @@ def setup_detection(state, run_dir, weights_path=YOLO_WEIGHTS_DEFAULT, confidenc
                         pose[0], pose[1], pose[2], pose[3],
                         os.path.basename(filename),
                     )
+                    # Backup C: if the strongest-confidence bbox is near
+                    # a horizontal edge of the frame, schedule a small yaw
+                    # nudge toward it. Main loop applies on next tick.
+                    now = time.monotonic()
+                    if (now - state.last_nudge_at) >= DETECT_NUDGE_COOLDOWN_S:
+                        try:
+                            best = max(boxes, key=lambda b: float(b.conf[0] if hasattr(b.conf, "__len__") else b.conf))
+                            xy = best.xyxy[0].tolist() if hasattr(best.xyxy, "tolist") else list(best.xyxy)
+                            bbox_cx = 0.5 * (xy[0] + xy[2])
+                            edge = DETECT_NUDGE_EDGE_FRAC * DETECT_IMAGE_WIDTH
+                            if bbox_cx < edge:
+                                state.pending_yaw_nudge_deg = -DETECT_NUDGE_YAW_DEG
+                                state.last_nudge_at = now
+                                log.info("nudge: bbox cx=%.0f (< %.0f) -> yaw %+.0f deg", bbox_cx, edge, -DETECT_NUDGE_YAW_DEG)
+                            elif bbox_cx > (DETECT_IMAGE_WIDTH - edge):
+                                state.pending_yaw_nudge_deg = +DETECT_NUDGE_YAW_DEG
+                                state.last_nudge_at = now
+                                log.info("nudge: bbox cx=%.0f (> %.0f) -> yaw %+.0f deg", bbox_cx, DETECT_IMAGE_WIDTH - edge, +DETECT_NUDGE_YAW_DEG)
+                        except Exception:
+                            log.debug("nudge: could not parse bbox", exc_info=True)
             except Exception:
                 log.exception("inference failed")
             finally:
@@ -1023,6 +1050,47 @@ BONUS_DUAL_COLOUR_HOLD_S = 25.0   # once both colours seen, hold this long
 PLATEAU_S_DEFAULT        = 60.0   # non-bonus: land if no new unique cluster
                                   # for this long AND both colours present
 
+# --- Backup behaviours layered on top of K's wall-follow (always on) ---
+# A. Stuck-escape: if drone hasn't moved more than STUCK_DRIFT_M in
+#    STUCK_WINDOW_S, perform an escape maneuver (back + yaw + forward).
+STUCK_WINDOW_S        = 20.0
+STUCK_DRIFT_M         = 1.0
+ESCAPE_BACK_S         = 1.5
+ESCAPE_BACK_SPEED     = 0.5
+ESCAPE_YAW_S          = 3.0
+ESCAPE_YAW_RATE_DEG   = 60.0
+ESCAPE_FWD_S          = 2.0
+ESCAPE_FWD_SPEED      = 0.5
+ESCAPE_COOLDOWN_S     = 25.0  # min seconds between escapes
+# B. Periodic 360 scan station: every SCAN_EVERY_S of wall-follow time,
+#    pause and yaw 360 deg so the camera sees all angles from the
+#    current position. K explicitly chose not to do this in his wall-
+#    follow algo, but we've observed 0 yellow detections in his runs.
+SCAN_EVERY_S          = 75.0
+SCAN_DURATION_S       = 8.0
+SCAN_YAW_RATE_DEG     = 50.0  # 50 deg/s * 8 s = 400 deg (full sweep + slack)
+# C. Detect-and-approach nudge: when YOLO fires on a barrel with the
+#    bbox center in the outer 25% of the frame, briefly yaw toward it
+#    so we get a centered detection (better JPG, easier judge review).
+DETECT_NUDGE_EDGE_FRAC   = 0.25
+DETECT_NUDGE_YAW_DEG     = 20.0
+DETECT_NUDGE_COOLDOWN_S  = 8.0
+DETECT_IMAGE_WIDTH       = 1280  # IMX214 stream is 1280x720 in roboverse SDF
+
+# --- Backup navigation algo (--backup): scan-and-walk explorer ---
+# Different from K's wall-follow entirely. Hover at takeoff, yaw 360,
+# pick the direction with most depth clearance, fly that way 5m,
+# repeat. Covers arena interior (where yellow barrels live), where
+# K's wall-follow never goes.
+SW_SCAN_DURATION_S    = 8.0
+SW_SCAN_YAW_RATE_DEG  = 50.0
+SW_WALK_FWD_SPEED     = 0.5      # safer than K's 0.7 since we may
+                                  # be in open arena interior, not
+                                  # close to walls for stability
+SW_WALK_DURATION_S    = 10.0     # ~5m at 0.5 m/s
+SW_MIN_CLEARANCE_M    = 1.5      # only walk in directions with this
+                                  # much depth clearance ahead
+
 
 async def run(
     detect_enabled: bool = True,
@@ -1031,6 +1099,7 @@ async def run(
     bonus_mode: bool = False,
     altitude_m: float = 3.0,
     confidence: float = DETECT_CONFIDENCE_DEFAULT,
+    backup_mode: bool = False,
 ) -> int:
     state = SharedState()
     drone = Drone()
@@ -1096,15 +1165,12 @@ async def run(
         if map_handle is not None:
             map_task = asyncio.create_task(mapping_task(map_handle, state), name="mapping")
 
-        # Wall-following loop
+        # Wall-following loop (K's primary algo)
         wall_follower = WallFollower()
-        # Speed tuning overrides (per-instance; K's wall_following.py untouched).
-        # 22/5 attempt at LINEAR_SPEED=1.0 + clear-straight boost to 1.8 m/s
-        # blew up vision-EKF (altitude estimate went to +877 m). Vision
-        # odometry can't track that fast. Back off to modest tweaks:
-        #   CORNER_TURN: 0.35 -> 0.5  (slight bump, still safe)
-        #   LINEAR_SPEED: keep K's 0.7 (do NOT push)
-        wall_follower.CORNER_TURN = 0.5
+        # K's original speeds — we tried bumping LINEAR_SPEED and CORNER_TURN
+        # on 22/5 and both blew up vision-EKF (D=+877m, position to N=40 E=62
+        # outside arena). K spent time tuning these specifically for the
+        # vision-drone's EKF tracking envelope. Do NOT override.
         wf_smoother   = VelocitySmoother()
         depth_cam     = DepthReceiver("/depth_camera")
         pc            = PointCloud(320, 320, 320, 240)
@@ -1137,103 +1203,318 @@ async def run(
                 "BONUS MODE: hard-land deadline at T+%.0fs, dual-colour hold %.0fs, plateau %.0fs",
                 BONUS_HARD_LAND_S, BONUS_DUAL_COLOUR_HOLD_S, plateau_window,
             )
+        # Backup A (stuck-escape) bookkeeping
+        pos_history: list = []  # [(t, n, e), ...] last STUCK_WINDOW_S of samples
+        last_escape_at: float = 0.0
+        # Backup B (periodic scan) bookkeeping
+        next_scan_at: float = loop_start_ts + SCAN_EVERY_S
 
-        try:
-            while not state.abort_requested:
-                # --- Early-exit checks (cheap; run every tick) ---
-                now = time.monotonic()
-                if bonus_mode and now >= bonus_deadline:
-                    early_exit_reason = (
-                        f"bonus mode: hard land at T+{now-loop_start_ts:.1f}s "
-                        f"(deadline {BONUS_HARD_LAND_S:.0f}s)"
-                    )
-                    break
-                unique = compute_unique_detections(state.detections)
-                total = unique["total"]
-                if total != last_unique_total:
-                    last_unique_total = total
-                    last_unique_change_at = now
-                have_both = unique.get("yellow_barrel", 0) >= 1 and unique.get("red_barrel", 0) >= 1
-                if have_both and dual_colour_first_seen_at is None:
-                    dual_colour_first_seen_at = now
-                    log.info(
-                        "EARLY-EXIT armed: BOTH COLOURS detected (yellow=%d, red=%d) "
-                        "at T+%.1fs",
-                        unique["yellow_barrel"], unique["red_barrel"],
-                        now - loop_start_ts,
-                    )
-                if bonus_mode and dual_colour_first_seen_at is not None \
-                        and (now - dual_colour_first_seen_at) >= BONUS_DUAL_COLOUR_HOLD_S:
-                    early_exit_reason = (
-                        f"bonus mode: dual-colour hold complete "
-                        f"({BONUS_DUAL_COLOUR_HOLD_S:.0f}s after first dual-colour)"
-                    )
-                    break
-                if have_both and (now - last_unique_change_at) >= plateau_window:
-                    early_exit_reason = (
-                        f"plateau: no new unique for {now-last_unique_change_at:.1f}s "
-                        f"({unique['yellow_barrel']}Y/{unique['red_barrel']}R)"
-                    )
-                    break
-
-                depth = depth_cam.get_frame()
-                if depth is None:
-                    await asyncio.sleep(LOOP_DT)
-                    continue
-
-                points = pc.convert(depth)
-                regions = get_wall_distances(points)
-
-                log.info(
-                    "front=%.2f  front_right=%.2f  right=%.2f  wf_state=%s",
-                    regions['front'], regions['front_right'],
-                    regions['right'], wall_follower.state,
-                )
-
-                vx, vy, vz, yaw_rate = wall_follower.compute(regions)
-
-                # Overlay obstacle avoidance
-                if regions['front'] < 2.0:
-                    vx -= 0.7 * (2.0 - regions['front'])
-
-                # REMOVED 22/5: clear-straight boost up to 1.8 m/s blew up
-                # vision-EKF (altitude estimate went to +877 m). Vision
-                # odometry can't track that fast. K's LINEAR_SPEED 0.7 +
-                # the <2m slow-down above is the safe envelope.
-                # if regions['left'] < 1.0:
-                #     vy += 0.3 * (1.0 - regions['left'])
-
-                vx, vy, vz, yaw_rate = wf_smoother.smooth((vx, vy, vz, yaw_rate))
-
-                # Update yaw command by integrating yaw_rate
-                state.current_yaw_cmd += math.degrees(yaw_rate) * LOOP_DT
+        async def _do_scan_station():
+            """Backup B: pause wall-follow, yaw 360 in place."""
+            log.info("backup B: 360 scan station (yaw %.0fdeg/s for %.0fs)",
+                     SCAN_YAW_RATE_DEG, SCAN_DURATION_S)
+            end = time.monotonic() + SCAN_DURATION_S
+            while time.monotonic() < end and not state.abort_requested:
+                state.current_yaw_cmd += SCAN_YAW_RATE_DEG * LOOP_DT
                 state.current_yaw_cmd = (state.current_yaw_cmd + 180) % 360 - 180
-
-                # Rotate body-frame velocity -> NED using current yaw
-                north, east = body_to_ned(vx, vy, state.current_yaw_cmd)
-                state.target_vel_north = north
-                state.target_vel_east  = east
-                state.target_vel_down  = vz
+                state.target_vel_north = 0.0
+                state.target_vel_east  = 0.0
+                state.target_vel_down  = 0.0
                 state.target_yaw       = state.current_yaw_cmd
                 state.last_planner_progress = time.monotonic()
-
                 await asyncio.sleep(LOOP_DT)
+            log.info("backup B: scan complete")
 
-        finally:
-            if early_exit_reason is not None:
-                log.info("wall-follow EARLY EXIT (T+%.1fs): %s",
-                         time.monotonic() - loop_start_ts, early_exit_reason)
-            state.abort_requested = True
-            bg_tasks = [pumper_task, wd_task, status_task, telem_task]
-            if map_task is not None:
-                bg_tasks.append(map_task)
-            for t in bg_tasks:
-                t.cancel()
-            for t in bg_tasks:
-                try:
-                    await t
-                except (asyncio.CancelledError, Exception):
-                    pass
+        async def _do_stuck_escape():
+            """Backup A: back up, yaw in place, then go forward."""
+            log.warning("backup A: STUCK detected — escape (back %.1fs + yaw %.1fs + fwd %.1fs)",
+                        ESCAPE_BACK_S, ESCAPE_YAW_S, ESCAPE_FWD_S)
+            # Phase 1: reverse
+            end = time.monotonic() + ESCAPE_BACK_S
+            while time.monotonic() < end and not state.abort_requested:
+                n_, e_ = body_to_ned(-ESCAPE_BACK_SPEED, 0.0, state.current_yaw_cmd)
+                state.target_vel_north = n_
+                state.target_vel_east  = e_
+                state.target_vel_down  = 0.0
+                state.target_yaw       = state.current_yaw_cmd
+                state.last_planner_progress = time.monotonic()
+                await asyncio.sleep(LOOP_DT)
+            # Phase 2: yaw in place
+            end = time.monotonic() + ESCAPE_YAW_S
+            while time.monotonic() < end and not state.abort_requested:
+                state.current_yaw_cmd += ESCAPE_YAW_RATE_DEG * LOOP_DT
+                state.current_yaw_cmd = (state.current_yaw_cmd + 180) % 360 - 180
+                state.target_vel_north = 0.0
+                state.target_vel_east  = 0.0
+                state.target_vel_down  = 0.0
+                state.target_yaw       = state.current_yaw_cmd
+                state.last_planner_progress = time.monotonic()
+                await asyncio.sleep(LOOP_DT)
+            # Phase 3: forward
+            end = time.monotonic() + ESCAPE_FWD_S
+            while time.monotonic() < end and not state.abort_requested:
+                n_, e_ = body_to_ned(ESCAPE_FWD_SPEED, 0.0, state.current_yaw_cmd)
+                state.target_vel_north = n_
+                state.target_vel_east  = e_
+                state.target_vel_down  = 0.0
+                state.target_yaw       = state.current_yaw_cmd
+                state.last_planner_progress = time.monotonic()
+                await asyncio.sleep(LOOP_DT)
+            # Reset K's FSM
+            try:
+                wall_follower.state = 'find_wall'
+                wall_follower._corner_ticks = 0
+                wall_follower._avoid_cooldown = 0
+            except Exception:
+                pass
+            log.warning("backup A: escape complete; resuming wall-follow")
+
+        # =====================================================================
+        # BACKUP NAV: scan-and-walk explorer (--backup)
+        # =====================================================================
+        # Independent of K's wall-follow. Hover, yaw 360 in place (catches
+        # barrels), then walk forward 10s at 0.5 m/s along the direction with
+        # the most depth clearance. Repeat. Covers arena interior where
+        # K's wall-follow never goes. Pure body-frame velocity (EKF-safe).
+        if backup_mode:
+            log.info("==== BACKUP NAV: scan-and-walk explorer ====")
+            try:
+                while not state.abort_requested:
+                    now = time.monotonic()
+                    # Same bonus / plateau early-exit logic as wall-follow.
+                    if bonus_mode and now >= bonus_deadline:
+                        early_exit_reason = f"bonus mode: hard land at T+{now-loop_start_ts:.1f}s"
+                        break
+                    unique = compute_unique_detections(state.detections)
+                    total = unique["total"]
+                    if total != last_unique_total:
+                        last_unique_total = total
+                        last_unique_change_at = now
+                    have_both = unique.get("yellow_barrel", 0) >= 1 and unique.get("red_barrel", 0) >= 1
+                    if have_both and dual_colour_first_seen_at is None:
+                        dual_colour_first_seen_at = now
+                        log.info("EARLY-EXIT armed: BOTH COLOURS detected at T+%.1fs", now - loop_start_ts)
+                    if bonus_mode and dual_colour_first_seen_at is not None \
+                            and (now - dual_colour_first_seen_at) >= BONUS_DUAL_COLOUR_HOLD_S:
+                        early_exit_reason = "bonus mode: dual-colour hold complete"
+                        break
+                    if have_both and (now - last_unique_change_at) >= plateau_window:
+                        early_exit_reason = f"plateau: no new unique for {now-last_unique_change_at:.1f}s"
+                        break
+
+                    # Phase 1: scan station — yaw 360 in place
+                    log.info("backup nav: 360 scan station")
+                    scan_end = time.monotonic() + SW_SCAN_DURATION_S
+                    while time.monotonic() < scan_end and not state.abort_requested:
+                        state.current_yaw_cmd += SW_SCAN_YAW_RATE_DEG * LOOP_DT
+                        state.current_yaw_cmd = (state.current_yaw_cmd + 180) % 360 - 180
+                        state.target_vel_north = 0.0
+                        state.target_vel_east  = 0.0
+                        state.target_vel_down  = 0.0
+                        state.target_yaw       = state.current_yaw_cmd
+                        state.last_planner_progress = time.monotonic()
+                        await asyncio.sleep(LOOP_DT)
+
+                    if state.abort_requested:
+                        break
+
+                    # Phase 2: pick direction. Read current depth; if too close
+                    # to a wall in front, yaw 90 deg and try again next loop.
+                    depth = depth_cam.get_frame()
+                    if depth is None:
+                        await asyncio.sleep(LOOP_DT)
+                        continue
+                    points = pc.convert(depth)
+                    regions = get_wall_distances(points)
+                    if regions['front'] < SW_MIN_CLEARANCE_M:
+                        log.info("backup nav: front=%.1fm < %.1fm — yaw 90 and re-scan",
+                                 regions['front'], SW_MIN_CLEARANCE_M)
+                        end = time.monotonic() + 2.0
+                        while time.monotonic() < end and not state.abort_requested:
+                            state.current_yaw_cmd += 45.0 * LOOP_DT
+                            state.current_yaw_cmd = (state.current_yaw_cmd + 180) % 360 - 180
+                            state.target_vel_north = 0.0
+                            state.target_vel_east  = 0.0
+                            state.target_vel_down  = 0.0
+                            state.target_yaw       = state.current_yaw_cmd
+                            state.last_planner_progress = time.monotonic()
+                            await asyncio.sleep(LOOP_DT)
+                        continue
+
+                    # Phase 3: walk forward, re-checking depth periodically
+                    log.info("backup nav: walking fwd %.0fs @ %.1fm/s (front=%.1fm)",
+                             SW_WALK_DURATION_S, SW_WALK_FWD_SPEED, regions['front'])
+                    walk_end = time.monotonic() + SW_WALK_DURATION_S
+                    last_check = time.monotonic()
+                    while time.monotonic() < walk_end and not state.abort_requested:
+                        if time.monotonic() - last_check > 0.5:
+                            d2 = depth_cam.get_frame()
+                            if d2 is not None:
+                                p2 = pc.convert(d2)
+                                r2 = get_wall_distances(p2)
+                                if r2['front'] < 1.2:
+                                    log.info("backup nav: brake (front=%.1fm)", r2['front'])
+                                    break
+                            last_check = time.monotonic()
+                        # Apply any pending nudge (Backup C)
+                        if state.pending_yaw_nudge_deg != 0.0:
+                            state.current_yaw_cmd += state.pending_yaw_nudge_deg
+                            state.current_yaw_cmd = (state.current_yaw_cmd + 180) % 360 - 180
+                            state.pending_yaw_nudge_deg = 0.0
+                        n_, e_ = body_to_ned(SW_WALK_FWD_SPEED, 0.0, state.current_yaw_cmd)
+                        state.target_vel_north = n_
+                        state.target_vel_east  = e_
+                        state.target_vel_down  = 0.0
+                        state.target_yaw       = state.current_yaw_cmd
+                        state.last_planner_progress = time.monotonic()
+                        await asyncio.sleep(LOOP_DT)
+            finally:
+                if early_exit_reason is not None:
+                    log.info("backup nav EARLY EXIT (T+%.1fs): %s",
+                             time.monotonic() - loop_start_ts, early_exit_reason)
+                state.abort_requested = True
+                bg_tasks = [pumper_task, wd_task, status_task, telem_task]
+                if map_task is not None:
+                    bg_tasks.append(map_task)
+                for t in bg_tasks:
+                    t.cancel()
+                for t in bg_tasks:
+                    try:
+                        await t
+                    except (asyncio.CancelledError, Exception):
+                        pass
+        else:
+            # ===================================================================
+            # PRIMARY NAV: K's wall-follow loop
+            # ===================================================================
+            try:
+                while not state.abort_requested:
+                    # --- Early-exit checks (cheap; run every tick) ---
+                    now = time.monotonic()
+                    if bonus_mode and now >= bonus_deadline:
+                        early_exit_reason = (
+                            f"bonus mode: hard land at T+{now-loop_start_ts:.1f}s "
+                            f"(deadline {BONUS_HARD_LAND_S:.0f}s)"
+                        )
+                        break
+                    unique = compute_unique_detections(state.detections)
+                    total = unique["total"]
+                    if total != last_unique_total:
+                        last_unique_total = total
+                        last_unique_change_at = now
+                    have_both = unique.get("yellow_barrel", 0) >= 1 and unique.get("red_barrel", 0) >= 1
+                    if have_both and dual_colour_first_seen_at is None:
+                        dual_colour_first_seen_at = now
+                        log.info(
+                            "EARLY-EXIT armed: BOTH COLOURS detected (yellow=%d, red=%d) "
+                            "at T+%.1fs",
+                            unique["yellow_barrel"], unique["red_barrel"],
+                            now - loop_start_ts,
+                        )
+                    if bonus_mode and dual_colour_first_seen_at is not None \
+                            and (now - dual_colour_first_seen_at) >= BONUS_DUAL_COLOUR_HOLD_S:
+                        early_exit_reason = (
+                            f"bonus mode: dual-colour hold complete "
+                            f"({BONUS_DUAL_COLOUR_HOLD_S:.0f}s after first dual-colour)"
+                        )
+                        break
+                    if have_both and (now - last_unique_change_at) >= plateau_window:
+                        early_exit_reason = (
+                            f"plateau: no new unique for {now-last_unique_change_at:.1f}s "
+                            f"({unique['yellow_barrel']}Y/{unique['red_barrel']}R)"
+                        )
+                        break
+    
+                    # --- Backup B: periodic 360 scan station ---
+                    if now >= next_scan_at:
+                        await _do_scan_station()
+                        next_scan_at = time.monotonic() + SCAN_EVERY_S
+                        pos_history.clear()  # reset stuck buffer (we just yawed)
+                        continue
+    
+                    # --- Backup A: stuck detection ---
+                    pos_history.append((now, state.north_m, state.east_m))
+                    pos_history = [p for p in pos_history if (now - p[0]) <= STUCK_WINDOW_S]
+                    if (len(pos_history) >= 5
+                            and (now - last_escape_at) > ESCAPE_COOLDOWN_S):
+                        window = pos_history[-1][0] - pos_history[0][0]
+                        if window >= STUCK_WINDOW_S * 0.9:
+                            n_min = min(p[1] for p in pos_history)
+                            n_max = max(p[1] for p in pos_history)
+                            e_min = min(p[2] for p in pos_history)
+                            e_max = max(p[2] for p in pos_history)
+                            drift = math.hypot(n_max - n_min, e_max - e_min)
+                            if drift < STUCK_DRIFT_M:
+                                log.warning("backup A: stuck-check tripped — drift=%.2fm over %.1fs (threshold %.2fm/%.1fs)",
+                                            drift, window, STUCK_DRIFT_M, STUCK_WINDOW_S)
+                                await _do_stuck_escape()
+                                last_escape_at = time.monotonic()
+                                pos_history.clear()
+                                continue
+    
+                    depth = depth_cam.get_frame()
+                    if depth is None:
+                        await asyncio.sleep(LOOP_DT)
+                        continue
+    
+                    points = pc.convert(depth)
+                    regions = get_wall_distances(points)
+    
+                    log.info(
+                        "front=%.2f  front_right=%.2f  right=%.2f  wf_state=%s",
+                        regions['front'], regions['front_right'],
+                        regions['right'], wall_follower.state,
+                    )
+    
+                    vx, vy, vz, yaw_rate = wall_follower.compute(regions)
+    
+                    # Overlay obstacle avoidance
+                    if regions['front'] < 2.0:
+                        vx -= 0.7 * (2.0 - regions['front'])
+    
+                    # REMOVED 22/5: clear-straight boost up to 1.8 m/s blew up
+                    # vision-EKF (altitude estimate went to +877 m). Vision
+                    # odometry can't track that fast. K's LINEAR_SPEED 0.7 +
+                    # the <2m slow-down above is the safe envelope.
+                    # if regions['left'] < 1.0:
+                    #     vy += 0.3 * (1.0 - regions['left'])
+    
+                    vx, vy, vz, yaw_rate = wf_smoother.smooth((vx, vy, vz, yaw_rate))
+    
+                    # Update yaw command by integrating yaw_rate
+                    state.current_yaw_cmd += math.degrees(yaw_rate) * LOOP_DT
+                    # Backup C: apply any pending detection-driven yaw nudge
+                    # (one-shot — read and zero in the same tick).
+                    if state.pending_yaw_nudge_deg != 0.0:
+                        state.current_yaw_cmd += state.pending_yaw_nudge_deg
+                        state.pending_yaw_nudge_deg = 0.0
+                    state.current_yaw_cmd = (state.current_yaw_cmd + 180) % 360 - 180
+    
+                    # Rotate body-frame velocity -> NED using current yaw
+                    north, east = body_to_ned(vx, vy, state.current_yaw_cmd)
+                    state.target_vel_north = north
+                    state.target_vel_east  = east
+                    state.target_vel_down  = vz
+                    state.target_yaw       = state.current_yaw_cmd
+                    state.last_planner_progress = time.monotonic()
+    
+                    await asyncio.sleep(LOOP_DT)
+    
+            finally:
+                if early_exit_reason is not None:
+                    log.info("wall-follow EARLY EXIT (T+%.1fs): %s",
+                             time.monotonic() - loop_start_ts, early_exit_reason)
+                state.abort_requested = True
+                bg_tasks = [pumper_task, wd_task, status_task, telem_task]
+                if map_task is not None:
+                    bg_tasks.append(map_task)
+                for t in bg_tasks:
+                    t.cancel()
+                for t in bg_tasks:
+                    try:
+                        await t
+                    except (asyncio.CancelledError, Exception):
+                        pass
 
         await drone.end_offboard()
         await drone.land_and_disarm()
@@ -1313,15 +1594,25 @@ def main() -> int:
              "firing on the actual barrels — org confirmed no penalty for "
              "incorrect detections (21/5).",
     )
+    ap.add_argument(
+        "--backup",
+        action="store_true",
+        help="BACKUP NAV ALGO: scan-and-walk explorer. Hover, yaw 360 at "
+             "each station (catches barrels), walk forward 10s along the "
+             "direction with most depth clearance, repeat. Covers arena "
+             "interior where K's wall-follow never goes. Use this if "
+             "K's wall-follow misbehaves or didn't find both colours.",
+    )
     args = ap.parse_args()
     logging.getLogger().setLevel(args.log_level)
 
-    log.info("==== searchctl controller v0.5 (K wall-follow + zb bonus/status/dedup) ====")
+    log.info("==== searchctl controller v0.5 (K wall-follow + zb bonus/status/dedup/backup) ====")
     log.info("logs at %s", LOG_FILE)
     log.info("detection:  %s", "OFF (--no-detect)" if args.no_detect else "ON")
     log.info("fake-GCS:   %s", "OFF (--no-fake-gcs)" if args.no_fake_gcs else "ON")
     log.info("mapping:    %s", "OFF (--no-map)" if args.no_map else "ON")
     log.info("bonus:      %s", "ON (hard-land ~4:20)" if args.bonus else "OFF")
+    log.info("nav algo:   %s", "BACKUP scan-and-walk" if args.backup else "K's wall-follow")
     log.info("altitude:   %.1f m   conf threshold: %.2f", args.altitude, args.conf)
     try:
         return asyncio.run(run(
@@ -1331,6 +1622,7 @@ def main() -> int:
             bonus_mode=args.bonus,
             altitude_m=args.altitude,
             confidence=args.conf,
+            backup_mode=args.backup,
         ))
     except KeyboardInterrupt:
         return 130
