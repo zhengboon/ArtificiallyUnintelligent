@@ -34,8 +34,8 @@ sleep 3
 
 tmux new-window -t $SESS -n ctl
 sleep 1
-tmux send-keys -t $SESS:ctl 'cd ~/ArtificiallyUnintelligent/searchctl && python3 controller.py --pattern wall --bonus' C-m
+tmux send-keys -t $SESS:ctl 'cd ~/ArtificiallyUnintelligent/searchctl && python3 controller.py --bonus' C-m
 
-echo "tmux session '$SESS' running with --pattern wall --bonus (5-min bonus mode)."
+echo "tmux session '$SESS' running with --bonus (default wall-follow + bonus) (5-min bonus mode)."
 echo "Attach: tmux attach -t $SESS"
 echo "Expected: hard-land at ~4:20 or early-land when both colours detected."

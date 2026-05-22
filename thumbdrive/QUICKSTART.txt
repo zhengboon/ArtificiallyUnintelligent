@@ -31,26 +31,32 @@ Then YOU type these by hand:
     # FIRST attempt: bonus-mode wall-follow. Hard-lands ~4:20, auto-exits
     # when both yellow + red detected. Targets the 5-min qualifier bonus
     # window (+20 pts per 30s under 5 min per colour, per the PDF).
-    python3 controller.py --pattern wall --bonus
+    # Backup behaviours (stuck-escape + periodic 360 scan + detect-nudge)
+    # are always on.
+    python3 controller.py --bonus
 
-    # Fallback A (if first attempt < 1 of each colour): defensive 8-min run
-    python3 controller.py --pattern wall
+    # Fallback A (if first attempt < 1 of each colour): defensive long run
+    # — same algorithm, no bonus hard-land. Runs until plateau or Ctrl-C.
+    python3 controller.py
 
-    # Fallback B = BACKUP STRATEGY (if wall-follow misbehaves entirely):
-    # position-mode 3x3 grid scan around spawn. Pure waypoints, no
-    # velocity-mode, no dependency on K's wall_following.py. ~3:45 total.
-    python3 controller.py --pattern grid --bonus
+    # Fallback B = BACKUP NAV ALGO (if wall-follow stuck or didn't find
+    # the yellow): scan-and-walk explorer. Hovers, yaws 360 to catch
+    # barrels, walks forward 10s along direction with most depth clearance,
+    # repeats. Covers ARENA INTERIOR (where K's wall-follow never goes).
+    # Vision-EKF safe, pure body-frame velocity.
+    python3 controller.py --backup --bonus
 
-    # Fallback C: hover at spawn, yaw 360 in 4 steps (quick detection probe)
-    python3 controller.py --pattern scan
+    # Fallback C: chase yellow by dropping altitude + threshold
+    python3 controller.py --bonus --altitude 2.0 --conf 0.5
 
-    # Smoke test only (drone flies tiny square, no detection / no map):
+    # Smoke test only (no detect / no map / no fake-GCS): just flight
     python3 controller.py --no-detect --no-map --no-fake-gcs
 
 DETECTION MODEL: K's best.pt is the default (3 classes — yellow/red/toxic
-oil-drums, toxic filtered out at output, label names remapped to underscores
-to match the org's example image: 'yellow_barrel' / 'red_barrel').
-Confidence threshold = 0.35 (org confirmed no penalty for false positives).
+barrels; toxic filtered out at output, label names remapped to underscores
+to match org's example image: 'yellow_barrel' / 'red_barrel').
+Default confidence threshold = 0.70 (K's tuning). Org confirmed no
+penalty for incorrect detections, so feel free to drop --conf at venue.
 
 Outputs land at: ~/ArtificiallyUnintelligent/searchctl/run_<ts>/
   STATUS.txt         <- live status: eligibility + bonus countdown + base score
@@ -63,8 +69,12 @@ After all runs, pick the best:
   python3 slot_summary.py   <- estimates scores across all runs, shows winner
 
 At-venue tuning (no code edits needed):
-  --altitude 2.5    higher cruise if locker barrels look too high
-  --conf 0.25       lower confidence if K's model isn't firing
+  --altitude 2.0    closer to floor — catches floor-level yellow targets
+  --altitude 3.5    higher cruise if locker barrels look high
+  --conf 0.5        lower confidence if K's model isn't firing
+  --conf 0.35       even more aggressive (no penalty for false positives)
+  --bonus           4:20 hard-land + early-exit on dual-colour detected
+  --backup          BACKUP NAV: scan-and-walk explorer (different algo)
 
 DISK HYGIENE (if you see "no space left" or VM is >90% full):
   rm -rf ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*

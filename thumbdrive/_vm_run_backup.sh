@@ -1,10 +1,9 @@
 #!/bin/bash
-# BACKUP pattern: position-mode 3x3 grid scan around spawn.
-# Use this if --pattern wall misbehaves at venue (gets stuck, EKF
-# diverges, depth pipeline fails). Shares NO code with wall-follow.
-#
-# Bonus mode bundled in: hard-lands ~4:20, early-exits when both
-# colours detected, applies plateau exit.
+# BACKUP NAV: scan-and-walk explorer.
+# Use this if K's primary wall-follow misbehaves (gets stuck, EKF
+# diverges, fails to find both colours) or didn't find a yellow
+# barrel. Different algo entirely — covers arena interior instead
+# of perimeter walls.
 set +e
 SESS=au
 tmux kill-session -t $SESS 2>/dev/null
@@ -34,8 +33,8 @@ sleep 3
 
 tmux new-window -t $SESS -n ctl
 sleep 1
-tmux send-keys -t $SESS:ctl 'cd ~/ArtificiallyUnintelligent/searchctl && python3 controller.py --pattern grid --bonus' C-m
+tmux send-keys -t $SESS:ctl 'cd ~/ArtificiallyUnintelligent/searchctl && python3 controller.py --backup --bonus' C-m
 
-echo "tmux session '$SESS' running with --pattern grid --bonus (backup strategy)."
+echo "tmux session '$SESS' running with --backup --bonus (scan-and-walk explorer)."
 echo "Attach: tmux attach -t $SESS"
-echo "Expected: 9-station 3x3 grid scan, ~3:45 total. Early-lands on dual colour."
+echo "Expected: hover+scan, walk forward 10s, repeat. Hard-land at 4:20."

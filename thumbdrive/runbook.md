@@ -101,53 +101,63 @@
 ### Step 6 (T+14–24 min): First REAL run — BONUS-MODE attempt
 - [ ] Keyboard (Terminal 2) — **bonus mode first** (target the 5-min bonus window):
   ```bash
-  python3 controller.py --pattern wall --bonus
+  python3 controller.py --bonus
   ```
+  Runs K's wall-follow with bonus-window hard-land at ~4:20. Backup
+  behaviours (stuck-escape + periodic 360° scan + detection nudge)
+  are always on.
 - [ ] Runtime: ≤4:20 hard cap. Auto-lands earlier when both yellow + red detected
       (plus a short hold for additional barrels), OR when detection plateaus.
 - [ ] Per qualifier PDF: bonus = +20 pts per 30 s under the 5-min mark for
       finding ALL of a colour. We can't know "all" so the heuristic exit
       triggers on dual-colour-found OR detection-rate plateau.
-- [ ] Screen-watcher: call out every `detection: class=yellow_barrel ...` /
-      `red_barrel ...` line. Note the unique count from `STATUS.txt` (it's
-      written every 5 s into the run dir).
+- [ ] Screen-watcher: call out every `detection: ... boxes=N total=...`
+      line. Open `STATUS.txt` in the run dir (updated every 5 s) for
+      live unique counts + eligibility flag.
 
 ### Step 6b — Fallback if bonus mode fails
 - [ ] **Fallback A** — wall-follow worked but didn't find both colours
-      → defensive long run:
+      → defensive long run (no bonus cap):
   ```bash
-  python3 controller.py --pattern wall          # 8-min defensive
+  python3 controller.py
   ```
-- [ ] **Fallback B (BACKUP STRATEGY)** — wall-follow misbehaved
-      (stuck, EKF diverged, depth pipeline crashed) → grid scan:
+  Same algorithm, runs until plateau or Ctrl-C. Max coverage of
+  the perimeter K's algo follows.
+- [ ] **Fallback B (BACKUP NAV ALGO)** — wall-follow stuck or didn't
+      cover where the yellow lives → scan-and-walk explorer:
   ```bash
-  python3 controller.py --pattern grid --bonus  # 3×3 grid, position-mode
+  python3 controller.py --backup --bonus
   ```
-  Grid is position-mode (same code path as the proven smoke test) so
-  it can't inherit any wall-follow bug. 9 stations × 4 yaws each,
-  spans ~6m around spawn, ~3:45 total inside the bonus window.
-- [ ] **Fallback C** — quick detection probe only:
+  Different algorithm entirely: hovers, yaws 360° to catch barrels,
+  walks forward 10 s in the most-clear direction, repeats. Covers
+  ARENA INTERIOR (where K's wall-follow never goes — yellow barrels
+  on floor may be in interior, not along walls). Pure body-frame
+  velocity, vision-EKF safe.
+- [ ] **Fallback C** — chase yellow by dropping altitude + threshold:
   ```bash
-  python3 controller.py --pattern scan          # hover + 4 yaws, ~120 s
+  python3 controller.py --bonus --altitude 2.0 --conf 0.5
   ```
-- [ ] All features ON: detection + map + fake-GCS + planner.
-- [ ] Runtime: `wall` = up to 8 min then auto-lands. `grid` = ~3:45.
-      `scan` = ~120 sec.
-- [ ] Screen-watcher: call out every `[ctl] detection: class=yellow_barrel ...` or `red_barrel ...` line. Note the count.
+  Lower altitude (2 m vs 3 m) brings camera closer to floor-level
+  yellow. Lower confidence threshold (0.5 vs 0.7 default) lets K's
+  model fire more aggressively. Org confirmed no penalty for
+  incorrect detections.
+- [ ] All features ON by default: detection + map + fake-GCS.
+- [ ] Screen-watcher: open `STATUS.txt` of latest run, watch ELIGIBLE
+      flag flip to YES and unique counts increase.
 - [ ] Open `~/ArtificiallyUnintelligent/searchctl/run_*/map.png` in an image viewer with auto-refresh. Map updates every ~1 sec.
 - [ ] For wall: log lines `wall: state=follow_wall front=2.34 right=1.18 ...` print every 5 sec so judge sees the FSM in action.
 
 ### Step 7 (T+24–34 min): Re-run if needed
 - [ ] If first run found both `yellow_barrel` AND `red_barrel`: STOP, save artifacts. Go to Step 8.
-- [ ] If only one or zero: re-run with different starting yaw:
-  ```bash
-  python3 controller.py --pattern square
-  ```
-  or try the actual wall-follow if it's working:
-  ```bash
-  python3 controller.py --pattern wall    # if integrated by Thu
-  ```
+- [ ] If only one colour found or zero: try one of the fallbacks from
+      Step 6b (the BACKUP NAV ALGO is the highest-value retry — it
+      explores arena interior, which K's wall-follow never does).
 - [ ] Per org: drone restarts at takeoff after each run. State doesn't persist.
+- [ ] **Sim restart between runs**: in Terminal 1, Ctrl-C the PX4
+      session, re-run `~/start_px4.sh` + `1` + `1` + `2` +
+      `commander set_ekf_origin 47.397742 8.545594 488.0`. Without
+      this, the EKF can carry drift from the previous landing and
+      the next takeoff will fail / stay on the ground.
 
 ### Step 8 (T+34–38 min): Show the judge
 - [ ] Judge-talker runs the slot summary first:

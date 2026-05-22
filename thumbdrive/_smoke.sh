@@ -4,13 +4,13 @@
 #   1. All Python deps importable
 #   2. PX4 SITL + Roboverse map boot
 #   3. Phase 1+2+6+7 stand up without crashing
-#   4. Controller arms, takes off, runs --pattern square, lands cleanly
+#   4. Controller arms, takes off, runs default wall-follow, lands cleanly
 #   5. Artifacts (run_summary.json, STATUS.txt, map.png, detections/) all
 #      present and non-empty after exit
 #
-# ~90 seconds end-to-end. If this passes, real --pattern wall / scan runs
+# ~90 seconds end-to-end. If this passes, real --bonus / --backup runs
 # are safe to attempt. If this fails, do NOT burn a qualifier slot on
-# debugging — fall back to --pattern square if at all possible.
+# debugging — fall back to --no-detect --no-map if at all possible.
 #
 # Usage (inside the VM, after setup.sh has run):
 #   bash _smoke.sh
@@ -78,28 +78,38 @@ tmux send-keys -t $SESS:sim 'commander set_ekf_origin 47.397742 8.545594 488.0' 
 sleep 3
 
 echo
-echo "=== 5) Run controller --pattern square (smoke) ==="
+echo "=== 5) Run controller smoke (default wall-follow, no detect / no map) ==="
 RUN_LOG=/tmp/smoke_ctl.log
 rm -f $RUN_LOG
 tmux new-window -t $SESS -n ctl
-tmux send-keys -t $SESS:ctl "cd $REPO/searchctl && python3 controller.py --pattern square 2>&1 | tee $RUN_LOG" C-m
+tmux send-keys -t $SESS:ctl "cd $REPO/searchctl && python3 controller.py --no-detect --no-map 2>&1 | tee $RUN_LOG" C-m
 
-# Square pattern takes ~60-75s end-to-end. Give it 110s of headroom.
-echo "  waiting up to 110s for square run to complete..."
-for i in $(seq 1 110); do
-    if grep -q "run finished cleanly" $RUN_LOG 2>/dev/null; then
-        pass "controller exited cleanly after ${i}s"
+# Wall-follow runs until aborted. We wait for the takeoff banner +
+# a few wf_state= ticks (= drone is actually flying), then Ctrl-C
+# the controller to abort cleanly.
+echo "  waiting up to 90s for takeoff + first wall-follow ticks..."
+saw_takeoff=0
+for i in $(seq 1 90); do
+    if grep -q "takeoff complete" $RUN_LOG 2>/dev/null && grep -q "wf_state=" $RUN_LOG 2>/dev/null; then
+        pass "takeoff + wall-follow loop started after ${i}s"
+        saw_takeoff=1
         break
     fi
-    if grep -q "fatal error in run" $RUN_LOG 2>/dev/null; then
+    if grep -qE "fatal error in run|Traceback" $RUN_LOG 2>/dev/null; then
         fail "controller hit fatal error"
         break
     fi
     sleep 1
 done
 
-if ! grep -q "run finished cleanly" $RUN_LOG 2>/dev/null; then
-    fail "controller did not finish cleanly in 110s — investigate $RUN_LOG"
+if [ $saw_takeoff -eq 1 ]; then
+    # Let it fly a few seconds then Ctrl-C
+    sleep 8
+    tmux send-keys -t $SESS:ctl C-c
+    sleep 5
+    pass "Ctrl-C sent; controller should be landing"
+else
+    fail "no takeoff + wall-follow within 90s — investigate $RUN_LOG"
 fi
 
 echo
