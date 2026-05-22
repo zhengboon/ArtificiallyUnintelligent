@@ -387,6 +387,19 @@ def setup_detection(state, run_dir, weights_path=YOLO_WEIGHTS_DEFAULT, confidenc
     model = YOLO(weights_path)
     log.info("YOLO model loaded")
 
+    # K's best.pt exports classes as "yellow barrel" / "red barrel" / "toxic
+    # barrel" (with spaces). Org example uses underscores. Remap so saved
+    # JPG bbox labels + log lines + run_summary.json all match what judges
+    # look for. Modern ultralytics: model.model.names is the backing dict.
+    remap = {0: "yellow_barrel", 1: "red_barrel", 2: "toxic_barrel"}
+    try:
+        if hasattr(model, "model") and hasattr(model.model, "names"):
+            model.model.names = remap
+        model.names = remap
+        log.info("detection: class names remapped to %s", remap)
+    except Exception as e:
+        log.warning("detection: class name remap failed: %s", e)
+
     seq_counter = {"n": 0}
 
     processing = {"busy": False}
@@ -414,10 +427,36 @@ def setup_detection(state, run_dir, weights_path=YOLO_WEIGHTS_DEFAULT, confidenc
                     annotated = results.plot()
                     filename = str(det_dir / f"detected_{seq_counter['n']:04d}.jpg")
                     cv2.imwrite(filename, annotated)
-                    state.detection_count += 1
                     state.last_detection_at = time.monotonic()
+                    # Append one DetectionRecord per box so compute_unique +
+                    # STATUS.txt + run_summary.json see something. K's
+                    # original callback only bumped detection_count, leaving
+                    # state.detections empty. Also log class names so we
+                    # know red vs yellow without opening the JPGs.
+                    name_map = getattr(model, "names", None) or {}
+                    classes_in_frame = []
+                    for b in boxes:
+                        try:
+                            cls_id = int(b.cls)
+                            cls_name = name_map.get(cls_id, f"cls{cls_id}")
+                            conf_val = float(b.conf[0] if hasattr(b.conf, "__len__") else b.conf)
+                            xyxy = b.xyxy[0].tolist() if hasattr(b.xyxy, "tolist") else list(b.xyxy)
+                        except Exception:
+                            cls_name, conf_val, xyxy = "unknown", 0.0, [0, 0, 0, 0]
+                        state.detection_count += 1
+                        classes_in_frame.append(f"{cls_name}({conf_val:.2f})")
+                        state.detections.append(DetectionRecord(
+                            seq=state.detection_count,
+                            ts=time.time(),
+                            class_name=cls_name,
+                            confidence=conf_val,
+                            bbox_xyxy=tuple(xyxy),
+                            pose_at_detect=pose,
+                            saved_path=filename,
+                        ))
                     log.info(
-                        "detection: count=%d pose=(N=%.2f E=%.2f D=%.2f yaw=%.0f) -> %s",
+                        "detection: frame=%d boxes=%d [%s] total=%d pose=(N=%.2f E=%.2f D=%.2f yaw=%.0f) -> %s",
+                        seq_counter['n'], len(boxes), ",".join(classes_in_frame),
                         state.detection_count, pose[0], pose[1], pose[2], pose[3],
                         os.path.basename(filename),
                     )
@@ -650,11 +689,44 @@ def teardown_mapping(handle: Optional[dict], state: SharedState) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Run summary (Phase 7)
+# Run summary (Phase 7) + detection dedup + live STATUS.txt
 # ---------------------------------------------------------------------------
-def write_run_summary(state: SharedState, run_dir: Path) -> None:
-    import json
-    summary = {
+DETECTION_CLUSTER_RADIUS_M = 3.0  # 1 physical barrel viewed from drone
+                                  # positions within 3 m is treated as one.
+
+
+def compute_unique_detections(detections: list, radius_m: float = DETECTION_CLUSTER_RADIUS_M) -> dict:
+    """Cluster DetectionRecords into unique physical barrels by drone NED pose
+    at detect time. Returns {yellow_barrel, red_barrel, toxic_barrel, total}."""
+    counts = {"yellow_barrel": 0, "red_barrel": 0, "toxic_barrel": 0, "total": 0}
+    if not detections:
+        return counts
+    by_class: dict[str, list[tuple[float, float]]] = {}
+    for d in detections:
+        cls = (d.class_name or "").lower().replace(" ", "_")
+        try:
+            n, e, *_ = d.pose_at_detect
+        except Exception:
+            continue
+        clusters = by_class.setdefault(cls, [])
+        merged = False
+        for cn, ce in clusters:
+            if math.hypot(n - cn, e - ce) <= radius_m:
+                merged = True
+                break
+        if not merged:
+            clusters.append((float(n), float(e)))
+    total = 0
+    for cls, pts in by_class.items():
+        counts[cls] = len(pts)
+        total += len(pts)
+    counts["total"] = total
+    return counts
+
+
+def _build_summary_dict(state: SharedState) -> dict:
+    unique = compute_unique_detections(state.detections)
+    return {
         "run_ts": RUN_TS,
         "takeoff_ts": state.takeoff_ts,
         "land_ts": state.land_ts,
@@ -663,12 +735,11 @@ def write_run_summary(state: SharedState, run_dir: Path) -> None:
             if (state.takeoff_ts and state.land_ts) else None
         ),
         "detection_count": state.detection_count,
+        "unique_detections": unique,
         "detections": [
             {
-                "seq": d.seq,
-                "ts": d.ts,
-                "class_name": d.class_name,
-                "confidence": d.confidence,
+                "seq": d.seq, "ts": d.ts,
+                "class_name": d.class_name, "confidence": d.confidence,
                 "bbox_xyxy": list(d.bbox_xyxy),
                 "pose_at_detect": list(d.pose_at_detect),
                 "saved_path": d.saved_path,
@@ -678,12 +749,92 @@ def write_run_summary(state: SharedState, run_dir: Path) -> None:
         "map_points_count": state.map_points_count,
         "aborted": state.abort_requested,
     }
+
+
+def write_run_summary(state: SharedState, run_dir: Path) -> None:
+    import json
+    summary = _build_summary_dict(state)
     out_path = run_dir / "run_summary.json"
     try:
         out_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-        log.info("run summary written to %s", out_path.name)
+        log.info("run summary written to %s (unique: %s)",
+                 out_path.name, summary["unique_detections"])
     except Exception:
         log.exception("could not write run_summary.json")
+
+
+def _format_status_text(state: SharedState, summary: dict) -> str:
+    """Plain-text snapshot for run_<ts>/STATUS.txt — judge-readable at a glance."""
+    elapsed = None
+    if state.takeoff_ts is not None:
+        end = state.land_ts if state.land_ts is not None else time.time()
+        elapsed = end - state.takeoff_ts
+    unique = summary["unique_detections"]
+    y, r = unique.get("yellow_barrel", 0), unique.get("red_barrel", 0)
+    eligible = y >= 1 and r >= 1
+    base_score = 50 * y + 100 * r if eligible else 0
+    bonus_remaining = max(0.0, 300.0 - elapsed) if elapsed is not None else None
+    bonus_status = "EXPIRED" if (bonus_remaining is not None and bonus_remaining <= 0) \
+        else (f"{bonus_remaining:5.1f}s remaining" if bonus_remaining is not None else "—")
+    run_state = "LANDED" if state.land_ts is not None else (
+        "ABORTED" if state.abort_requested else "RUNNING")
+    if run_state == "LANDED":
+        hint = "RUN COMPLETE — copy run dir to USB, show judge."
+    elif state.abort_requested:
+        hint = "ABORT IN PROGRESS — wait for land + disarm."
+    elif not eligible:
+        if y == 0 and r == 0:
+            hint = "no detections yet — keep flying"
+        elif y == 0:
+            hint = "need a YELLOW for eligibility"
+        else:
+            hint = "need a RED for eligibility"
+    else:
+        if bonus_remaining and bonus_remaining > 30:
+            hint = "ELIGIBLE — bonus window open, look for more"
+        elif bonus_remaining and bonus_remaining > 0:
+            hint = "ELIGIBLE — bonus closing, consider early-land"
+        else:
+            hint = "ELIGIBLE — bonus expired, just maximise count"
+    lines = [
+        f"BrainHack 2026 RoboVerse — run {RUN_TS}",
+        f"  status: {run_state}",
+        f"  flight time: {('%.1f s' % elapsed) if elapsed is not None else '—'}",
+        f"  bonus window (<5:00): {bonus_status}",
+        f"  pose: N={state.north_m:+.2f}m  E={state.east_m:+.2f}m  D={state.down_m:+.2f}m  yaw={state.yaw_deg:.0f}°",
+        "",
+        f"  ELIGIBLE FOR SCORING: {'YES' if eligible else 'NO (need >=1 yellow AND >=1 red)'}",
+        f"  unique barrels found:  yellow={y}  red={r}  toxic={unique.get('toxic_barrel', 0)}",
+        f"  base score estimate:   {base_score} pts ({y}*50 + {r}*100, only counts if eligible)",
+        f"  raw detection frames:  {state.detection_count}",
+        f"  map points accumulated: {state.map_points_count}",
+        "",
+        f"  NEXT: {hint}",
+        "",
+    ]
+    last = state.detections[-3:]
+    if last:
+        lines.append("  recent detections:")
+        for d in last:
+            n, e, _, _ = (list(d.pose_at_detect) + [0, 0, 0, 0])[:4]
+            lines.append(f"    #{d.seq:03d} {d.class_name:<14s} conf={d.confidence:.2f} at N={n:+.1f} E={e:+.1f}")
+    return "\n".join(lines) + "\n"
+
+
+async def incremental_status_writer(state: SharedState, run_dir: Path, interval_s: float = 5.0) -> None:
+    """Write run_summary.json + STATUS.txt every interval_s during flight.
+    Crash-robust + judge-friendly."""
+    import json
+    json_path = run_dir / "run_summary.json"
+    status_path = run_dir / "STATUS.txt"
+    while not state.abort_requested:
+        try:
+            summary = _build_summary_dict(state)
+            await asyncio.to_thread(json_path.write_text, json.dumps(summary, indent=2), encoding="utf-8")
+            await asyncio.to_thread(status_path.write_text, _format_status_text(state, summary), encoding="utf-8")
+        except Exception:
+            log.exception("incremental_status_writer tick failed")
+        await asyncio.sleep(interval_s)
 
 
 # ---------------------------------------------------------------------------
@@ -782,10 +933,19 @@ async def emergency_land(drone: Drone, state: SharedState) -> None:
     log.warning("emergency_land complete")
 
 
+# --- Bonus-mode tuning (qualifier 5-min bonus window per PDF) ---
+BONUS_HARD_LAND_S        = 260.0  # ~4:20; leaves ~40 s for land seq
+BONUS_DUAL_COLOUR_HOLD_S = 25.0   # hold this long after both colours seen
+PLATEAU_S_DEFAULT        = 60.0   # default: land if both colours + no new for 60s
+
+
 async def run(
     detect_enabled: bool = True,
     fake_gcs_enabled: bool = True,
     map_enabled: bool = True,
+    bonus_mode: bool = False,
+    altitude_m: float = 3.0,
+    confidence: float = DETECT_CONFIDENCE_DEFAULT,
 ) -> int:
     state = SharedState()
     drone = Drone()
@@ -823,13 +983,15 @@ async def run(
         else:
             log.info("mapping disabled by flag (--no-map)")
 
-        await drone.arm_and_takeoff(altitude_m=3.0, state=state)
+        await drone.arm_and_takeoff(altitude_m=altitude_m, state=state)
         state.takeoff_ts = time.time()
         log.info("run clock started: takeoff at t=0")
 
         # Start detection AFTER takeoff so it doesn't interfere with climb
         if detect_enabled:
-            detect_handle = await asyncio.to_thread(setup_detection, state, run_dir)
+            detect_handle = await asyncio.to_thread(
+                setup_detection, state, run_dir, YOLO_WEIGHTS_DEFAULT, confidence,
+            )
             if detect_handle is None:
                 log.warning("detection unavailable")
         else:
@@ -843,6 +1005,9 @@ async def run(
         pumper_task = asyncio.create_task(setpoint_pumper(drone, state), name="pumper")
         # wd_task     = asyncio.create_task(watchdog(state), name="watchdog")
         wd_task = asyncio.create_task(watchdog(state, timeout_s=60.0), name="watchdog")
+        status_task = asyncio.create_task(
+            incremental_status_writer(state, run_dir), name="status_writer",
+        )
         if map_handle is not None:
             map_task = asyncio.create_task(mapping_task(map_handle, state), name="mapping")
 
@@ -870,8 +1035,46 @@ async def run(
         await asyncio.sleep(2.0)             # let drone stabilize at altitude
         state.current_yaw_cmd = state.yaw_deg  # re-snapshot after stabilize
 
+        # Bonus-mode bookkeeping: hard-land at deadline, exit early on
+        # dual-colour found (after a short hold), or on detection plateau.
+        # Doesn't touch velocity setpoints — only decides when to break
+        # the loop (then the existing land sequence runs).
+        loop_start_ts = time.monotonic()
+        bonus_deadline = loop_start_ts + BONUS_HARD_LAND_S
+        plateau_window = 30.0 if bonus_mode else PLATEAU_S_DEFAULT
+        last_unique_total = 0
+        last_unique_change_at = loop_start_ts
+        dual_colour_first_seen_at: Optional[float] = None
+        early_exit_reason: Optional[str] = None
+        if bonus_mode:
+            log.info("BONUS MODE: hard-land deadline at T+%.0fs, dual-colour hold %.0fs, plateau %.0fs",
+                     BONUS_HARD_LAND_S, BONUS_DUAL_COLOUR_HOLD_S, plateau_window)
+
         try:
             while not state.abort_requested:
+                # --- Early-exit checks (no velocity override; only decide when to break) ---
+                now = time.monotonic()
+                if bonus_mode and now >= bonus_deadline:
+                    early_exit_reason = f"bonus: hard-land at T+{now-loop_start_ts:.1f}s"
+                    break
+                unique = compute_unique_detections(state.detections)
+                total = unique["total"]
+                if total != last_unique_total:
+                    last_unique_total = total
+                    last_unique_change_at = now
+                have_both = unique.get("yellow_barrel", 0) >= 1 and unique.get("red_barrel", 0) >= 1
+                if have_both and dual_colour_first_seen_at is None:
+                    dual_colour_first_seen_at = now
+                    log.info("EARLY-EXIT armed: both colours detected (yellow=%d, red=%d) at T+%.1fs",
+                             unique["yellow_barrel"], unique["red_barrel"], now - loop_start_ts)
+                if bonus_mode and dual_colour_first_seen_at is not None \
+                        and (now - dual_colour_first_seen_at) >= BONUS_DUAL_COLOUR_HOLD_S:
+                    early_exit_reason = "bonus: dual-colour hold complete"
+                    break
+                if have_both and (now - last_unique_change_at) >= plateau_window:
+                    early_exit_reason = f"plateau: no new unique for {now-last_unique_change_at:.1f}s"
+                    break
+
                 # Periodic fast 360 scan station
                 if time.monotonic() >= scan_start_at:
                     log.info("scan: starting fast 360 (%.1fs @ %.0f deg/s)",
@@ -929,8 +1132,11 @@ async def run(
                 await asyncio.sleep(LOOP_DT)
 
         finally:
+            if early_exit_reason is not None:
+                log.info("wall-follow EARLY EXIT (T+%.1fs): %s",
+                         time.monotonic() - loop_start_ts, early_exit_reason)
             state.abort_requested = True
-            bg_tasks = [pumper_task, wd_task, telem_task]
+            bg_tasks = [pumper_task, wd_task, status_task, telem_task]
             if map_task is not None:
                 bg_tasks.append(map_task)
             for t in bg_tasks:
@@ -994,19 +1200,45 @@ def main() -> int:
         action="store_true",
         help="Disable Phase 7 top-down mapping.",
     )
+    ap.add_argument(
+        "--bonus",
+        action="store_true",
+        help="Tune for qualifier 5-min bonus window. Hard-lands at ~4:20 "
+             "and early-exits when both yellow + red detected (plus short "
+             "hold). Use this for the FIRST qualifier attempt.",
+    )
+    ap.add_argument(
+        "--altitude",
+        type=float,
+        default=3.0,
+        help="Takeoff altitude (m). Default 3.0 (K's tuning). 2.0 brings "
+             "the camera closer to floor-level yellow targets.",
+    )
+    ap.add_argument(
+        "--conf",
+        type=float,
+        default=DETECT_CONFIDENCE_DEFAULT,
+        help=f"YOLO confidence threshold. Default {DETECT_CONFIDENCE_DEFAULT} "
+             "(K's tuning). 0.35-0.5 fires more aggressively.",
+    )
     args = ap.parse_args()
     logging.getLogger().setLevel(args.log_level)
 
-    log.info("==== searchctl controller v0.4 (Phase 2 + Phase 3 wall following + mapping) ====")
+    log.info("==== searchctl controller v0.5 (K wall-follow + periodic scan + zb safe features) ====")
     log.info("logs at %s", LOG_FILE)
     log.info("detection:  %s", "OFF (--no-detect)" if args.no_detect else "ON")
     log.info("fake-GCS:   %s", "OFF (--no-fake-gcs)" if args.no_fake_gcs else "ON")
     log.info("mapping:    %s", "OFF (--no-map)" if args.no_map else "ON")
+    log.info("bonus:      %s", "ON (hard-land ~4:20)" if args.bonus else "OFF")
+    log.info("altitude:   %.1f m   conf threshold: %.2f", args.altitude, args.conf)
     try:
         return asyncio.run(run(
             detect_enabled=not args.no_detect,
             fake_gcs_enabled=not args.no_fake_gcs,
             map_enabled=not args.no_map,
+            bonus_mode=args.bonus,
+            altitude_m=args.altitude,
+            confidence=args.conf,
         ))
     except KeyboardInterrupt:
         return 130
