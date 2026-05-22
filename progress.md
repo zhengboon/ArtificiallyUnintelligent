@@ -7,6 +7,62 @@ and commit hashes where they exist. Skim-able when looking back later.
 
 ---
 
+## 2026-05-22 (Fri, T-5h) — K-merge + backup behaviours + --backup nav algo
+
+K pushed `62feaba "Update with my working code"` to `ks` branch overnight.
+His new controller.py is a clean velocity-mode wall-follow rewrite that
+traverses the full Roboverse map in ~10 min and returns to start. Took
+his work as the new base on `zb`, layered our improvements back on top.
+
+K's commit (origin/ks):
+- `searchctl/controller.py` — full rewrite, velocity-mode wall-follow
+- `searchctl/wall_following.py` — tuned TURN_SPEED, CORNER_PHASE ticks,
+  front-clearance threshold
+- `codes/Codes/Detector.py` — default conf 0.5 → 0.70
+
+Layered on top in `zb` (commits 1819838 → b517374):
+- Fixed K's detection callback bug: was bumping detection_count but never
+  appending DetectionRecord to state.detections, so dedup + STATUS.txt
+  + bonus early-exit all saw 0 forever even with 29+ raw detections
+- Class-name remap "yellow barrel" → "yellow_barrel" (org example format)
+- `wait_until_armable` accepts vision-drone armable state (home_ok+local_ok
+  without is_armable being True — x500_vision never reports is_armable)
+- `arm_and_takeoff` accepts in_air=True AND >=1m climbed AND >=15s elapsed
+  as fallback (covers EKF-drift / sim-stale cases)
+- `--bonus` flag (4:20 hard-land + dual-colour early-exit + plateau exit)
+- `--altitude` and `--conf` CLI tuning levers
+- Backup A: stuck-escape (drift <1m in 20s → back+yaw+fwd maneuver)
+- Backup B: periodic 360° scan station every 75s (multi-angle coverage)
+- Backup C: detect-and-approach yaw nudge when bbox near frame edge
+- **`--backup` flag**: scan-and-walk explorer (alternative nav algo)
+  — hover, yaw 360, walk forward 10s in most-clear direction, repeat.
+  Covers arena INTERIOR where K's wall-follow never goes (yellow lives
+  on floor, may be in interior, not along walls).
+- Detection dedup radius 1.5 → 3.0 m (1.5 m mis-counted 1 real barrel
+  as 4 unique because drone moves past it over 37s)
+- Live STATUS.txt every 5s with ELIGIBLE flag + score estimate + hint
+- `slot_summary.py` post-slot helper (scores all run_*/run_summary.json
+  by qualifier rubric, picks best, writes slot_summary.txt for judge)
+
+Sim test results today:
+- Bonus run #1 (07:54, before K-merge): 298s flight, 0 unique (callback bug)
+- Bonus run #2 (08:14, post-fixes): 277s flight, 32 raw dets, 4 unique
+  red (1 real barrel, dedup-radius fixed afterwards), 0 yellow
+- Bonus run #3 (08:26, with speed-bump): EKF blew up D=+877m, reverted
+- All later runs hit EKF-stale-between-runs / Gazebo renderer issues —
+  not code bugs, just VM state from multiple cumulative sim runs
+
+Thumbdrive scripts + runbook + QUICKSTART updated for the new CLI
+(b517374): all old --pattern wall/grid/scan/square refs removed, new
+--backup script added, sim-restart-between-runs warning prominent.
+
+State at commit time (b517374): code parsed-OK, K's wall-follow validated
+end-to-end in sim (with bonus mode), backup behaviours A/B/C + --backup
+nav algo deployed to VM but not yet sim-tested. Strategy for the slot
+documented in dumpcontext/06_REVIEW_AND_HANDOFF.md.
+
+---
+
 ## 2026-05-22 (Fri, T-14h) — Max-marks strategy on `zb`
 
 Found and read the actual qualifier PDF (
