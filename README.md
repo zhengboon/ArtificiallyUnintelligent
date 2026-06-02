@@ -1,13 +1,25 @@
 # BrainHack 2026 RoboVerse — `ArtificiallyUnintelligent` team workspace
 
 Repo: <https://github.com/zhengboon/ArtificiallyUnintelligent>
-Qualifier: **2026-05-22 (Fri) 14:00 SGT** at Orchard Grand Court, Lloyd I/II.
+Qualifier: **2026-05-22 (Fri) 14:00 SGT** at Orchard Grand Court, Lloyd I/II. ✅ **PASSED** — all targets detected, top 26 of ~70 teams advancing.
+
+## Semi-final — start here
+
+We're now prepping for the semi-final (date TBA). The scope is a big shift:
+
+- Sim → **real Hula drones** (multiple, swarm-controlled from one laptop)
+- MAVSDK → **pyhulax** SDK (MAVSDK does NOT work with Hula)
+- New depth source: **Realsense D430/D450** via `pyrealsense2`
+- New target types likely: **ArUco / QR / AprilTag** fiducial markers in addition to barrels
+
+**Read [`semifinal/README.md`](semifinal/README.md) for the exhaustive prep report** — what changes, what we get for free from the SDK, what we need to build, open questions for the org, code skeleton, per-member tracks, learning materials index.
 
 ## Where things are
 
 | Path | What |
 |---|---|
-| `searchctl/` | **Our autonomous controller** (Phases 1–6, see its own README) |
+| `semifinal/` | **Semi-final prep** — Hula SDK references, prep report, working files (post-qualifier) |
+| `searchctl/` | Qualifier controller (Phases 1–6) — DONE, kept for reference |
 | `maze_gen/` | Random maze generator for testing the controller against varied layouts |
 | `discord_watcher/` | Local Playwright + Flask tools for watching/auditing the workshop Discord |
 | `team/tasks.md` | **Exhaustive task list for K, A, Z** — read first if joining the project |
