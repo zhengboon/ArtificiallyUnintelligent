@@ -1,7 +1,10 @@
 # BrainHack 2026 RoboVerse — Semi-Final Prep
 
 **Status:** Qualified 2026-05-22 (top 26 of ~70 teams advance). Semi-final date TBA.
+**Physical run sessions: 2026-06-10 and 2026-06-11** — hands-on hardware time.
 **Scope shift:** Sim → real hardware. Single drone → swarm. MAVSDK → pyhulax. New SDK, new sensors, new targets.
+
+> **T-7 / T-8 to physical run.** Prep plan: see [§17 below](#17-pre-physical-run-checklist-t-7).
 
 This is the working knowledge base for the semi-final. Everything we know so far, organised so any team member can pick up where another left off.
 
@@ -513,5 +516,62 @@ semifinal/
 
 ---
 
-*Last updated: 2026-06-02 (post-qualifier, awaiting org's full semi-final scope).*
+## 17. Pre-physical-run checklist (T-7)
+
+Physical run sessions: **2026-06-10** + **2026-06-11**. Goal: arrive with everything that doesn't need drone-in-hand already working, so the physical time is spent on hardware integration, not setup.
+
+### By T-5 (Wed 5 Jun) — software that needs no drone
+- [ ] Laptop on the team's WiFi/Tailscale + log_broadcaster reaching the desktop sink
+- [ ] `pip install "pyhulax[all]"` + `pyrealsense2` + `opencv-contrib-python` + `numpy` clean install on the laptop
+- [ ] Smoke import: `python3 -c "from pyhulax import DroneAPI; from pyhulax.video import YOLODetector; import pyrealsense2; import cv2; print('OK')"`
+- [ ] Realsense D435 hardware verified (the verify script in `semifinal/README.md` §3.3 — prints intrinsics + a sample depth value)
+- [ ] ArUco prototype script working: webcam → detect `DICT_6X6_250` → pixel→3D unproject using webcam calibration
+- [ ] K's `best.pt` confirmed loadable by `pyhulax.video.YOLODetector` (or convert to ONNX for `ONNXDetector`)
+- [ ] Print test ArUco markers (3-4 IDs at 10cm, 20cm sizes) — tape around a room
+
+### By T-2 (Sun 8 Jun) — swarm orchestrator skeleton
+- [ ] `semifinal/controller.py` skeleton from [§10 code skeleton above](#10-skeleton-code-starting-point) compiles + runs against mock drones
+- [ ] State machine per drone: idle → takeoff → cruise → detect_check → return → land
+- [ ] Shared target registry with dedup logic (unit-tested without drones)
+- [ ] Run summary writer (carry over from qualifier)
+- [ ] STATUS.txt live status across all drones
+- [ ] Emergency-land-all on Ctrl-C / battery low — tested with mock drones throwing errors
+
+### On the day of (10/11 Jun)
+- [ ] Drones charged + spare batteries
+- [ ] D435 + USB-C cable
+- [ ] Laptop charged + power adapter
+- [ ] WiFi router config tested (if BYO)
+- [ ] Printed ArUco markers + measuring tape
+- [ ] Notebook for jotting drone IPs, plane IDs, observed quirks
+- [ ] Log broadcaster running on desktop so this assistant can watch in real time
+
+### What we want to validate on the physical run
+1. Drone discovery (Dola broadcasts arrive, all drones enumerate)
+2. Single-drone smoke (connect → takeoff → hover → land)
+3. Multi-drone simultaneous control (no command collision)
+4. VIO init pattern (hand-rotate 3 axes, watch `get_position()` settle)
+5. `set_barrier_mode(True)` behaviour — how aggressive? cleared distance? false positives?
+6. `set_camera_angle(DOWN_ABSOLUTE, 45)` — range, lag, stability
+7. `set_qr_localization(True)` — does the arena/room have a QR mat for it?
+8. `recognize_qr()` + `track_qr()` + `recognize_target()` — what do they actually return?
+9. Video stream pipeline end-to-end (drone camera → callback → YOLO → display + record)
+10. Realsense + drone video fusion (if Realsense is mounted on a drone, sync of streams)
+11. WiFi load with N drones streaming video — does bandwidth hold?
+12. Battery duration — minutes per drone before failsafe
+13. `move_to(x, y, z)` accuracy without QR loc (drift over time)
+14. `move_to(x, y, z)` accuracy with QR loc (if available)
+
+### What we want to AVOID on the physical run
+- Wasting hardware time on Python install issues
+- Discovering the laptop's WiFi can't reach the drones
+- Realising the YOLO model needs format conversion
+- Finding out the camera mount blocks the gimbal range
+- Spending hours on a single drone before testing the swarm
+
+The whole point of arriving prepared is: by the time we have drones in hand, every line of code that touches the drone should already exist. The physical run is for tuning, not authoring.
+
+---
+
+*Last updated: 2026-06-03 (T-7 to physical run sessions).*
 *Update this file every time new info lands — it's the single source of truth for the team.*
