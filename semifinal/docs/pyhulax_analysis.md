@@ -4,6 +4,8 @@ Built from a complete read of the mirrored docs at [`semifinal/docs/pyhulax/`](p
 
 The drone platform is **HG-Fly F09-lite / Hula**. pyhulax is a clean modern reimplementation of the original Python 3.6 / Windows-only `pyhula` library.
 
+> **NOTE (2026-06-03):** This SDK is ONLY for the **Hula swarm** drones. The semi-final also has a **separate mapping drone** (MAVSDK + UWB + Realsense + onboard NPU) — covered in the sister doc [`mapping_drone_analysis.md`](mapping_drone_analysis.md). When org's L3 + L4 + L5 dropped, it became clear the two platforms are independent. **Most of this document does NOT apply to the mapping drone.**
+
 ---
 
 ## 1. TL;DR — what changes how we work

@@ -95,6 +95,71 @@ if ids is not None:
 
 ---
 
+---
+
+## Learning Materials 3 — Controlling Mapping Drone using UWB and mavsdk
+
+> **BH2026ROBOVERSE** OP — 2026-06-03 22:23 (10:23 pm)
+>
+> The mapping drone has a UWB tag that able to realtime update on the drone position within the arena indoor. The tag still unable to let you use position command in mavsdk to control it for safety and your competition efficiency. The control approach will be first query the drone's current position (x-y-z), and then correct the difference between the current location and desired position using velocity command. Study the reference code in this https://drive.google.com/drive/folders/1H6H6E06RHp5r97ch2_ZA1-rEIuHQHbxO?usp=drive_link . This code can give you strong basis.
+
+(Google Drive — folder contains [`kolomee.py`](learning_material_3_uwb/kolomee.py) which has been pulled in.)
+
+**Big reveal:** there is a SEPARATE "mapping drone" distinct from the Hula swarm. It uses MAVSDK (not pyhulax), has a UWB tag for real-time indoor position, and is controlled via closed-loop velocity commands.
+
+---
+
+## Learning Materials 4 — Realsense Camera
+
+> **BH2026ROBOVERSE** OP — 2026-06-03 22:27 (10:27 pm)
+>
+> Reference material: https://drive.google.com/drive/folders/1auSeEagUslLpDi19UgkY6lYkQLlan-dv?usp=sharing
+>
+> The teams are to use the depth camera for depth assessment and to take photos, and more importantly to do mapping. pyrealsense2 allows to write python to control the camera. The big difference from gazebo is that pyrealsense allow to directly call it to locations.
+
+**Status:** Drive folder requires Google sign-in (org may have shared restrictively, or anti-scraping kicked in). Files not yet pulled. **Need to fetch manually.**
+
+**Org's framing:** Realsense is used for (1) depth assessment, (2) photo capture, (3) **mapping** — confirming it's bundled with the **mapping drone**, not the Hula swarm. "Directly call it to locations" likely means: deproject pixel + depth + intrinsics → world point (using `rs.rs2_deproject_pixel_to_point()`), which our `aruco_realsense.py` prototype already does.
+
+---
+
+## Learning Materials 5 — Object Detection on mapping drone
+
+> **BH2026ROBOVERSE** OP — 2026-06-03 22:33 (10:33 pm)
+>
+> YOLO is still an option for you to code code detection with your team. The compute module has NPU that can speed up the YOLO detection. But you need to convert the custom YOLO into ONNX and to RKNN format. You can refer to this link for reference code to convert: https://drive.google.com/drive/folders/1JTDV6XueZWJyXB-L_yMaLAEum_lQntK3?usp=drive_link
+>
+> After convert, you would like to detect using the rknn model. The codes for detection can be found here: https://drive.google.com/drive/folders/1dVcath0iW3VGA3biqiCDCcZKRfzVPGEa?usp=drive_link
+
+**Status:** Both folders auth-gated. Files not yet pulled. **Need to fetch manually.**
+
+**Big reveal:** the mapping drone is a **Rockchip-based SBC** (RKNN = Rockchip Neural Network format). Likely RK3588 / RK3568 onboard — Orange Pi 5 / Radxa Rock or similar. K's `best.pt` needs a two-step conversion: `.pt → .onnx → .rknn` to run on-board with NPU acceleration.
+
+**Implication for A's training:** K can keep training PyTorch YOLO; the conversion step is independent. But the **target output format** for deployment is RKNN, not `.pt`.
+
+---
+
+## Updated mental model — TWO drone platforms
+
+| | **Hula swarm** | **Mapping drone** |
+|---|---|---|
+| Quantity | Multiple (swarm) | One (singular) |
+| SDK | `pyhulax` | `mavsdk` (Python) |
+| Position source | Optical flow + optional QR | **UWB tag** (real-time arena coords) |
+| Position interface | `drone.get_position()` | **ROS2 topic `uwb_tag` PoseStamped subscriber** |
+| Control approach | High-level `move_to(x,y,z)` | **Velocity setpoints** (`set_velocity_ned`), P-controller loop |
+| Depth camera | Built-in optical flow | **Realsense D430/D450/D435** |
+| Compute | Onboard flight controller | **Compute module with NPU** (Rockchip) |
+| Detection model | YOLO via `pyhulax.video.YOLODetector` (.pt) | **YOLO via RKNN** (NPU-accelerated, .pt → .onnx → .rknn) |
+| Connection | TCP/UDP over WiFi | **Serial over `/dev/ttyS6:921600`** (per kolomee.py) |
+| What it does | Search the arena, find targets | **Build map + photos + collected depth, possibly precision-place** |
+
+So the team likely splits effort:
+- **Mapping drone** does the careful mapping with Realsense + UWB precision + RKNN YOLO on-board
+- **Hula swarm** does broad-area searching with multiple drones in parallel
+
+---
+
 ## Source channels (for future scrapes)
 
 | Channel | What lives there |
@@ -114,3 +179,4 @@ If/when more semi-final materials drop, append to this file under a new `## Lear
 | Date | Update | By |
 |---|---|---|
 | 2026-06-02 | Initial scrape: Learning Materials 1 + 2 (Hula swarm + fiducial markers) | Z |
+| 2026-06-03 | Added Learning Materials 3 + 4 + 5. Two-drone architecture revealed (Hula swarm + mapping drone with UWB+Realsense+NPU). L3 file pulled (`kolomee.py`); L4 + L5 folders auth-gated, need manual download. | Z |

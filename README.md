@@ -5,14 +5,36 @@ Qualifier: **2026-05-22 (Fri) 14:00 SGT** at Orchard Grand Court, Lloyd I/II. �
 
 ## Semi-final — start here
 
-We're now prepping for the semi-final (date TBA). The scope is a big shift:
+Prepping for the semi-final (date TBA). **Physical run sessions: 2026-06-10 + 2026-06-11.** Major scope shift from qualifier, and as of 2026-06-03 we know there are **two drone platforms** in play:
 
-- Sim → **real Hula drones** (multiple, swarm-controlled from one laptop)
-- MAVSDK → **pyhulax** SDK (MAVSDK does NOT work with Hula)
-- New depth source: **Realsense D430/D450** via `pyrealsense2`
-- New target types likely: **ArUco / QR / AprilTag** fiducial markers in addition to barrels
+| Platform | SDK | Position | Purpose |
+|---|---|---|---|
+| **Hula swarm** | `pyhulax` (NOT MAVSDK) | optical flow + optional QR mat | broad parallel search |
+| **Mapping drone** (single) | `mavsdk` (Python) | **UWB tag** + ROS2 + PX4 NED for Z | precision mapping + photos + RKNN-NPU-accelerated detection |
 
-**Read [`semifinal/README.md`](semifinal/README.md) for the exhaustive prep report** — what changes, what we get for free from the SDK, what we need to build, open questions for the org, code skeleton, per-member tracks, learning materials index.
+New tooling vs qualifier:
+- pyhulax SDK for the Hula swarm
+- Realsense D430/D450 (we have a D435, equivalent) via `pyrealsense2` on the mapping drone
+- ROS2 `rclpy` for UWB position subscription on the mapping drone
+- RKNN format (Rockchip NPU) — convert K's `best.pt → .onnx → .rknn` for onboard inference
+- Likely targets: ArUco (`DICT_6X6_250`) / QR / AprilTag fiducials, plus barrels
+
+**Read these in order:**
+1. [`semifinal/README.md`](semifinal/README.md) — exhaustive prep report (16+ sections, both platforms, prep checklist)
+2. [`semifinal/semifinal_scrape.md`](semifinal/semifinal_scrape.md) — verbatim org Discord posts (L1–L5)
+3. [`semifinal/docs/pyhulax_analysis.md`](semifinal/docs/pyhulax_analysis.md) — Hula swarm SDK deep-dive (14 sections)
+4. [`semifinal/docs/mapping_drone_analysis.md`](semifinal/docs/mapping_drone_analysis.md) — mapping drone stack deep-dive (11 sections)
+5. [`semifinal/learning_material_3_uwb/README.md`](semifinal/learning_material_3_uwb/README.md) — analysis of `kolomee.py` (org's mapping drone reference)
+6. [`semifinal/prototypes/`](semifinal/prototypes/) — drone-free validation scripts (Realsense + ArUco) ready to run on the laptop
+
+Status of org's learning materials:
+| | Topic | Status |
+|---|---|---|
+| L1 | Hula swarm control (`huladola.py`, `dola.py`) | ✅ pulled + analysed |
+| L2 | Fiducial marker detection (ArUco sample code) | ✅ analysed |
+| L3 | UWB + MAVSDK mapping drone (`kolomee.py`) | ✅ pulled + analysed |
+| L4 | Realsense reference code | ⏳ Drive folder auth-locked, awaiting org reshare |
+| L5 | YOLO `.pt → .onnx → .rknn` conversion + detection | ⏳ Drive folder auth-locked, awaiting org reshare |
 
 ## Where things are
 
