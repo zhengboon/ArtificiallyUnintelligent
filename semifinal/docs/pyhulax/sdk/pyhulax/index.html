@@ -1,0 +1,1666 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Typed Python SDK documentation for the Hula drone API">
+      
+      
+      
+      
+        <link rel="prev" href="../configuration/">
+      
+      
+        <link rel="next" href="../types_models_errors/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>DroneAPI Guide - pyhulax SDK</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/rosepine.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/reference.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="rosepine-moon" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#droneapi-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="pyhulax SDK" class="md-header__button md-logo" aria-label="pyhulax SDK" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            pyhulax SDK
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              DroneAPI Guide
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="rosepine-moon" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to Rosé Pine Dawn"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to Rosé Pine Dawn" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="rosepine-dawn" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to Rosé Pine Moon"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to Rosé Pine Moon" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="pyhulax SDK" class="md-nav__button md-logo" aria-label="pyhulax SDK" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    pyhulax SDK
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    SDK
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    SDK
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DroneAPI Guide
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DroneAPI Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#construction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Construction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#connection-and-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connection and Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#flight-and-movement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flight and Movement
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#state-and-telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State and Telemetry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vision-color-and-qr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vision, Color, and QR
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#led-sensors-and-payload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LED, Sensors, and Payload
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#camera-video-and-imaging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Camera, Video, and Imaging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#localization-and-autonomy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Localization and Autonomy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#system-and-firmware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System and Firmware
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wi-fi-and-radio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wi-Fi and Radio
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#safety-and-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Safety and Parameters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#media-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Media Management
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Control
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#closed-loop-flight-controller" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Closed-Loop Flight Controller
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#return-types-and-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Return Types and Errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../types_models_errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Types, Models, and Errors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../video_logging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video and Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/pyhulax/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    pyhulax Module
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/config/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Config Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/core_types/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/core_models/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core Models
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/exceptions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Exceptions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/control/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Controller Types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/fylo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fylo Internals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/logging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/system/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System Internals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/video/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/video_types/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Video Types
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#construction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Construction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#connection-and-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Connection and Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#flight-and-movement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flight and Movement
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#state-and-telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State and Telemetry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vision-color-and-qr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vision, Color, and QR
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#led-sensors-and-payload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LED, Sensors, and Payload
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#camera-video-and-imaging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Camera, Video, and Imaging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#localization-and-autonomy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Localization and Autonomy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#system-and-firmware" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        System and Firmware
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wi-fi-and-radio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wi-Fi and Radio
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#safety-and-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Safety and Parameters
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#media-management" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Media Management
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#manual-control" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Control
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#closed-loop-flight-controller" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Closed-Loop Flight Controller
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#return-types-and-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Return Types and Errors
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="droneapi-reference">DroneAPI Reference<a class="headerlink" href="#droneapi-reference" title="Permanent link">&para;</a></h1>
+<p><a class="autorefs autorefs-internal" title="            DroneAPI" href="../../reference/pyhulax/#pyhulax.DroneAPI"><code>DroneAPI</code></a> is the main high-level SDK class.</p>
+<p>Import:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pyhulax</span><span class="w"> </span><span class="kn">import</span> <span class="n">DroneAPI</span>
+</span></code></pre></div>
+<p>Related config types:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pyhulax</span><span class="w"> </span><span class="kn">import</span> <span class="n">DroneConfig</span><span class="p">,</span> <span class="n">MediaConfig</span><span class="p">,</span> <span class="n">NetworkConfig</span>
+</span></code></pre></div>
+<h2 id="construction">Construction<a class="headerlink" href="#construction" title="Permanent link">&para;</a></h2>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">DroneAPI</span><span class="p">(</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">config</span><span class="p">:</span> <span class="n">DroneConfig</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">enable_logging</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">flight_logger</span><span class="p">:</span> <span class="n">FlightLogger</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">battery_threshold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">media_dir</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">enable_file_logging</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">file_log_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;logs&quot;</span><span class="p">,</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    <span class="n">enable_command_logging</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    <span class="n">command_log_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;logs&quot;</span><span class="p">,</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="p">)</span>
+</span></code></pre></div>
+<p>Important properties:</p>
+<ul>
+<li><code>is_connected</code></li>
+<li><code>config</code></li>
+<li><code>default_ip</code></li>
+</ul>
+<p>Context manager support:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">with</span> <span class="n">DroneAPI</span><span class="p">()</span> <span class="k">as</span> <span class="n">drone</span><span class="p">:</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">drone</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+</span></code></pre></div>
+<h2 id="connection-and-lifecycle">Connection and Lifecycle<a class="headerlink" href="#connection-and-lifecycle" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            connect" href="../../reference/pyhulax/#pyhulax.DroneAPI.connect"><code>connect(ip: str | None = None, timeout: float = 5.0) -&gt; None</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            robust_connect" href="../../reference/pyhulax/#pyhulax.DroneAPI.robust_connect"><code>robust_connect(ip: str | None = None, timeout: float = 5.0, verbose: bool = True) -&gt; bool</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            disconnect" href="../../reference/pyhulax/#pyhulax.DroneAPI.disconnect"><code>disconnect() -&gt; None</code></a></li>
+</ul>
+<p>Typical usage:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">drone</span> <span class="o">=</span> <span class="n">DroneAPI</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">drone</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+</span></code></pre></div>
+<p>Connection flow adapted from the calibration and challenge scripts:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pyhulax</span><span class="w"> </span><span class="kn">import</span> <span class="n">DroneAPI</span><span class="p">,</span> <span class="n">DroneConfig</span><span class="p">,</span> <span class="n">NetworkConfig</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">config</span> <span class="o">=</span> <span class="n">DroneConfig</span><span class="p">(</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">network</span><span class="o">=</span><span class="n">NetworkConfig</span><span class="p">(</span><span class="n">drone_ip</span><span class="o">=</span><span class="s2">&quot;192.168.100.1&quot;</span><span class="p">)</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="p">)</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="k">with</span> <span class="n">DroneAPI</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">)</span> <span class="k">as</span> <span class="n">drone</span><span class="p">:</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">drone</span><span class="o">.</span><span class="n">robust_connect</span><span class="p">(</span><span class="n">verbose</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        <span class="k">raise</span> <span class="ne">SystemExit</span><span class="p">(</span><span class="s2">&quot;Failed to connect to drone&quot;</span><span class="p">)</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>    <span class="n">battery</span> <span class="o">=</span> <span class="n">drone</span><span class="o">.</span><span class="n">get_battery</span><span class="p">()</span>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Connected. Battery: </span><span class="si">{</span><span class="n">battery</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<h2 id="flight-and-movement">Flight and Movement<a class="headerlink" href="#flight-and-movement" title="Permanent link">&para;</a></h2>
+<p>Basic movement:</p>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            move" href="../../reference/pyhulax/#pyhulax.DroneAPI.move"><code>move(direction, distance_cm, led=None, blocking=True, speed=VelocityLevel.ZOOM)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            rotate" href="../../reference/pyhulax/#pyhulax.DroneAPI.rotate"><code>rotate(angle_degrees, led=None, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            move_to" href="../../reference/pyhulax/#pyhulax.DroneAPI.move_to"><code>move_to(x, y, z, led=None, blocking=True, speed=VelocityLevel.ZOOM)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            curve_to" href="../../reference/pyhulax/#pyhulax.DroneAPI.curve_to"><code>curve_to(x, y, z, velocity, radius_cm=None, led=None, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            circle" href="../../reference/pyhulax/#pyhulax.DroneAPI.circle"><code>circle(radius_cm, velocity, clockwise=True, led=None, blocking=True)</code></a></li>
+</ul>
+<p>Core flight lifecycle:</p>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            takeoff" href="../../reference/pyhulax/#pyhulax.DroneAPI.takeoff"><code>takeoff(height_cm=None, led=None, reset_yaw=False, with_load=False, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            land" href="../../reference/pyhulax/#pyhulax.DroneAPI.land"><code>land(led=None, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            hover" href="../../reference/pyhulax/#pyhulax.DroneAPI.hover"><code>hover(led=None, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            arm" href="../../reference/pyhulax/#pyhulax.DroneAPI.arm"><code>arm()</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            disarm" href="../../reference/pyhulax/#pyhulax.DroneAPI.disarm"><code>disarm()</code></a></li>
+</ul>
+<p>Typical flight block:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pyhulax.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">Direction</span><span class="p">,</span> <span class="n">VelocityLevel</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pyhulax</span><span class="w"> </span><span class="kn">import</span> <span class="n">DroneAPI</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">with</span> <span class="n">DroneAPI</span><span class="p">()</span> <span class="k">as</span> <span class="n">drone</span><span class="p">:</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">drone</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">drone</span><span class="o">.</span><span class="n">set_barrier_mode</span><span class="p">(</span><span class="n">enabled</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">drone</span><span class="o">.</span><span class="n">set_qr_localization</span><span class="p">(</span><span class="n">enabled</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>        <span class="n">drone</span><span class="o">.</span><span class="n">takeoff</span><span class="p">(</span><span class="n">height_cm</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>        <span class="n">drone</span><span class="o">.</span><span class="n">move</span><span class="p">(</span><span class="n">Direction</span><span class="o">.</span><span class="n">FORWARD</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="n">speed</span><span class="o">=</span><span class="n">VelocityLevel</span><span class="o">.</span><span class="n">ZOOM</span><span class="p">)</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>        <span class="n">drone</span><span class="o">.</span><span class="n">rotate</span><span class="p">(</span><span class="mi">90</span><span class="p">)</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>        <span class="n">drone</span><span class="o">.</span><span class="n">move_to</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a>        <span class="n">drone</span><span class="o">.</span><span class="n">hover</span><span class="p">()</span>
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>    <span class="k">finally</span><span class="p">:</span>
+</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>        <span class="n">drone</span><span class="o">.</span><span class="n">land</span><span class="p">()</span>
+</span></code></pre></div>
+<p>Acrobatic and motion helpers:</p>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            flip" href="../../reference/pyhulax/#pyhulax.DroneAPI.flip"><code>flip(direction, led=None, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            bounce" href="../../reference/pyhulax/#pyhulax.DroneAPI.bounce"><code>bounce(height_cm=50, cycles=3, led=None, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            spin" href="../../reference/pyhulax/#pyhulax.DroneAPI.spin"><code>spin(rotations=1, led=None, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            vertical_circle" href="../../reference/pyhulax/#pyhulax.DroneAPI.vertical_circle"><code>vertical_circle(radius_cm, blocking=True)</code></a></li>
+</ul>
+<h2 id="state-and-telemetry">State and Telemetry<a class="headerlink" href="#state-and-telemetry" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            get_state" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_state"><code>get_state() -&gt; DroneState</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_position" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_position"><code>get_position() -&gt; Vector3</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_orientation" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_orientation"><code>get_orientation() -&gt; Orientation</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_battery" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_battery"><code>get_battery() -&gt; int</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_altitude" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_altitude"><code>get_altitude() -&gt; float</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_velocity" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_velocity"><code>get_velocity() -&gt; Vector3</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_acceleration" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_acceleration"><code>get_acceleration() -&gt; Vector3</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_obstacles" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_obstacles"><code>get_obstacles() -&gt; Obstacles</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_flight_data" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_flight_data"><code>get_flight_data() -&gt; FlightData</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_drone_id" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_drone_id"><code>get_drone_id() -&gt; int | None</code></a></li>
+</ul>
+<p>Telemetry snapshot pattern:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">flight</span> <span class="o">=</span> <span class="n">drone</span><span class="o">.</span><span class="n">get_flight_data</span><span class="p">()</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">state</span> <span class="o">=</span> <span class="n">drone</span><span class="o">.</span><span class="n">get_state</span><span class="p">()</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">flight</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">flight</span><span class="o">.</span><span class="n">orientation</span><span class="o">.</span><span class="n">yaw</span><span class="p">)</span>
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="nb">print</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">obstacles</span><span class="p">)</span>
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="nb">print</span><span class="p">(</span><span class="n">drone</span><span class="o">.</span><span class="n">get_drone_id</span><span class="p">())</span>
+</span></code></pre></div>
+<h2 id="vision-color-and-qr">Vision, Color, and QR<a class="headerlink" href="#vision-color-and-qr" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            recognize_target" href="../../reference/pyhulax/#pyhulax.DroneAPI.recognize_target"><code>recognize_target(target) -&gt; AIResult</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            recognize_qr" href="../../reference/pyhulax/#pyhulax.DroneAPI.recognize_qr"><code>recognize_qr(mode=..., timeout=...) -&gt; AIResult</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            track_qr" href="../../reference/pyhulax/#pyhulax.DroneAPI.track_qr"><code>track_qr(timeout=...) -&gt; AIResult</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            detect_qr" href="../../reference/pyhulax/#pyhulax.DroneAPI.detect_qr"><code>detect_qr(timeout=...) -&gt; AIResult</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_color" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_color"><code>get_color(mode=1) -&gt; ColorResult</code></a></li>
+</ul>
+<h2 id="led-sensors-and-payload">LED, Sensors, and Payload<a class="headerlink" href="#led-sensors-and-payload" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            set_led" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_led"><code>set_led(led, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            enable_led" href="../../reference/pyhulax/#pyhulax.DroneAPI.enable_led"><code>enable_led(blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            disable_led" href="../../reference/pyhulax/#pyhulax.DroneAPI.disable_led"><code>disable_led(blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            cancel_rgb_animation" href="../../reference/pyhulax/#pyhulax.DroneAPI.cancel_rgb_animation"><code>cancel_rgb_animation(blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_rgb_brightness" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_rgb_brightness"><code>set_rgb_brightness(brightness, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_avoidance_direction" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_avoidance_direction"><code>set_avoidance_direction(mode, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_electromagnet" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_electromagnet"><code>set_electromagnet(on)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_clamp" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_clamp"><code>set_clamp(is_open=None, angle=None)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_barrier_mode" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_barrier_mode"><code>set_barrier_mode(enabled)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            fire_laser" href="../../reference/pyhulax/#pyhulax.DroneAPI.fire_laser"><code>fire_laser(count=1, interval=0.2, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            is_laser_hit" href="../../reference/pyhulax/#pyhulax.DroneAPI.is_laser_hit"><code>is_laser_hit() -&gt; bool</code></a></li>
+</ul>
+<h2 id="camera-video-and-imaging">Camera, Video, and Imaging<a class="headerlink" href="#camera-video-and-imaging" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            take_photo" href="../../reference/pyhulax/#pyhulax.DroneAPI.take_photo"><code>take_photo(download=True, timeout=5.0) -&gt; Path | None</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            take_photo" href="../../reference/pyhulax/#pyhulax.DroneAPI.take_photo"><code>take_photo(download=True, timeout=5.0, save_path=None) -&gt; Path | None</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_video" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_video"><code>set_video(recording: bool)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_video_stream" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_video_stream"><code>set_video_stream(enabled: bool)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            flip_video" href="../../reference/pyhulax/#pyhulax.DroneAPI.flip_video"><code>flip_video()</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_camera_angle" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_camera_angle"><code>set_camera_angle(mode)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_video_resolution" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_video_resolution"><code>set_video_resolution(resolution, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            start_video_stream" href="../../reference/pyhulax/#pyhulax.DroneAPI.start_video_stream"><code>start_video_stream(display=True, web_server=False, web_port=None) -&gt; VideoStream</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            create_video_stream" href="../../reference/pyhulax/#pyhulax.DroneAPI.create_video_stream"><code>create_video_stream() -&gt; VideoStream</code></a></li>
+</ul>
+<h2 id="localization-and-autonomy">Localization and Autonomy<a class="headerlink" href="#localization-and-autonomy" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            set_qr_localization" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_qr_localization"><code>set_qr_localization(enabled: bool)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            follow_line" href="../../reference/pyhulax/#pyhulax.DroneAPI.follow_line"><code>follow_line(color=..., speed=..., blocking=True) -&gt; LineFollowResult</code></a></li>
+</ul>
+<h2 id="system-and-firmware">System and Firmware<a class="headerlink" href="#system-and-firmware" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            get_product_id" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_product_id"><code>get_product_id()</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_firmware_version" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_firmware_version"><code>get_firmware_version()</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_mcu_version" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_mcu_version"><code>get_mcu_version()</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            shutdown" href="../../reference/pyhulax/#pyhulax.DroneAPI.shutdown"><code>shutdown()</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            reboot" href="../../reference/pyhulax/#pyhulax.DroneAPI.reboot"><code>reboot()</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_storage_capacity" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_storage_capacity"><code>get_storage_capacity()</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            sync_time" href="../../reference/pyhulax/#pyhulax.DroneAPI.sync_time"><code>sync_time()</code></a></li>
+</ul>
+<h2 id="wi-fi-and-radio">Wi-Fi and Radio<a class="headerlink" href="#wi-fi-and-radio" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            set_wifi_mode" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_wifi_mode"><code>set_wifi_mode(mode, channel_id=0)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_wifi_band" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_wifi_band"><code>set_wifi_band(band_5ghz=False)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_wifi_power" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_wifi_power"><code>set_wifi_power(high=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_wifi_broadcast" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_wifi_broadcast"><code>set_wifi_broadcast(enabled=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_wifi_channel" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_wifi_channel"><code>set_wifi_channel(manual=False, channel_id=0)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_wifi_ap_mode" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_wifi_ap_mode"><code>set_wifi_ap_mode()</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_velocity_level" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_velocity_level"><code>set_velocity_level(level, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_yaw_rate_level" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_yaw_rate_level"><code>set_yaw_rate_level(level, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_anti_flicker" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_anti_flicker"><code>set_anti_flicker(hz_50=True)</code></a></li>
+</ul>
+<h2 id="safety-and-parameters">Safety and Parameters<a class="headerlink" href="#safety-and-parameters" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            enable_battery_failsafe" href="../../reference/pyhulax/#pyhulax.DroneAPI.enable_battery_failsafe"><code>enable_battery_failsafe()</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            disable_battery_failsafe" href="../../reference/pyhulax/#pyhulax.DroneAPI.disable_battery_failsafe"><code>disable_battery_failsafe()</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_parameters" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_parameters"><code>set_parameters(fly_mode=None, opt_mode=None, vision_intensity=None, blocking=True)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_operate_status" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_operate_status"><code>set_operate_status(status)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_land_speed" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_land_speed"><code>set_land_speed(fast=False)</code></a></li>
+</ul>
+<h2 id="media-management">Media Management<a class="headerlink" href="#media-management" title="Permanent link">&para;</a></h2>
+<p>Listing:</p>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            list_photos" href="../../reference/pyhulax/#pyhulax.DroneAPI.list_photos"><code>list_photos(page=0) -&gt; list[MediaFile]</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            list_videos" href="../../reference/pyhulax/#pyhulax.DroneAPI.list_videos"><code>list_videos(page=0) -&gt; list[MediaFile]</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            list_logs" href="../../reference/pyhulax/#pyhulax.DroneAPI.list_logs"><code>list_logs(page=0) -&gt; list[MediaFile]</code></a></li>
+</ul>
+<p>Download:</p>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            download_photo" href="../../reference/pyhulax/#pyhulax.DroneAPI.download_photo"><code>download_photo(photo, save_dir=None) -&gt; Path | None</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            download_video" href="../../reference/pyhulax/#pyhulax.DroneAPI.download_video"><code>download_video(video, save_dir=None) -&gt; Path | None</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            download_log" href="../../reference/pyhulax/#pyhulax.DroneAPI.download_log"><code>download_log(log, save_dir=None) -&gt; Path | None</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            download_all_photos" href="../../reference/pyhulax/#pyhulax.DroneAPI.download_all_photos"><code>download_all_photos(save_dir=None) -&gt; list[Path]</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            download_all_videos" href="../../reference/pyhulax/#pyhulax.DroneAPI.download_all_videos"><code>download_all_videos(save_dir=None) -&gt; list[Path]</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            download_all_logs" href="../../reference/pyhulax/#pyhulax.DroneAPI.download_all_logs"><code>download_all_logs(save_dir=None) -&gt; list[Path]</code></a></li>
+</ul>
+<p>Delete:</p>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            delete_photo" href="../../reference/pyhulax/#pyhulax.DroneAPI.delete_photo"><code>delete_photo(photo) -&gt; bool</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            delete_video" href="../../reference/pyhulax/#pyhulax.DroneAPI.delete_video"><code>delete_video(video) -&gt; bool</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            delete_log" href="../../reference/pyhulax/#pyhulax.DroneAPI.delete_log"><code>delete_log(log) -&gt; bool</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            delete_all_photos" href="../../reference/pyhulax/#pyhulax.DroneAPI.delete_all_photos"><code>delete_all_photos() -&gt; tuple[int, int]</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            delete_all_videos" href="../../reference/pyhulax/#pyhulax.DroneAPI.delete_all_videos"><code>delete_all_videos() -&gt; tuple[int, int]</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            delete_all_logs" href="../../reference/pyhulax/#pyhulax.DroneAPI.delete_all_logs"><code>delete_all_logs() -&gt; tuple[int, int]</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            delete_all_media" href="../../reference/pyhulax/#pyhulax.DroneAPI.delete_all_media"><code>delete_all_media() -&gt; dict[str, tuple[int, int]]</code></a></li>
+</ul>
+<p>URL helpers:</p>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            get_photo_url" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_photo_url"><code>get_photo_url(photo) -&gt; str</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_video_url" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_video_url"><code>get_video_url(video) -&gt; str</code></a></li>
+</ul>
+<p>Photo capture respects <a class="autorefs autorefs-internal" title="            media
+
+
+  
+      class-attribute
+      instance-attribute
+  " href="../../reference/config/#pyhulax.config.DroneConfig.media"><code>DroneConfig.media</code></a> for default storage, and
+<a class="autorefs autorefs-internal" title="            take_photo" href="../../reference/pyhulax/#pyhulax.DroneAPI.take_photo"><code>take_photo(save_path=...)</code></a> can override the destination per call. If
+<code>save_path</code> points to a directory, the drone filename is preserved. If it
+points to a file path such as <code>captures/latest.jpg</code>, the download is renamed to
+that exact path.</p>
+<p>Typical photo and stream usage:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pyhulax.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">VideoResolution</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="k">with</span> <span class="n">DroneAPI</span><span class="p">()</span> <span class="k">as</span> <span class="n">drone</span><span class="p">:</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">drone</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">drone</span><span class="o">.</span><span class="n">set_video_resolution</span><span class="p">(</span><span class="n">VideoResolution</span><span class="o">.</span><span class="n">LOW</span><span class="p">)</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="n">stream</span> <span class="o">=</span> <span class="n">drone</span><span class="o">.</span><span class="n">start_video_stream</span><span class="p">(</span><span class="n">display</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">web_server</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    <span class="k">try</span><span class="p">:</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>        <span class="nb">print</span><span class="p">(</span><span class="n">drone</span><span class="o">.</span><span class="n">take_photo</span><span class="p">(</span><span class="n">save_path</span><span class="o">=</span><span class="s2">&quot;captures/latest.jpg&quot;</span><span class="p">))</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>        <span class="n">stream</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>    <span class="k">finally</span><span class="p">:</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>        <span class="n">stream</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+</span></code></pre></div>
+<h2 id="manual-control">Manual Control<a class="headerlink" href="#manual-control" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            send_manual_control" href="../../reference/pyhulax/#pyhulax.DroneAPI.send_manual_control"><code>send_manual_control(forward=0.0, right=0.0, up=0.0, rotate=0.0, buttons=0) -&gt; bool</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            manual_fly" href="../../reference/pyhulax/#pyhulax.DroneAPI.manual_fly"><code>manual_fly(duration_sec, forward=0.0, right=0.0, up=0.0, rotate=0.0, heartbeat_interval=1.0)</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            send_app_heartbeat" href="../../reference/pyhulax/#pyhulax.DroneAPI.send_app_heartbeat"><code>send_app_heartbeat(user_mode=1) -&gt; bool</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            set_app_mode" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_app_mode"><code>set_app_mode(mode: int) -&gt; None</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            get_app_mode" href="../../reference/pyhulax/#pyhulax.DroneAPI.get_app_mode"><code>get_app_mode() -&gt; int</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            stop_manual_control" href="../../reference/pyhulax/#pyhulax.DroneAPI.stop_manual_control"><code>stop_manual_control() -&gt; bool</code></a></li>
+</ul>
+<p>Use <a class="autorefs autorefs-internal" title="            set_app_mode" href="../../reference/pyhulax/#pyhulax.DroneAPI.set_app_mode"><code>set_app_mode(1)</code></a> before takeoff if you intend to drive the drone with <code>MANUAL_CONTROL</code>.</p>
+<p>Manual-control startup pattern:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">drone</span><span class="o">.</span><span class="n">set_app_mode</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">drone</span><span class="o">.</span><span class="n">set_velocity_level</span><span class="p">(</span><span class="mi">200</span><span class="p">)</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">drone</span><span class="o">.</span><span class="n">set_qr_localization</span><span class="p">(</span><span class="n">enabled</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">drone</span><span class="o">.</span><span class="n">set_barrier_mode</span><span class="p">(</span><span class="n">enabled</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span></code></pre></div>
+<h2 id="closed-loop-flight-controller">Closed-Loop Flight Controller<a class="headerlink" href="#closed-loop-flight-controller" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            create_flight_controller" href="../../reference/pyhulax/#pyhulax.DroneAPI.create_flight_controller"><code>create_flight_controller(config: FlightControllerConfig | None = None) -&gt; ManualFlightController</code></a></li>
+</ul>
+<p>This returns the PD controller from <a class="autorefs autorefs-internal" title="            ManualFlightController" href="../../reference/control/#pyhulax.control.ManualFlightController"><code>pyhulax.control</code></a>.</p>
+<p>Example:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">ctrl</span> <span class="o">=</span> <span class="n">drone</span><span class="o">.</span><span class="n">create_flight_controller</span><span class="p">()</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ctrl</span><span class="o">.</span><span class="n">fly_to</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="mi">150</span><span class="p">,</span> <span class="n">z</span><span class="o">=</span><span class="mi">120</span><span class="p">,</span> <span class="n">yaw</span><span class="o">=</span><span class="mi">90</span><span class="p">)</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">reason</span><span class="p">)</span>
+</span></code></pre></div>
+<p>This is the same control pattern used by the solver scripts, just without the maze layer:</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pyhulax.control</span><span class="w"> </span><span class="kn">import</span> <span class="n">ControllerConfig</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">controller</span> <span class="o">=</span> <span class="n">drone</span><span class="o">.</span><span class="n">create_flight_controller</span><span class="p">(</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="n">ControllerConfig</span><span class="p">(</span><span class="n">kp_xy</span><span class="o">=</span><span class="mf">2.5</span><span class="p">,</span> <span class="n">kp_z</span><span class="o">=</span><span class="mf">3.5</span><span class="p">)</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="p">)</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="k">try</span><span class="p">:</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>    <span class="n">drone</span><span class="o">.</span><span class="n">takeoff</span><span class="p">(</span><span class="n">height_cm</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="n">result</span> <span class="o">=</span> <span class="n">controller</span><span class="o">.</span><span class="n">fly_to</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="mi">120</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">z</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">yaw</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">success</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">error_position_cm</span><span class="p">)</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="k">finally</span><span class="p">:</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>    <span class="n">controller</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>    <span class="n">drone</span><span class="o">.</span><span class="n">land</span><span class="p">()</span>
+</span></code></pre></div>
+<h2 id="return-types-and-errors">Return Types and Errors<a class="headerlink" href="#return-types-and-errors" title="Permanent link">&para;</a></h2>
+<p>Most command-style methods return <a class="autorefs autorefs-internal" title="            CommandResult" href="../../reference/core_types/#pyhulax.core.types.CommandResult"><code>CommandResult</code></a>.</p>
+<p>Telemetry and state methods return typed models from <a class="autorefs autorefs-internal" title="            DroneState" href="../../reference/core_models/#pyhulax.core.models.DroneState"><code>pyhulax.core.models</code></a>.</p>
+<p>Common exceptions:</p>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            DroneConnectionError" href="../../reference/exceptions/#pyhulax.core.exceptions.DroneConnectionError"><code>DroneConnectionError</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            NotReady" href="../../reference/exceptions/#pyhulax.core.exceptions.NotReady"><code>NotReady</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            LowBattery" href="../../reference/exceptions/#pyhulax.core.exceptions.LowBattery"><code>LowBattery</code></a></li>
+<li><a class="autorefs autorefs-internal" title="            TelemetryUnavailable" href="../../reference/exceptions/#pyhulax.core.exceptions.TelemetryUnavailable"><code>TelemetryUnavailable</code></a></li>
+</ul>
+<h2 id="notes">Notes<a class="headerlink" href="#notes" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a class="autorefs autorefs-internal" title="            connect" href="../../reference/pyhulax/#pyhulax.DroneAPI.connect"><code>connect()</code></a> and <a class="autorefs autorefs-internal" title="            robust_connect" href="../../reference/pyhulax/#pyhulax.DroneAPI.robust_connect"><code>robust_connect()</code></a> use <a class="autorefs autorefs-internal" title="            drone_ip
+
+
+  
+      class-attribute
+      instance-attribute
+  " href="../../reference/config/#pyhulax.config.NetworkConfig.drone_ip"><code>config.network.drone_ip</code></a> if no IP is supplied.</li>
+<li>Maze-oriented helpers are intentionally not part of <a class="autorefs autorefs-internal" title="            DroneAPI" href="../../reference/pyhulax/#pyhulax.DroneAPI"><code>DroneAPI</code></a>.</li>
+<li>Optional video and web features live in <a class="autorefs autorefs-internal" title="            video" href="../../reference/video/#pyhulax.video"><code>pyhulax.video</code></a> and require extras.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.expand", "content.code.copy", "content.code.select", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
