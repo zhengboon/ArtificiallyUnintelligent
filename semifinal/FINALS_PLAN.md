@@ -1,14 +1,14 @@
 # BrainHack 2026 — Finals Plan
 
-**Finals dates:** Tue 10 June + Wed 11 June 2026
+**Finals dates:** Wed 10 June + Thu 11 June 2026
 **Hours each day:** 9:00am – 6:00pm (full 9-hour day, NOT a 40-min slot like qualifier)
 **Venue:** Marina Bay Sands Expo and Convention Centre, Level 4
 **Registration:** counter opens 10 June 7:30am — bring **Photo ID + confirmation email**
 **Dress code:** Smart Casual. **Strictly no slippers or uncovered footwear.**
 **Bring:** personal laptop, mouse, charger; note-taking tools; thumbdrive (or HDD + USB cables) for code transfer
 
-**Today:** 2026-06-03 (T-6 / T-7 days)
-**Plan version:** v1.1 (added venue + logistics 2026-06-03 evening)
+**Today:** 2026-06-04 Thu (T-6 / T-7 days)
+**Plan version:** v1.2 (corrected day labels — finals are Wed/Thu, not Tue/Wed)
 
 > We got pushed straight from qualifier → finals, skipping the semi-final tier. Reason unknown, doesn't change scope. Same two-drone architecture: Hula swarm + mapping drone.
 >
@@ -46,7 +46,7 @@ A's lighter load is intentional — model training can stall and need re-runs, s
 
 > Assumption: laptop + D435 + access to a Hula drone (for K) is available by T-5 or T-4. If drones don't arrive in time, K shifts to software prep alongside Z.
 
-### T-6 — Wed 4 June
+### T-6 — Thu 4 June
 
 | Person | Tasks | Deliverables |
 |---|---|---|
@@ -56,7 +56,7 @@ A's lighter load is intentional — model training can stall and need re-runs, s
 
 **Evening sync (15 min):** What blocked who, what each person needs from the others tomorrow.
 
-### T-5 — Thu 5 June
+### T-5 — Fri 5 June
 
 | Person | Tasks | Deliverables |
 |---|---|---|
@@ -66,7 +66,7 @@ A's lighter load is intentional — model training can stall and need re-runs, s
 
 **Evening sync.**
 
-### T-4 — Fri 6 June
+### T-4 — Sat 6 June
 
 | Person | Tasks | Deliverables |
 |---|---|---|
@@ -76,7 +76,7 @@ A's lighter load is intentional — model training can stall and need re-runs, s
 
 **Evening sync.**
 
-### T-3 — Sat 7 June
+### T-3 — Sun 7 June
 
 > Buffer day. If T-6 → T-4 went off the rails, this is where we catch up. Otherwise: polish + dry runs.
 
@@ -86,7 +86,7 @@ A's lighter load is intentional — model training can stall and need re-runs, s
 | **K** | Dry run #1 of full Hula swarm controller against a printed-marker arena setup at home / wherever. Use the log broadcaster. Walk through Ctrl-C emergency-land. Document timing: from launch to "swarm in air" (target <30s), from Ctrl-C to "all landed" (target <15s). |
 | **Z** | Dry run #1 of mapping drone controller (mock MAVSDK + real Realsense). Validate it can run for 5 min straight without leaks or crashes. Watch CPU/memory. Then **start writing the unified launcher** (`semifinal/run_finals.py`) — one command that brings up both orchestrators with proper ordering. |
 
-### T-2 — Sun 8 June
+### T-2 — Mon 8 June
 
 | Person | Tasks |
 |---|---|
@@ -94,7 +94,7 @@ A's lighter load is intentional — model training can stall and need re-runs, s
 | **K** | Dry run #2 — full sim of finals procedure: power on drones, run discovery, fly mission, observe + record. Reset, repeat. Goal: smooth muscle memory. |
 | **Z** | (1) **Build the finals runbook** (`semifinal/runbook.md`) modelled after the qualifier one — roles (keyboard / screen-watcher / judge-talker), step-by-step T+ minute timeline, fallbacks. (2) Print runbook on paper as backup. (3) USB packaging: copy all code + models + docs + log_broadcaster to a USB stick (the `thumbdrive/` pattern from qualifier). |
 
-### T-1 — Mon 9 June
+### T-1 — Tue 9 June
 
 > Light day before finals. Don't introduce new bugs.
 
@@ -104,9 +104,9 @@ A's lighter load is intentional — model training can stall and need re-runs, s
 | **K** | (1) Battery charge: ALL drone batteries to 100%, charger packed. (2) USB-C cables, spare cables, power adapter, mouse. (3) Run smoke test ONE more time and stop. (4) Read the runbook out loud. (5) Confirm smart-casual outfit + covered shoes. |
 | **Z** | (1) Final repo push, double-check both `zb` and `main` are in sync. (2) Verify USB has everything (code, models, runbook printed, learning materials offline copy, pyhulax docs offline mirror). (3) Pack: **personal laptop + mouse + charger + USB×2 + Photo ID + printed confirmation email + paper runbook**. (4) Confirm smart-casual outfit + covered shoes. (5) Sleep 8 hours. |
 
-**Last sync:** team call at 21:00 SGT. Confirm roles for the day. Confirm meeting time + place. Confirm logistics (transport, IDs, snacks).
+**Last sync (Tue 9 Jun evening):** team call at 21:00 SGT. Confirm roles for the day. Confirm meeting time + place. Confirm logistics (transport, IDs, snacks).
 
-### Finals Day 1 — Tue 10 June (9:00am – 6:00pm)
+### Finals Day 1 — Wed 10 June (9:00am – 6:00pm)
 
 | Time | Action |
 |---|---|
@@ -127,7 +127,7 @@ A's lighter load is intentional — model training can stall and need re-runs, s
 - **Screen-watcher (Z):** watches log_broadcaster + STATUS.txt, calls out detections, holds runbook
 - **Judge-talker / floor (A):** answers judge questions, manages physical drones / markers / Realsense placement, takes photos for our records
 
-### Finals Day 2 — Wed 11 June (9:00am – 6:00pm)
+### Finals Day 2 — Thu 11 June (9:00am – 6:00pm)
 
 | Time | Action |
 |---|---|
@@ -307,12 +307,12 @@ To avoid scope creep:
 
 ## 10. After-action
 
-After Day 1 (Tue 10 June):
+After Day 1 (Wed 10 June):
 - Debrief over dinner
 - Update `progress.md` with what worked / failed
 - Cherry-pick fixes for Day 2
 
-After Day 2 (Wed 11 June):
+After Day 2 (Thu 11 June):
 - Win or lose, **write the retro** in `progress.md`
 - Push final repo state to both branches
 - Save run artifacts off the USB to durable storage (Drive backup, etc)
