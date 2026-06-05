@@ -7,8 +7,19 @@
 **Dress code:** Smart Casual. **Strictly no slippers or uncovered footwear.**
 **Bring:** personal laptop, mouse, charger; note-taking tools; thumbdrive (or HDD + USB cables) for code transfer
 
-**Today:** 2026-06-04 Thu (T-6 / T-7 days)
-**Plan version:** v1.2 (corrected day labels — finals are Wed/Thu, not Tue/Wed)
+**Today:** 2026-06-05 Fri (T-5 / T-6 days)
+**Plan version:** v2.0 (major rewrite after org released L4 + L5 + Final Challenge slides on 2026-06-05)
+
+**MAJOR UPDATES vs v1.x:**
+- Two challenges revealed in slides — Challenge 1 (Reconnaissance, **University-only**) + Challenge 2 (Deployment & Ambush, everyone)
+- **C2 Terminal** is org-provided (Windows + Ubuntu 22.04 VM) — our code RUNS THERE, not on personal laptop
+- **3 Hula drones** in the swarm (confirmed)
+- **5 RoboMaster ground robots** as targets for Challenge 2B (NOT barrels!) — A's model needs to train on RoboMasters
+- **Mapping drone has Ubuntu 22.04 + ROS2 + OpenCV pre-installed** + RKNN-NPU at ~50 FPS
+- **NoMachine** = access pattern from C2 Terminal → mapping drone
+- **RKNN conversion tooling lives on the org VM** — we don't need to install it ourselves (but should be familiar)
+- All org reference scripts pulled and analysed (`learning_material_4_realsense/`, `learning_material_5_yolo_rknn/`, `learning_material_3_uwb/kolomee.py`)
+- See [`CHALLENGE_BREAKDOWN.md`](CHALLENGE_BREAKDOWN.md) for the authoritative rules from slides
 
 > We got pushed straight from qualifier → finals, skipping the semi-final tier. Reason unknown, doesn't change scope. Same two-drone architecture: Hula swarm + mapping drone.
 >
@@ -22,11 +33,12 @@
 
 ## 0. Plan principles
 
-- **Software-first.** Build every drone-touching line of code BEFORE drones are in hand. Hardware time is for tuning, not authoring.
-- **Carry over qualifier wins.** ~70% of the mapping drone code is qualifier `controller.py` with an SDK swap. The Hula swarm gets ~50% of its work for free from the pyhulax built-ins.
-- **Two parallel tracks.** Hula swarm (K + Z) and mapping drone (Z + A handoff). Each platform deployable independently in case the other has issues at venue.
-- **Fail safe.** Every script: `try / finally land + disarm`. Battery failsafe enabled. Watchdog on every loop.
-- **Document as we go.** Update `semifinal/README.md` and `semifinal/semifinal_scrape.md` whenever org posts.
+- **Software-first.** Build every drone-touching line of code BEFORE finals. Hardware time is for tuning, not authoring.
+- **Use org's reference patterns.** Don't reinvent — `getDepthAndDetect.py` + `generateTopDown.py` + `kolomee.py` are the canonical templates. Copy them and add our own logic on top.
+- **Three parallel tracks.** Challenge 1 (mapping + ArUco landing-pad classification), Challenge 2A (3-Hula coordinated landing), Challenge 2B (Hula search + snapshot RoboMasters).
+- **Match org's expected env where possible.** Hula swarm runs on the C2 Terminal Windows side; mapping drone code runs onboard via NoMachine. We don't fight the architecture.
+- **Fail safe.** Every script: `try / finally land + disarm`. Battery failsafe enabled. Watchdog on every loop. UWB-loss handling.
+- **Document as we go.** Update `semifinal/README.md` + `learning_materials_and_others.md` whenever org posts.
 
 ---
 
@@ -34,11 +46,11 @@
 
 | Person | Primary focus | Approx load |
 |---|---|---|
-| **A** | ML pipeline: training, ONNX, RKNN, calibration | ~70% (lighter to leave room for model iteration) |
-| **K** | Hula swarm orchestrator + hardware smoke + flight ops | ~100% |
-| **Z** | Mapping drone orchestrator + Realsense + cross-platform glue + docs | ~100% |
+| **A** | ML pipeline: train RoboMaster YOLO, ONNX export, RKNN (org's tooling), validate | ~70% |
+| **K** | Hula swarm controller (3 drones, pyhulax, runs on C2 Windows) + Challenge 2A landings + Challenge 2B search/snapshot | ~100% |
+| **Z** | Mapping drone controller (Challenge 1: top-down map + ArUco landing pad classifier) + cross-platform glue + docs + runbook | ~100% |
 
-A's lighter load is intentional — model training can stall and need re-runs, so leave headroom. K + Z carry equal heavier loads on the orchestrators.
+A's lighter load is intentional — model training is the longest-iteration task and can stall. K + Z carry equal heavier loads. **If we're Pre-University**, Z's Challenge 1 mapping work becomes nice-to-have / training-only; the team can pivot to making Challenge 2 bulletproof.
 
 ---
 
@@ -46,53 +58,46 @@ A's lighter load is intentional — model training can stall and need re-runs, s
 
 > Assumption: laptop + D435 + access to a Hula drone (for K) is available by T-5 or T-4. If drones don't arrive in time, K shifts to software prep alongside Z.
 
-### T-6 — Thu 4 June
+### T-5 — Fri 5 June (today)
+
+> **Critical:** today is when slides + L4 + L5 dropped. Plan v2.0 starts here. Catch up + replan day.
 
 | Person | Tasks | Deliverables |
 |---|---|---|
-| **A** | (1) Continue YOLO training on whatever images we have. (2) **Export current best.pt → best.onnx** via `ultralytics`. (3) Start reading [`learning_material_5_yolo_rknn/README.md`](learning_material_5_yolo_rknn/README.md) for what conversion pipeline looks like. | `models/best.onnx` checked into repo |
-| **K** | (1) **Install pyhulax + opencv-contrib-python + numpy + pyrealsense2** on laptop. Run `python3 -c "from pyhulax import DroneAPI; from pyhulax.video import YOLODetector; print('OK')"`. (2) Run all 3 prototype scripts ([`semifinal/prototypes/`](prototypes/)): `realsense_verify.py`, `aruco_webcam.py`, `aruco_realsense.py`. Confirm D435 + ArUco work. (3) Print 4-6 DICT_6X6_250 markers on A4. | Screenshots + brief notes in PR. Markers ready. |
-| **Z** | (1) **Stand up `semifinal/swarm_controller.py` skeleton** from [`semifinal/README.md §10`](README.md#10-skeleton-code-starting-point). Mock drones (`class MockDrone` with `takeoff/land/move`) so logic testable without hardware. (2) Wire log_broadcaster (`tools/log_broadcaster/`) into the skeleton so every state transition + detection is broadcast. | `semifinal/swarm_controller.py` runs against mock drones, logs reach desktop sink. |
+| **A** | (1) Read [`CHALLENGE_BREAKDOWN.md`](CHALLENGE_BREAKDOWN.md). (2) Confirm whether we're University or Pre-University. (3) **Pivot YOLO training to RoboMaster ground robots** (not barrels) — search Discord / web for RoboMaster S1 / EP imagery, start a dataset. (4) Read [`learning_material_5_yolo_rknn/README.md`](learning_material_5_yolo_rknn/README.md) — note YOLOv8 (K's current) vs YOLOv11 (org's decoder default). | RoboMaster training dataset started; category confirmed |
+| **K** | (1) Read [`CHALLENGE_BREAKDOWN.md`](CHALLENGE_BREAKDOWN.md). (2) **Install pyhulax + opencv-contrib-python + numpy + pyrealsense2** on personal laptop for dev (still useful). (3) Run all 3 prototype scripts ([`semifinal/prototypes/`](prototypes/)) against D435. (4) Print 4-6 DICT_6X6_250 ArUco markers. (5) Start drafting Hula swarm controller using `huladola.py` pattern; 3 drones, Challenge 2 focus. | Prototypes verified; ArUco markers printed; swarm controller draft started |
+| **Z** | (1) Read [`CHALLENGE_BREAKDOWN.md`](CHALLENGE_BREAKDOWN.md). (2) Start `semifinal/mapping_drone/controller.py` adapting `kolomee.py` + `generateTopDown.py` + `getDepthAndDetect.py` — fuse top-down occupancy grid across frames using UWB pose. (3) Add ArUco-marker landing-pad classifier (using L4 patterns). | Mapping drone controller skeleton runs locally with mock UWB + real D435 |
 
-**Evening sync (15 min):** What blocked who, what each person needs from the others tomorrow.
-
-### T-5 — Fri 5 June
-
-| Person | Tasks | Deliverables |
-|---|---|---|
-| **A** | (1) **Install `rknn-toolkit2`** on a Linux x86 box (or WSL2). This is the conversion-from-host tool. Notoriously version-pinned — Python 3.8–3.11 only. (2) Sample ~100 calibration images from training set (`semifinal/rknn_calibration/`). (3) When org unlocks L5, run their conversion script: `best.onnx → best.rknn` for `rk3588` target. If L5 still locked, try the generic conversion from the [L5 README](learning_material_5_yolo_rknn/README.md) draft. | `models/best.rknn` (or report exact failure mode so we can fix) |
-| **K** | (1) **Continue Hula smoke** — if a drone is in hand, run `connect → takeoff(50) → hover(5) → land`. If no drone yet, prep the smoke script (`semifinal/hula_smoke.py`) so it's ready when one arrives. (2) Drive single-drone state machine: takeoff → set_barrier_mode → set_camera_angle(DOWN_ABSOLUTE, 45) → move(FORWARD, 100) → rotate(90) → land. Validate each method. (3) Start integrating K's `best.pt` into `pyhulax.video.YOLODetector` via the swarm controller skeleton. | Hula confirmed working end-to-end with one drone OR drone-free smoke script ready. |
-| **Z** | (1) **Draft `semifinal/mapping_drone/controller.py`** by adapting [`kolomee.py`](learning_material_3_uwb/kolomee.py): keep UWB ROS2 subscriber + asyncio MAVSDK + offboard pre-warm + velocity P-controller. (2) Add Realsense capture pipeline (from [`prototypes/aruco_realsense.py`](prototypes/aruco_realsense.py)). (3) Add ArUco detection callback into the loop. (4) Stub the RKNN detection call (A's `.rknn` model goes here when ready). | `semifinal/mapping_drone/controller.py` runs end-to-end against MOCK UWB + MOCK MAVSDK + real Realsense (D435 plugged in). Outputs detection records to disk. |
-
-**Evening sync.**
+**Evening sync.** Critical question for org: are we University or Pre-University? Determines whether Challenge 1 (mapping) is even our problem.
 
 ### T-4 — Sat 6 June
 
 | Person | Tasks | Deliverables |
 |---|---|---|
-| **A** | (1) Final model iteration — train on the most representative target images. (2) If L5 unlocked, re-run RKNN conversion with org's exact code (their conversion may differ in subtle ways). (3) Build a small test harness: feed 20-30 sample images through `best.rknn` and verify detection rate + class names. Save outputs as `models/rknn_test_results.md`. (4) Hand off `best.pt` (Hulas), `best.onnx` (backup), `best.rknn` (mapping drone) to K + Z. | All 3 model formats committed, test report written. |
-| **K** | (1) **Multi-drone Hula smoke** (if ≥2 drones available). Dola discovery → connect both → takeoff both → land both. Validate no command collision. (2) Tune `set_barrier_mode` aggression — observe behaviour at obstacle distances 0.5m / 1m / 2m. Document in `semifinal/swarm_controller_notes.md`. (3) Wire A's `.pt` into `swarm_controller.py` via `YOLODetector`. Live preview should show bboxes on a printed ArUco/barrel. | Multi-Hula smoke OK, detection on live stream OK. |
-| **Z** | (1) Integrate A's `best.rknn` into `mapping_drone/controller.py`. (2) Add the body-frame-camera → world-frame transform (depends on Realsense mount orientation — placeholder constant until physical mount known). (3) Wire run-summary + STATUS.txt writer (carry over from qualifier `controller.py`). (4) Wire emergency-land-on-Ctrl-C + battery watchdog. | Mapping drone controller runs end-to-end against MOCK MAVSDK + real Realsense + real `.rknn`. Outputs `run_<ts>/STATUS.txt`, `run_summary.json`, detection JPGs. |
+| **A** | (1) Continue RoboMaster dataset (target: 200-500 labelled frames). (2) Initial training run (YOLOv8n or YOLOv11n — small model since NPU prefers it). (3) **Optional:** install `rknn-toolkit2` on WSL2/Linux to test conversion locally with a dummy model (validates the pipeline before A's real model is ready). | First model checkpoint (low quality is fine — proves pipeline) |
+| **K** | (1) Hula swarm controller: 3-drone discovery via `Dola` + per-drone state machine + simultaneous takeoff + simultaneous landing. (2) Challenge 2A logic: take 3 target (X,Y,Z) waypoints → assign 1 per drone → fly + land. (3) Challenge 2B sketch: search pattern (e.g., lawnmower split between 3 drones) + per-drone YOLO inference + snapshot-on-detection. | Swarm controller runs against mock drones for both Challenge 2A and 2B flows |
+| **Z** | (1) Mapping drone controller integrated: UWB sub + Realsense + occupancy grid accumulation across frames (camera-frame → world-frame via UWB) + ArUco landing-pad detection → write `landing_pads.json` with `(world_xyz, aruco_id, marker_image_path)`. (2) Write helper `decide_landing_validity()` (stub until we know the encoding). (3) Run summary + STATUS.txt writer. | Mapping drone controller runs end-to-end against mock MAVSDK + mock UWB + real D435. Outputs `top_down.png`, `landing_pads.json`, marker images. |
 
-**Evening sync.**
+**Decision point at end of day:** if we're Pre-University, Z pivots to helping K make Challenge 2 bulletproof for the rest of T-3 / T-2 / T-1.
 
-### T-3 — Sun 7 June
+### T-3 — Sun 7 June (buffer)
 
-> Buffer day. If T-6 → T-4 went off the rails, this is where we catch up. Otherwise: polish + dry runs.
+> If T-5 → T-4 fell behind, catch up here. Otherwise: polish + dry runs.
 
 | Person | Tasks |
 |---|---|
-| **A** | If RKNN broke: try alternate conversion paths (different ONNX opset, fp16 instead of int8 quant, different YOLO export args). If RKNN works: produce 2-3 backup models trained with slightly different hyperparams in case the primary fails at venue. |
-| **K** | Dry run #1 of full Hula swarm controller against a printed-marker arena setup at home / wherever. Use the log broadcaster. Walk through Ctrl-C emergency-land. Document timing: from launch to "swarm in air" (target <30s), from Ctrl-C to "all landed" (target <15s). |
-| **Z** | Dry run #1 of mapping drone controller (mock MAVSDK + real Realsense). Validate it can run for 5 min straight without leaks or crashes. Watch CPU/memory. Then **start writing the unified launcher** (`semifinal/run_finals.py`) — one command that brings up both orchestrators with proper ordering. |
+| **A** | If model is rough: add more training data, augmentation, more epochs. If good: prep the conversion (export ONNX with `convertyolotoonnx_2.py` settings). Lock in YOLOv8 vs YOLOv11 decision based on what's easier to RKNN-convert. |
+| **K** | Dry run #1 of swarm controller end-to-end (mocked). Walk through emergency-land-all on Ctrl-C. Stress-test 3-drone coordination logic. |
+| **Z** | Dry run #1 of mapping drone controller (mocked). Walk through full Challenge 1 mission: takeoff → survey → landing pad detection → ArUco read → output JSON + map. Then **start writing the runbook** ([`semifinal/runbook.md`](runbook.md)). |
 
 ### T-2 — Mon 8 June
 
 | Person | Tasks |
 |---|---|
-| **A** | Ready to retrain on the fly if the venue lighting / target colours differ from training set. Have the training script + dataset on a USB stick. |
-| **K** | Dry run #2 — full sim of finals procedure: power on drones, run discovery, fly mission, observe + record. Reset, repeat. Goal: smooth muscle memory. |
-| **Z** | (1) **Build the finals runbook** (`semifinal/runbook.md`) modelled after the qualifier one — roles (keyboard / screen-watcher / judge-talker), step-by-step T+ minute timeline, fallbacks. (2) Print runbook on paper as backup. (3) USB packaging: copy all code + models + docs + log_broadcaster to a USB stick (the `thumbdrive/` pattern from qualifier). |
+| **A** | Final model training run on best dataset. Export `.onnx` using `convertyolotoonnx_2.py` exact settings. Pack training data + script + ONNX model on USB in case we need to retrain at venue. |
+| **K** | Dry run #2 — full sim of Challenge 2 (2A landing + 2B search/snapshot) end-to-end against mocks. Aim for smooth muscle memory. If we're University: also help Z dry-run Challenge 1. |
+| **Z** | (1) Finalise `semifinal/runbook.md` — roles, T+timeline, fallbacks for Challenge 1 + Challenge 2. Print on paper. (2) USB packaging: code + `best.pt` + `best.onnx` + docs + offline `pyhulax` mirror + `semifinal_scrape.md` + `CHALLENGE_BREAKDOWN.md` onto two USB sticks. |
+
 
 ### T-1 — Tue 9 June
 
@@ -142,45 +147,40 @@ A's lighter load is intentional — model training can stall and need re-runs, s
 ## 3. Dependencies + handoffs (so nobody blocks anyone)
 
 ```
-A: train best.pt
+A: train RoboMaster YOLO (best.pt)
      │
-     ▼ ONNX export (T-6)
-A: best.onnx ──────────────────────────┐
-     │                                  │
-     ▼ RKNN conversion (T-5/T-4)        ▼
-A: best.rknn ──────► Z: mapping drone   K: swarm controller
-                          uses .rknn         uses .pt directly via YOLODetector
+     ▼ ONNX export (T-2 latest, T-3 ideal)
+A: best.onnx ───────────────────────────────► hand off to K + Z
+     │
+     ▼ RKNN conversion at venue on org VM (Day 1 morning)
+     │
+A: best.rknn ──────► mapping drone code uses .rknn
 ```
 
-Critical path = A's RKNN conversion. If it fails by T-4 evening, Plan B = host-side YOLO on `.pt` via the laptop (slower but works).
+**RKNN conversion is now AT VENUE on org VM** (not on our laptops). So the critical path is: model trained + ONNX exported by T-2. Conversion takes ~5 min on the org VM (assuming their toolchain works as documented).
 
 ```
-K: Hula smoke (single drone, T-5)
+K: Hula swarm controller (mocked) [T-5 → T-4]
      │
-     ▼ confirmed
-K: swarm controller integration (T-5 → T-4)
-     │
-     ▼ multi-drone test (T-4)
-K: ready for finals
+     ▼ dry runs T-3, T-2
+K: ready for Challenge 2 at venue [T-1]
 ```
 
 ```
-Z: mapping drone controller skeleton (T-5)
+Z: Mapping drone controller [T-5 → T-4]
      │
-     ▼ Realsense added (T-5)
+     ▼ Realsense + ArUco landing-pad classifier [T-4]
      │
-     ▼ RKNN added when A delivers (T-4)
+     ▼ run-summary + emergency-land [T-4]
      │
-     ▼ run-summary + watchdog + emergency-land (T-4)
-     │
-     ▼ dry run (T-3)
-Z: ready for finals
+     ▼ dry run T-3, runbook T-2
+Z: ready for Challenge 1 at venue [T-1]
 ```
 
 **Handoff windows:**
-- A → K + Z: model files by **Fri 6 June 18:00 SGT** (T-4 evening). Earlier if possible.
-- K → Z: any Hula-side quirks discovered, into shared notes file by **same deadline**.
-- Z → A + K: orchestrator entry points + how to invoke, by **same deadline**.
+- A → K + Z: `best.pt` + `best.onnx` by **Mon 8 June 20:00 SGT** (T-2 evening). Earlier if possible.
+- K + Z: cross-review each other's controllers by **T-2 evening**.
+- All: USB packed + runbook printed by **T-1 morning**.
 
 ---
 
@@ -188,16 +188,19 @@ Z: ready for finals
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| L4 + L5 stays locked → no org reference code for Realsense + RKNN | Medium | Our prototypes + L3 + general OpenCV/RKNN docs are enough to reconstruct. Already drafted RKNN steps in `learning_material_5_yolo_rknn/README.md`. |
-| Drones not delivered before T-3 | Medium | K runs everything as mock drones. Hardware integration becomes a venue-day task — risky but survivable. |
-| RKNN conversion fails | Medium | Plan B: host-side YOLO inference. Slower but works. Both orchestrators support a `--detector pt|rknn` flag. |
-| Hula WiFi flaky at venue | Medium | `set_wifi_band(5GHz)`, low video resolution, per-drone reconnect logic. |
+| RoboMaster training data is hard to find | High | Use Robomaster S1/EP imagery from web + YouTube frames + Roboflow public datasets. If desperate, capture frames at venue Day 1 morning + retrain that evening. |
+| RKNN conversion fails on the org VM | Medium | We have all 4 conversion scripts now — known params (rk3588, fp16, mean/std). Worst case: fall back to ONNX runtime inference on the drone CPU (slower but works). |
+| YOLOv8 vs YOLOv11 post-processing mismatch | Medium | Org has both decoders. Use YOLOv8 decoder for K's existing model; switch if A trains a new YOLOv11. |
+| Mapping drone NoMachine session laggy | Medium | Edit code in our local editor → scp to drone over network → run via SSH/NoMachine. Don't try to IDE-edit on the remote session. |
+| Hula WiFi flaky at venue (many teams) | Medium | `set_wifi_band(5GHz)`, low video resolution, per-drone reconnect logic. C2 Terminal Windows side is the orchestrator. |
 | UWB signal patchy in arena | Medium | Failsafe: hold position on UWB loss >1s, land if sustained. Logged for post-flight review. |
 | One of us is sick on finals day | Low | Each task should have a "deputy" — if K is out, Z runs the swarm. Practice cross-coverage in dry runs. |
-| Last-minute target list change from org | Medium | A keeps the training pipeline hot. Should be ~30 min to retrain on different classes. |
-| Code crashes mid-run | Medium | `try/finally land + disarm` everywhere. Watchdog 60s. Battery failsafe. |
-| Org's drones differ from what we trained for | Low | We've ordered both Hula docs + kolomee.py reference, so adaptation is small. |
-| Coordinate frame bug (ENU vs NED) silently sends drone wrong way | High | **Ground test** every direction command before flying it. Don't trust until verified. |
+| Coordinate frame bug (camera-frame vs world-frame, ENU vs NED) | High | **Ground test** every direction command before flying. `generateTopDown.py` is explicit about the convention — match it exactly. |
+| ArUco landing-pad validity rule undisclosed | Medium | Code reads + reports all marker IDs regardless. When org reveals the rule (Day 1), add the classifier in <30 min. |
+| Code crashes mid-run | Medium | `try/finally land + disarm` everywhere. Watchdog 60s. Battery failsafe enabled. |
+| Org's drones differ from what we trained for | Low | We've reviewed all org reference code; adaptation should be small. |
+| **WE'RE PRE-UNIVERSITY** | TBD | Then Challenge 1 isn't ours. Z's mapping work becomes nice-to-have / training. Pivot all effort to Challenge 2. |
+| **WE'RE UNIVERSITY** | TBD | Then Challenge 1 IS ours and it's the biggest single deliverable. Mapping + ArUco classifier critical. |
 
 ---
 
