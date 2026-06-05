@@ -1,0 +1,326 @@
+# mapping_drone
+
+Challenge 1 (Reconnaissance) deliverable for BrainHack 2026 RoboVerse Final
+Challenge, University category. Marina Bay Sands Expo, Level 4, 10-11 June 2026.
+
+## Purpose
+
+A mapping drone surveys the arena from above, builds a top-down depth /
+occupancy grid, detects every ArUco landing-pad marker it sees, fuses each
+marker into world-frame coordinates, and reports per-pad validity. All
+artifacts are written to a timestamped run directory so the judges (and us)
+have a single folder to inspect after the run.
+
+Concretely, every flight produces:
+
+- A judge-readable `STATUS.txt` updated every 5 s during flight.
+- A machine-readable `run_summary.json` with full timing, sightings, pose log.
+- `top_down.png` + `top_down.npy` of the occupancy grid with pads marked.
+- `landing_pads.json` listing every unique ArUco ID with world coords + validity.
+- `markers/marker_<id>_<seq>.jpg` bbox-overlaid frames of each sighting.
+- `log.txt` controller log (includes the active validity rule line — see below).
+
+## Architecture
+
+One module per concern. Every module honours the interface contract in the
+top-level project description so mocks and real adapters are drop-in.
+
+| Module          | Responsibility                                                                 |
+| --------------- | ------------------------------------------------------------------------------ |
+| `uwb.py`        | UWB adapter. Real impl subs to ROS2 `uwb_tag` PoseStamped; mock is programmable. |
+| `realsense.py`  | RealSense adapter. Real impl wraps `pyrealsense2`; mock synthesises depth+RGB. |
+| `mapping.py`    | `ArucoDetector`, `OccupancyGrid`, `camera_to_world` helper.                    |
+| `validity.py`   | `decide_landing_validity(id)` + `describe_rule()` (see below).                 |
+| `run_writer.py` | `RunWriter` owns the run directory and all output files.                       |
+| `controller.py` | `main()` — argparse, asyncio loop, MAVSDK velocity controller, integration.    |
+
+Flow per loop iteration (10 Hz):
+
+1. Pull latest UWB north/east + PX4 NED `down_m` → drone pose.
+2. Grab a `RealsenseFrame` (color + aligned depth + intrinsics).
+3. `ArucoDetector.detect_in_frame` → list of (id, center, bbox).
+4. For each detection: depth at center → `deproject_pixel_to_camera_xyz` →
+   `camera_to_world` using drone pose + gimbal pitch → record sighting.
+5. `OccupancyGrid.integrate` the depth frame for the top-down map.
+6. Step the waypoint P-controller (matches `kolomee.py` defaults).
+7. Every 5 s: `RunWriter.write_status`.
+
+### Coordinate-frame callout: PX4 NED `down_m` vs world Up
+
+```
++-----------------------------------------------------------------------+
+|  IMPORTANT — sign of vertical axis                                    |
+|                                                                       |
+|  PX4 telemetry delivers altitude as `down_m` in the NED frame:        |
+|      pvn = await drone.telemetry.position_velocity_ned()              |
+|      down_m = pvn.position.down_m   # NESTED, matches kolomee.py      |
+|                                                                       |
+|  In NED, `down_m` is NEGATIVE when the drone is airborne              |
+|  (e.g. at 1.5 m altitude, down_m == -1.5).                            |
+|                                                                       |
+|  The mapping pipeline works in the world ENU frame where U (Up) is    |
+|  POSITIVE when airborne. The conversion is a simple negation:         |
+|      alt_up_m = -down_m                                               |
+|                                                                       |
+|  WHERE THIS MATTERS:                                                  |
+|    * `OccupancyGrid.integrate(frame, pose, gimbal_pitch)` performs    |
+|      the negation internally when projecting depth pixels to world    |
+|      coordinates. Callers pass `down_m` straight through inside       |
+|      `pose`.                                                          |
+|    * Any DIRECT caller of `camera_to_world(...)` MUST pass            |
+|      `drone_alt_m` as Up (positive airborne). The controller already  |
+|      does this via `-self.state.drone_down`.                          |
+|                                                                       |
+|  If you ever see landing pads plotted UNDER the ground plane or       |
+|  altitudes that decrease as the drone climbs, you have almost         |
+|  certainly forgotten this negation.                                   |
++-----------------------------------------------------------------------+
+```
+
+Yaw follows MAVSDK convention (degrees clockwise from north) and comes from
+`telemetry.attitude_euler().yaw_deg` — same pattern as kolomee.py's
+`attitude_task`.
+
+## Install
+
+The drone (Ubuntu 22.04 + ROS2 + OpenCV pre-installed) only needs the Python
+deps. For laptop dev with mocks you do **not** need ROS2 or `pyrealsense2`.
+
+Drone (full real run):
+
+```
+pip install pyrealsense2 opencv-contrib-python numpy mavsdk
+# ROS2 + rclpy come pre-installed in the org image; do NOT pip-install rclpy.
+```
+
+Laptop dev (mocks only):
+
+```
+pip install opencv-contrib-python numpy
+# mavsdk + pyrealsense2 + rclpy are optional — modules degrade gracefully.
+```
+
+`opencv-contrib-python` (not `opencv-python`) is required for the
+`cv2.aruco` module.
+
+## Run modes
+
+```
+python -m mapping_drone.controller [flags]
+```
+
+| Flag                  | Meaning                                                                       |
+| --------------------- | ----------------------------------------------------------------------------- |
+| `--real`              | Real UWB + real MAVSDK + real RealSense. Default at the venue.                |
+| `--mock-uwb`          | Use programmable mock UWB. Skips ROS2 import.                                 |
+| `--mock-mavsdk`       | Mock flight controller. No serial port required.                              |
+| `--mock-realsense`    | Synthetic depth + RGB frames. No camera required.                             |
+| `--mock-all`          | All three mocks. Pure laptop run, no hardware.                                |
+| `--waypoints PATH`    | JSON list of `[n_m, e_m, alt_m]`. Default = 4-pt demo square.                 |
+| `--gimbal-pitch DEG`  | Gimbal tilt; `-90` = straight down (DEFAULT, canonical down-facing mapping).  |
+| `--aruco-dict NAME`   | OpenCV ArUco dictionary name (e.g. `DICT_4X4_50`, `DICT_5X5_100`). See below. |
+| `--max-flight-time-s` | Hard cap before forced land. Default `240` s.                                 |
+| `--log-level`         | `INFO` (default) or `DEBUG`.                                                  |
+
+### `--gimbal-pitch`
+
+The mapping drone is configured for top-down survey: the gimbal default is
+`-90` degrees (straight down). The `camera_to_world` and
+`OccupancyGrid.integrate` helpers were derived under this assumption (see
+`generateTopDown.py` for the canonical down-facing camera frame: Z forward,
+X right, Y down). Override only if you are doing an oblique pass — most of
+the occupancy-grid maths assumes a nadir view.
+
+### `--aruco-dict`
+
+Selects which OpenCV ArUco dictionary the detector tries against incoming
+frames. Defaults to the dictionary used in arena rehearsal markers; pass
+e.g. `--aruco-dict DICT_5X5_100` if the organisers swap the printed marker
+set on the day. Accepted names are exactly the `cv2.aruco.DICT_*`
+identifiers.
+
+Examples:
+
+```
+# Laptop smoke test, no hardware (uses default -90 gimbal pitch)
+python -m mapping_drone.controller --mock-all --log-level DEBUG
+
+# Drone bench test with mock flight + real camera
+python -m mapping_drone.controller --mock-uwb --mock-mavsdk
+
+# Real run (gimbal pitch defaults to -90; shown explicitly for clarity)
+python -m mapping_drone.controller --real --gimbal-pitch -90 --waypoints arena.json
+
+# Real run with a different printed-marker dictionary
+python -m mapping_drone.controller --real --aruco-dict DICT_5X5_100 --waypoints arena.json
+```
+
+## Output artifacts
+
+Everything lands under:
+
+```
+semifinal/mapping_drone/runs/run_<YYYYMMDD_HHMMSS>/
+  STATUS.txt              # plaintext, refreshed every 5 s
+  run_summary.json        # full machine-readable record
+  top_down.png            # final occupancy grid visualisation
+  top_down.npy            # raw grid array
+  landing_pads.json       # unique pads + world coords + validity
+  log.txt                 # controller log
+  markers/
+    marker_<id>_<seq>.jpg
+```
+
+`STATUS.txt` is the file to hand a judge mid-flight: state, seconds airborne,
+pose, sightings so far, unique pad list with validity, battery percent.
+
+## Validity rule
+
+`validity.decide_landing_validity(aruco_id)` is currently a **placeholder**:
+even IDs are valid, odd IDs are invalid. Org has not published the actual
+rule.
+
+When org publishes it, replace **only** the body of that function. The rest
+of the pipeline already records every ID, image, and world position
+regardless, so no other code needs to change.
+
+### Startup banner: `describe_rule()`
+
+`validity.describe_rule()` returns a one-line human-readable string naming
+the active rule and whether it came from the default or from the env
+override. The controller logs it at startup so the run's `log.txt` always
+records exactly which classification was applied. Look for a line like:
+
+```
+INFO mapping_drone.controller: current validity rule: even (default) — even ArUco IDs valid, odd IDs invalid (PLACEHOLDER — org has not published the real rule)
+```
+
+If you ever doubt which rule a past run used, `grep "current validity rule"
+log.txt` in that run directory.
+
+### Env-var override: `MAPPING_DRONE_VALIDITY`
+
+You can swap the active rule at startup without touching code by setting the
+`MAPPING_DRONE_VALIDITY` environment variable before launching the
+controller. Accepted values (case-insensitive):
+
+| Value          | Meaning                                                |
+| -------------- | ------------------------------------------------------ |
+| `even`         | Even ArUco IDs valid, odd IDs invalid (DEFAULT).       |
+| `odd`          | Odd ArUco IDs valid, even IDs invalid.                 |
+| `all_valid`    | Every detected landing pad classified valid.           |
+| `all_invalid`  | Every detected landing pad classified invalid.        |
+| `id_below_50`  | IDs < 50 valid, IDs >= 50 invalid.                     |
+
+Any other value falls back to `even` and logs a warning.
+
+Examples:
+
+```
+# Force every detected pad to be reported valid (useful for sanity-checking
+# that detection itself is working in the field):
+MAPPING_DRONE_VALIDITY=all_valid python -m mapping_drone.controller --real
+
+# Force every detection invalid (useful for a dry pass that only exercises
+# mapping, not landing selection):
+MAPPING_DRONE_VALIDITY=all_invalid python -m mapping_drone.controller --real
+
+# If org announces "ID >= 50 are obstacles, ID < 50 are landing pads",
+# flip to that rule with one shell variable:
+MAPPING_DRONE_VALIDITY=id_below_50 python -m mapping_drone.controller --real
+
+# Flip the parity of the placeholder:
+MAPPING_DRONE_VALIDITY=odd python -m mapping_drone.controller --real
+
+# Or be explicit about the default:
+MAPPING_DRONE_VALIDITY=even python -m mapping_drone.controller --real
+```
+
+On Windows PowerShell the equivalent is:
+
+```
+$env:MAPPING_DRONE_VALIDITY = "all_valid"
+python -m mapping_drone.controller --mock-all
+```
+
+## Where to integrate K's RKNN YOLO model later
+
+The current `ArucoDetector` uses OpenCV's `cv2.aruco` only — it is robust
+enough for the marker detection that Challenge 1 actually requires.
+
+If we want K's RKNN YOLO model (yolo11n, ~50 FPS on the RK3588 NPU) on top
+— e.g. for non-marker obstacle classification or as a secondary detector —
+add a `--detector {aruco,yolo,both}` flag to `controller.py` and wire a new
+class that mirrors the `ArucoDetector.detect_in_frame` signature. The
+canonical RKNN post-processing already lives in
+`learning_material_4_realsense/rknndecoder.py` and the depth-aware detect
+loop in `getDepthAndDetect.py` — port from those, do not rewrite.
+
+This is intentionally not built yet; Challenge 1 scoring rewards mapping +
+marker reporting, not obstacle classification.
+
+## Troubleshooting
+
+**UWB not ready.**  `STATUS.txt` shows `state=WAIT_UWB`. The ROS2 `uwb_tag`
+topic has not published yet. Check `ros2 topic echo /uwb_tag` on the drone.
+The watchdog will hold position 1 s on intermittent loss and land if the
+fix is gone for >5 s. For laptop dev use `--mock-uwb`.
+
+**RealSense not detected.**  `RuntimeError: No device connected`. Replug
+the USB-C cable (must be USB 3.x — the supplied cables are colour-coded).
+`realsense-viewer` from `librealsense` confirms the device is alive. For
+dev without hardware use `--mock-realsense`.
+
+**MAVSDK serial port.**  Default is `/dev/ttyS6:921600`. If you see
+`MAVSDK: connection failed` check `dmesg | tail` for the actual ttyS port
+and pass it via the connection string in `controller.py`. The org PX4 build
+sometimes enumerates as `/dev/ttyAMA0` on a fresh boot.
+
+**NoMachine lag at the venue.**  The C2 Terminal pushes frames over wifi.
+Run the controller in a `tmux` session so the flight survives a NoMachine
+disconnect. STATUS.txt is updated on disk regardless of GUI — judges can
+also `cat` it from a second terminal.
+
+**Position-stuck watchdog fires.**  If the drone hasn't moved >0.3 m in
+20 s after the grace period it lands. Usually means waypoints are unreachable
+(altitude too low, UWB anchor outside expected volume) or P-gains too soft
+for the current battery. Carry-over behaviour from the qualifier.
+
+**`cv2.aruco` not found.**  You installed `opencv-python` instead of
+`opencv-contrib-python`. Uninstall both then reinstall contrib.
+
+**Wrong ArUco dictionary.**  Detection rate suddenly drops to zero on
+markers you printed yourself. The marker dictionary in `--aruco-dict` must
+match the one used to generate the printed tags. Re-generate the tags from
+`cv2.aruco.getPredefinedDictionary(cv2.aruco.<NAME>)` using the same name
+you pass on the CLI.
+
+**Landing pads appear under the floor / altitudes go negative airborne.**
+You bypassed `OccupancyGrid.integrate` and called `camera_to_world`
+directly with `down_m` instead of `-down_m`. See the coordinate-frame
+callout above; the world frame is ENU (Up positive) and the negation is
+the caller's responsibility.
+
+**Validity column in `landing_pads.json` looks wrong.**  Check the startup
+line `current validity rule: ...` in `log.txt`. The
+`MAPPING_DRONE_VALIDITY` env var may have been set in the shell that
+launched the controller; `unset MAPPING_DRONE_VALIDITY` (or
+`Remove-Item Env:MAPPING_DRONE_VALIDITY` on PowerShell) restores the
+default.
+
+## Safety
+
+Every command path includes:
+
+- `try/finally` land + disarm
+- MAVSDK battery failsafe subscription
+- UWB-loss watchdog (hold 1 s, land at >5 s)
+- `Ctrl-C` triggers the `emergency_land` coroutine
+- Position-stuck watchdog (>0.3 m movement required per 20 s after grace)
+
+## Style and conventions
+
+Python 3.10+, asyncio main loop, type hints throughout, `dataclass` for
+structured records, `logging` (not `print`), no emojis in code or filenames.
+Module interfaces are frozen by the contract in the project root; do not
+rename methods without updating every implementer.
