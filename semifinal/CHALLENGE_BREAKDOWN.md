@@ -122,10 +122,11 @@ Military-themed reconnaissance + ambush mission.
 ### Object detection (mapping drone NPU)
 - **Acceleration:** Neural Processing Unit (~50 fps)
 - **Format:** RKNN (must convert from `.pt → .onnx → .rknn`)
+- **Base model:** `yolo11n.pt` — **YOLOv11 confirmed by org**, not v8
 - **Target SoC:** `rk3588` (confirmed in org's convert script)
 - **Mean/std:** `[0,0,0] / [255,255,255]` (confirmed)
 - **Tooling location:** on the org VM, not our laptop
-- **Files we'd touch:** `convertyolotoonnx_2.py`, `convertrknn.py`, `getDepthAndDetect.py`, `rknndecoder.py` (or YOLOv8 equivalent)
+- **Files we'd touch:** **use the `_2.py` variants** — `convertyolotoonnx_2.py`, `convertrknn2.py`, plus `getDepthAndDetect.py`, `rknndecoder.py` (with `decode_yolov11_rknn`)
 
 ---
 

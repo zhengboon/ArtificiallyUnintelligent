@@ -76,15 +76,20 @@ rknn.init_runtime()
 # ... grab Realsense frames, run inference, decode, fuse with depth ...
 ```
 
-## YOLOv8 vs YOLOv11 — important nuance
+## YOLOv11 is the confirmed base (per org 2026-06-05 6:45 pm)
 
-- K's qualifier `best.pt` is **YOLOv8** (Ultralytics, 3 classes)
-- Org's `rknndecoder.py` is for **YOLOv11**
-- Org's `testrknn_with_display.py` has a separate `post_process_yolov8` function for YOLOv8
+> "Hi, please use yolo11 as the base when you custom train. Please revisit the link in the learning material that has the rkn py files. There are updated version. The updated version ends with 2."
+>
+> — BH2026ROBOVERSE OP, in reply to K's question
 
-→ For our `best.rknn` (from K's YOLOv8 model), use `post_process_yolov8` from `testrknn_with_display.py`, not the YOLOv11 decoder.
+**Decisions locked in:**
+- Use `yolo11n.pt` as the training base (NOT `yolov8n.pt`)
+- Use `convertyolotoonnx_2.py` (the `_2` variant) — annotated, full args, RKNN-friendly
+- Use `convertrknn2.py` (the `_2` variant) — verbose, `optimization_level=3`, int8 option
+- Use `decode_yolov11_rknn` from `rknndecoder.py` for post-processing
+- K's qualifier `best.pt` (YOLOv8) is moot — A must retrain on YOLOv11 architecture for the RoboMaster targets
 
-If we retrain on YOLOv11 (likely better for the new RoboMaster target class), use `decode_yolov11_rknn`.
+The `testrknn_with_display.py` `post_process_yolov8` function is still useful as reference but won't be our runtime path.
 
 ## Open questions to answer at the venue
 

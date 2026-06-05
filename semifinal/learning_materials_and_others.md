@@ -131,6 +131,43 @@ if ids is not None:
 
 ---
 
+## 🔥 Q&A — testing time slots + dedicated laptops (5/6/2026 5:13 pm – 6:55 pm)
+
+> **FlyingExplorers_ChuaTseHui** — 5/6/2026 5:13 pm
+>
+> Hi @BH2026ROBOVERSE, during the Finals, will each team be allowed to test their code for Challenges 1 and 2 on the actual drones in the arena prior to judging? If so, are there time slots or trial limits we should be aware of?
+> Will drones be shared across teams, or will each team have a dedicated drone assigned to them for the duration of the Finals?
+> Thank you!
+
+> **BH2026ROBOVERSE** OP — 5/6/2026 6:55 pm
+>
+> All teams have testing time slots and are to use actual drones during the testing slot. Annoucement on the testing time slot will be made soon. **Drones will be shared and teams are given time to load their codes onto mapping drones. All teams are given dedicated laptops. Task 2 and Task 3 can executed completed off the dedicated laptops.**
+
+**Confirms:**
+- Drones are SHARED across teams (we don't get sole possession of a drone — slot-based access)
+- Each team gets a dedicated laptop (= the C2 Terminal we already knew about)
+- Testing slots will be announced
+- "Task 1 / 2 / 3" matches our Challenge 1 / 2A / 2B nomenclature (3 tasks total). Task 2 + Task 3 run off the dedicated laptop = C2 Terminal handles the swarm side.
+
+## 🔥 Q&A — YOLOv11 + use _2.py scripts (5/6/2026 5:02 pm – 6:45 pm)
+
+> **ArtificiallyUnintelligent_BockKS** — 5/6/2026 5:02 pm (that's K!)
+>
+> for the finals, is it recommended that we used the previous colab notebook used for training the yolo model?
+> i noticed that in rknndecoder.py, there is a decode_yolov11_rknn() function, hence i was wondering if we should use yolov11 instead
+> can i also confirm that this time, we need to train the model to detect the RoboMaster Ground Robots, and the valid / invalid Aruca Markers?
+
+> **BH2026ROBOVERSE** OP — 5/6/2026 6:45 pm
+>
+> Hi, **please use yolo11 as the base when you custom train.** Please revisit the link in the learning material that has the rkn py files. **There are updated version. The updated version ends with 2.**
+
+**Confirms:**
+- **Use YOLOv11** (not YOLOv8) as the base for custom training. K's qualifier YOLOv8 model needs retrain on YOLOv11 architecture.
+- **Use `_2.py` variants** of conversion scripts: `convertyolotoonnx_2.py` and `convertrknn2.py`. These are the canonical paths.
+- ArUco question NOT directly answered — org didn't confirm or deny. Our read: **don't train YOLO on ArUco** (use OpenCV `cv2.aruco` instead, as in their L2 sample). YOLO is for the RoboMaster ground robots.
+
+---
+
 ## 🔥 IMPORTANT — Update on RoboVerse Challenge - the Final Challenge
 
 > **BH2026ROBOVERSE** OP — 5/6/2026 5:07 am
@@ -186,3 +223,4 @@ If/when more materials drop, append below verbatim. Keep annotations at the bott
 | 2026-06-02 | Initial: L1 + L2 (Hula swarm + fiducial markers) | Z |
 | 2026-06-03 | L3 + L4 + L5 announced. Two-drone architecture revealed. L3 pulled (kolomee.py); L4 + L5 folders auth-locked. | Z |
 | 2026-06-05 | Org corrected access rights — L4 + L5 now accessible. Org also dropped the Final Challenge slides deck. Consolidated this file as the canonical Discord scrape. | Z |
+| 2026-06-05 (PM) | Confirmed University category. Org confirmed YOLOv11 (not v8) for custom training + `_2.py` variants of conversion scripts are canonical. Org confirmed drones are shared / testing slots TBA / dedicated laptops per team (= C2 Terminal). | Z |
