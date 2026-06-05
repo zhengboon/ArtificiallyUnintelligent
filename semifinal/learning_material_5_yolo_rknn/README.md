@@ -1,118 +1,98 @@
-# Learning Material 5 — Object Detection on Mapping Drone (YOLO → ONNX → RKNN)
+# Learning Material 5 — YOLO ONNX/RKNN Conversion + Detection (UNLOCKED + PULLED)
 
-Source: org's `BH2026ROBOVERSE` Discord channel, 2026-06-03 22:33.
+Source: org's `BH2026ROBOVERSE` Discord channel, 2026-06-03 22:33 (re-shared with corrected permissions 2026-06-05 04:45).
+
 Drive folders:
-- **Convert** (`.pt → .onnx → .rknn`): https://drive.google.com/drive/folders/1JTDV6XueZWJyXB-L_yMaLAEum_lQntK3?usp=drive_link
-- **Detection** (run RKNN model): https://drive.google.com/drive/folders/1dVcath0iW3VGA3biqiCDCcZKRfzVPGEa?usp=drive_link
+- Convert: https://drive.google.com/drive/folders/1JTDV6XueZWJyXB-L_yMaLAEum_lQntK3
+- Detection: https://drive.google.com/drive/folders/1dVcath0iW3VGA3biqiCDCcZKRfzVPGEa
 
-**STATUS: files not yet pulled — both folders auth-gated, user confirmed org sharing config set wrong, awaiting fix.**
+> **Important from org:** "These codes will be available on the machine provided by the organiser. It is the VM within that machine as this requires ubuntu 22.04 again."
+>
+> So we don't strictly need to install `rknn-toolkit2` on our laptops — it's already on the org-provided VM. But we should be familiar with the workflow so we don't waste venue time.
 
----
+## Files
 
-## What we know without the files
+### `convert/` — `.pt → .onnx → .rknn`
 
-From the org's text:
+| File | What |
+|---|---|
+| `convertyolotoonnx.py` | Minimal one-liner: `model.export(format="onnx", opset=12, simplify=True, dynamic=False, end2end=False)` |
+| `convertyolotoonnx_2.py` | Annotated version with full args + comments. Use this for guidance. |
+| `convertrknn.py` | Minimal `.onnx → .rknn` for **target rk3588**, mean=[0,0,0], std=[255,255,255], fp16 (no quant) |
+| `convertrknn2.py` | Verbose+quantized variant with `optimization_level=3` + `quantized_dtype='w8a8'` for int8 |
 
-> YOLO is still an option for you to code code detection with your team. The compute module has NPU that can speed up the YOLO detection. But you need to convert the custom YOLO into ONNX and to RKNN format.
+### `detection/` — runtime YOLO on the mapping drone
 
-Three confirmed facts:
-1. **Mapping drone has an NPU** for YOLO acceleration
-2. **RKNN format** = Rockchip Neural Network format → SBC is a **Rockchip SoC**, most likely RK3588 (6 TOPS NPU, fastest), possibly RK3568 (slower)
-3. **Two-step conversion**: `.pt → .onnx → .rknn`
+| File | What |
+|---|---|
+| `rknndecoder.py` | YOLOv11 post-processing (sigmoid → NMS → scale boxes back) |
+| `getDepthAndDetect.py` | Realsense + RKNN YOLO + per-detection 3D unprojection (same as `L4/getDepthAndDetect.py`) |
+| `testrknn_with_display.py` | Standalone single-image RKNN test with built-in `post_process_yolov8` decoder |
 
-Likely candidates for the mapping drone's compute module:
-- Orange Pi 5 / Orange Pi 5 Plus (RK3588, 6 TOPS NPU)
-- Radxa Rock 5B (RK3588, 6 TOPS NPU)
-- Radxa CM5 (RK3588, 6 TOPS NPU)
-- Possibly smaller: Orange Pi CM4 (RK3566, 1 TOPS), or others
+## Key confirmed parameters
 
----
+These are not assumptions anymore — they're in the org's code:
 
-## Conversion pipeline (general pattern, until org's code is pulled)
+| Parameter | Value | Source |
+|---|---|---|
+| Target SoC | **`rk3588`** (alternatives listed: `rk3566`, `rk3568`, `rk3576`) | `convertrknn.py` line 8 |
+| Mean values | **`[[0, 0, 0]]`** | both `convertrknn*.py` |
+| Std values | **`[[255, 255, 255]]`** | both `convertrknn*.py` |
+| Quantization | Default **fp16 (do_quantization=False)**, optional int8 w8a8 | `convertrknn*.py` |
+| Optimization level | `3` (max) in v2 | `convertrknn2.py` |
+| ONNX opset | `12` | `convertyolotoonnx.py` |
+| ONNX dynamic axes | **`False`** (RKNN requires static shapes) | `convertyolotoonnx_2.py` |
+| ONNX simplify | **`True`** (RKNN parser needs clean graph) | `convertyolotoonnx_2.py` |
+| Input image size | **`640 × 640`** | `getDepthAndDetect.py`, `testrknn_with_display.py` |
+| Inference framerate | **~50 fps** on RK3588 NPU (per slides) | slide 12 |
+| Confidence threshold | `0.25` (NMS), `0.45` IOU | `rknndecoder.py` |
+| Colourspace | **RGB** input (convert from BGR) | `getDepthAndDetect.py` line 395 |
 
+## Conversion workflow (canonical)
+
+```bash
+# On host with rknn-toolkit2 (provided org VM, or our own Ubuntu 22.04)
+
+# Step 1: PT → ONNX (uses ultralytics)
+python convertyolotoonnx_2.py    # adjust path to best.pt
+
+# Step 2: ONNX → RKNN (uses rknn-toolkit2)
+python convertrknn.py            # produces best.rknn for rk3588
+
+# Step 3: test on a sample image (no NPU host needed if mock — but use the VM)
+python testrknn_with_display.py
 ```
-PyTorch YOLO (.pt)
-       ↓ ultralytics .export()
-ONNX (.onnx)
-       ↓ rknn-toolkit2 .build() / .export_rknn()
-RKNN (.rknn)
-       ↓ copy to drone
-On-board NPU inference
-```
 
-### Step 1: `.pt → .onnx`
+## Runtime workflow (on the mapping drone)
+
 ```python
-from ultralytics import YOLO
-model = YOLO("best.pt")
-model.export(format="onnx", imgsz=640, opset=12, simplify=True)
-# -> best.onnx
+from rknnlite.api import RKNNLite
+from rknndecoder import decode_yolov11_rknn, draw_detections   # or our YOLOv8 equivalent
+
+rknn = RKNNLite()
+rknn.load_rknn("best.rknn")
+rknn.init_runtime()
+
+# ... grab Realsense frames, run inference, decode, fuse with depth ...
 ```
 
-### Step 2: `.onnx → .rknn`
-```python
-from rknn.api import RKNN
-rknn = RKNN(verbose=True)
-rknn.config(mean_values=[[0, 0, 0]], std_values=[[255, 255, 255]],
-            target_platform="rk3588")          # or rk3568 etc
-rknn.load_onnx(model="best.onnx")
-rknn.build(do_quantization=True, dataset="calibration_images.txt")
-rknn.export_rknn("best.rknn")
-rknn.release()
-```
+## YOLOv8 vs YOLOv11 — important nuance
 
-Need a small calibration image set (~100 frames from typical conditions) for quantisation. K already has training data — can sample from that.
+- K's qualifier `best.pt` is **YOLOv8** (Ultralytics, 3 classes)
+- Org's `rknndecoder.py` is for **YOLOv11**
+- Org's `testrknn_with_display.py` has a separate `post_process_yolov8` function for YOLOv8
 
-`rknn-toolkit2` runs on **x86 Linux** (not on the drone itself). Conversion happens on a host, output `.rknn` is then copied to the drone for inference.
+→ For our `best.rknn` (from K's YOLOv8 model), use `post_process_yolov8` from `testrknn_with_display.py`, not the YOLOv11 decoder.
 
-### Step 3: On-drone inference
-```python
-from rknnlite.api import RKNNLite      # on-drone runtime
-rknn_lite = RKNNLite()
-rknn_lite.load_rknn("best.rknn")
-rknn_lite.init_runtime(core_mask=RKNNLite.NPU_CORE_AUTO)
-output = rknn_lite.inference(inputs=[frame])
-```
+If we retrain on YOLOv11 (likely better for the new RoboMaster target class), use `decode_yolov11_rknn`.
 
-`rknnlite` is the runtime that runs on the Rockchip drone. Lighter than `rknn-toolkit2`.
+## Open questions to answer at the venue
 
----
+1. Confirm the C2 Terminal VM has `rknn-toolkit2` pre-installed (it should — org confirmed in their note)
+2. Confirm the mapping drone has `rknnlite` pre-installed (it should — drone is Ubuntu 22.04 with ROS2 + OpenCV per slide 9)
+3. Confirm `rs.rs2_deproject_pixel_to_point` exists in the venue's `pyrealsense2` version (should — it's part of standard API)
+4. Check if our YOLOv8 conversion needs a sigmoid in post-process or not (test on first sample image)
 
-## What we need to build
+## Cross-check with our prototypes
 
-### Prerequisites (one-time, on a host machine)
-- Install `rknn-toolkit2` (x86 Linux, Python 3.8–3.11 — version constraints matter)
-- Install `ultralytics` (already have for K's pipeline)
-
-### Pipeline (after K finishes training)
-1. K exports `best.pt` → `best.onnx` via ultralytics
-2. Run org's conversion code (when pulled) on the ONNX → produce `best.rknn`
-3. Copy `best.rknn` to the mapping drone
-4. Wire the detection code (org's reference) into our mapping-drone controller
-5. Tune confidence threshold + NMS for the actual targets
-
-### Estimated time
-- ONNX export: minutes (well-trodden path)
-- RKNN conversion: a few hours including calibration set prep + version dependency wrangling (`rknn-toolkit2` is notoriously version-sensitive)
-- Integration: depends on org's reference code — likely a few hours
-
----
-
-## How to fix the access issue
-
-**For the user to do (after org fixes the share):**
-1. Open both Drive folders in a logged-in browser
-2. Right-click each file → Download
-3. Drop the convert/ files into `learning_material_5_yolo_rknn/convert/`
-4. Drop the detection/ files into `learning_material_5_yolo_rknn/detection/`
-5. I'll auto-detect and analyse
-
----
-
-## Open questions
-
-1. **Exact Rockchip SoC?** Affects `target_platform` in conversion. RK3588 most likely.
-2. **Drone's OS image?** Some Rockchip boards ship Armbian, others ship Radxa OS or custom Ubuntu. Affects what Python/ROS2 version is available.
-3. **Is the `.rknn` quantised (int8) or fp16?** Quantised is faster but less accurate; fp16 is the safer default for first iteration.
-4. **What target classes does the org expect?** Until we know, K trains the same classes as qualifier (yellow/red barrel) and we hot-swap when scoring rubric drops.
-5. **Does the org provide a pre-built `.rknn` for a baseline class set?** If yes, we can skip conversion for the smoke test and only convert when K's custom classes are ready.
-6. **Inference rate target?** RK3588 NPU runs YOLOv8n at ~60-120 FPS quantised. Probably overkill for our needs (10-20 FPS is fine).
+Our `semifinal/prototypes/aruco_realsense.py` already does the manual `(u-cx)*Z/fx` math. Org's pattern uses `rs.rs2_deproject_pixel_to_point(intr, [u,v], distance)` instead. Both produce identical results, but **prefer the org's API** in the final code for consistency with their reference patterns.
