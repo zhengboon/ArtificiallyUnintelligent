@@ -12,9 +12,13 @@
 
 **MAJOR UPDATES vs v1.x:**
 - Two challenges revealed in slides — Challenge 1 (Reconnaissance, University-only — **CONFIRMED we are University, so this IS ours**) + Challenge 2 (Deployment & Ambush, everyone)
-- **C2 Terminal** is org-provided (Windows + Ubuntu 22.04 VM) — our code RUNS THERE, not on personal laptop
+- **Task 1 / Task 2 / Task 3** is org's internal name for the 3 sub-tasks (= our Challenge 1 + 2A + 2B)
+- **C2 Terminal** ("dedicated laptop" per team, org-provided Windows + Ubuntu 22.04 VM) — Task 2 + Task 3 run from HERE, not on personal laptop
+- **Drones are SHARED across teams** — testing time slots assigned per team. Slot announcement coming.
 - **3 Hula drones** in the swarm (confirmed)
-- **5 RoboMaster ground robots** as targets for Challenge 2B (NOT barrels!) — A's model needs to train on RoboMasters
+- **5 RoboMaster ground robots** as targets for Challenge 2B (NOT barrels!) — A's model trains on RoboMasters
+- **YOLOv11 confirmed** as base model (NOT v8) — org said use `yolo11n.pt` as base when custom-training
+- **`_2.py` variants** of conversion scripts (`convertyolotoonnx_2.py` + `convertrknn2.py`) are canonical — older versions exist but use `_2`
 - **Mapping drone has Ubuntu 22.04 + ROS2 + OpenCV pre-installed** + RKNN-NPU at ~50 FPS
 - **NoMachine** = access pattern from C2 Terminal → mapping drone
 - **RKNN conversion tooling lives on the org VM** — we don't need to install it ourselves (but should be familiar)
@@ -64,7 +68,7 @@ A's lighter load is intentional — model training is the longest-iteration task
 
 | Person | Tasks | Deliverables |
 |---|---|---|
-| **A** | (1) Read [`CHALLENGE_BREAKDOWN.md`](CHALLENGE_BREAKDOWN.md). (2) **Pivot YOLO training to RoboMaster ground robots** (not barrels) — search Discord / web for RoboMaster S1 / EP imagery, start a dataset. (3) Read [`learning_material_5_yolo_rknn/README.md`](learning_material_5_yolo_rknn/README.md) — note YOLOv8 (K's current) vs YOLOv11 (org's decoder default). | RoboMaster training dataset started |
+| **A** | (1) Read [`CHALLENGE_BREAKDOWN.md`](CHALLENGE_BREAKDOWN.md). (2) **Switch to YOLOv11n base** (`yolo11n.pt`) — org confirmed YOLOv11 is the required base, not YOLOv8. (3) **Pivot training target to RoboMaster ground robots** (not barrels) — search Discord / web for RoboMaster S1 / EP imagery, start a dataset. (4) Read [`learning_material_5_yolo_rknn/README.md`](learning_material_5_yolo_rknn/README.md) — use `_2.py` variants of org conversion scripts (those are the canonical ones). | RoboMaster YOLOv11 training started |
 | **K** | (1) Read [`CHALLENGE_BREAKDOWN.md`](CHALLENGE_BREAKDOWN.md). (2) **Install pyhulax + opencv-contrib-python + numpy + pyrealsense2** on personal laptop for dev (still useful). (3) Run all 3 prototype scripts ([`semifinal/prototypes/`](prototypes/)) against D435. (4) Print 4-6 DICT_6X6_250 ArUco markers. (5) Start drafting Hula swarm controller using `huladola.py` pattern; 3 drones, Challenge 2 focus. | Prototypes verified; ArUco markers printed; swarm controller draft started |
 | **Z** | (1) Read [`CHALLENGE_BREAKDOWN.md`](CHALLENGE_BREAKDOWN.md). (2) Start `semifinal/mapping_drone/controller.py` adapting `kolomee.py` + `generateTopDown.py` + `getDepthAndDetect.py` — fuse top-down occupancy grid across frames using UWB pose. (3) Add ArUco-marker landing-pad classifier (using L4 patterns). | Mapping drone controller skeleton runs locally with mock UWB + real D435 |
 
@@ -190,7 +194,7 @@ Z: ready for Challenge 1 at venue [T-1]
 |---|---|---|
 | RoboMaster training data is hard to find | High | Use Robomaster S1/EP imagery from web + YouTube frames + Roboflow public datasets. If desperate, capture frames at venue Day 1 morning + retrain that evening. |
 | RKNN conversion fails on the org VM | Medium | We have all 4 conversion scripts now — known params (rk3588, fp16, mean/std). Worst case: fall back to ONNX runtime inference on the drone CPU (slower but works). |
-| YOLOv8 vs YOLOv11 post-processing mismatch | Medium | Org has both decoders. Use YOLOv8 decoder for K's existing model; switch if A trains a new YOLOv11. |
+| YOLOv11 conversion fails or training is slow | Medium | Org confirmed YOLOv11 is the base. Use `_2.py` conversion scripts. K's old YOLOv8 model is moot — must retrain. |
 | Mapping drone NoMachine session laggy | Medium | Edit code in our local editor → scp to drone over network → run via SSH/NoMachine. Don't try to IDE-edit on the remote session. |
 | Hula WiFi flaky at venue (many teams) | Medium | `set_wifi_band(5GHz)`, low video resolution, per-drone reconnect logic. C2 Terminal Windows side is the orchestrator. |
 | UWB signal patchy in arena | Medium | Failsafe: hold position on UWB loss >1s, land if sustained. Logged for post-flight review. |
