@@ -11,7 +11,7 @@
 **Plan version:** v2.0 (major rewrite after org released L4 + L5 + Final Challenge slides on 2026-06-05)
 
 **MAJOR UPDATES vs v1.x:**
-- Two challenges revealed in slides — Challenge 1 (Reconnaissance, **University-only**) + Challenge 2 (Deployment & Ambush, everyone)
+- Two challenges revealed in slides — Challenge 1 (Reconnaissance, University-only — **CONFIRMED we are University, so this IS ours**) + Challenge 2 (Deployment & Ambush, everyone)
 - **C2 Terminal** is org-provided (Windows + Ubuntu 22.04 VM) — our code RUNS THERE, not on personal laptop
 - **3 Hula drones** in the swarm (confirmed)
 - **5 RoboMaster ground robots** as targets for Challenge 2B (NOT barrels!) — A's model needs to train on RoboMasters
@@ -50,7 +50,7 @@
 | **K** | Hula swarm controller (3 drones, pyhulax, runs on C2 Windows) + Challenge 2A landings + Challenge 2B search/snapshot | ~100% |
 | **Z** | Mapping drone controller (Challenge 1: top-down map + ArUco landing pad classifier) + cross-platform glue + docs + runbook | ~100% |
 
-A's lighter load is intentional — model training is the longest-iteration task and can stall. K + Z carry equal heavier loads. **If we're Pre-University**, Z's Challenge 1 mapping work becomes nice-to-have / training-only; the team can pivot to making Challenge 2 bulletproof.
+A's lighter load is intentional — model training is the longest-iteration task and can stall. K + Z carry equal heavier loads. **Confirmed University category — Challenge 1 IS ours**, so Z's mapping work is core, not optional.
 
 ---
 
@@ -64,11 +64,11 @@ A's lighter load is intentional — model training is the longest-iteration task
 
 | Person | Tasks | Deliverables |
 |---|---|---|
-| **A** | (1) Read [`CHALLENGE_BREAKDOWN.md`](CHALLENGE_BREAKDOWN.md). (2) Confirm whether we're University or Pre-University. (3) **Pivot YOLO training to RoboMaster ground robots** (not barrels) — search Discord / web for RoboMaster S1 / EP imagery, start a dataset. (4) Read [`learning_material_5_yolo_rknn/README.md`](learning_material_5_yolo_rknn/README.md) — note YOLOv8 (K's current) vs YOLOv11 (org's decoder default). | RoboMaster training dataset started; category confirmed |
+| **A** | (1) Read [`CHALLENGE_BREAKDOWN.md`](CHALLENGE_BREAKDOWN.md). (2) **Pivot YOLO training to RoboMaster ground robots** (not barrels) — search Discord / web for RoboMaster S1 / EP imagery, start a dataset. (3) Read [`learning_material_5_yolo_rknn/README.md`](learning_material_5_yolo_rknn/README.md) — note YOLOv8 (K's current) vs YOLOv11 (org's decoder default). | RoboMaster training dataset started |
 | **K** | (1) Read [`CHALLENGE_BREAKDOWN.md`](CHALLENGE_BREAKDOWN.md). (2) **Install pyhulax + opencv-contrib-python + numpy + pyrealsense2** on personal laptop for dev (still useful). (3) Run all 3 prototype scripts ([`semifinal/prototypes/`](prototypes/)) against D435. (4) Print 4-6 DICT_6X6_250 ArUco markers. (5) Start drafting Hula swarm controller using `huladola.py` pattern; 3 drones, Challenge 2 focus. | Prototypes verified; ArUco markers printed; swarm controller draft started |
 | **Z** | (1) Read [`CHALLENGE_BREAKDOWN.md`](CHALLENGE_BREAKDOWN.md). (2) Start `semifinal/mapping_drone/controller.py` adapting `kolomee.py` + `generateTopDown.py` + `getDepthAndDetect.py` — fuse top-down occupancy grid across frames using UWB pose. (3) Add ArUco-marker landing-pad classifier (using L4 patterns). | Mapping drone controller skeleton runs locally with mock UWB + real D435 |
 
-**Evening sync.** Critical question for org: are we University or Pre-University? Determines whether Challenge 1 (mapping) is even our problem.
+**Evening sync.** University category confirmed (2026-06-05). Challenge 1 mapping IS our deliverable; Z proceeds on mapping drone code without pivoting.
 
 ### T-4 — Sat 6 June
 
@@ -78,7 +78,7 @@ A's lighter load is intentional — model training is the longest-iteration task
 | **K** | (1) Hula swarm controller: 3-drone discovery via `Dola` + per-drone state machine + simultaneous takeoff + simultaneous landing. (2) Challenge 2A logic: take 3 target (X,Y,Z) waypoints → assign 1 per drone → fly + land. (3) Challenge 2B sketch: search pattern (e.g., lawnmower split between 3 drones) + per-drone YOLO inference + snapshot-on-detection. | Swarm controller runs against mock drones for both Challenge 2A and 2B flows |
 | **Z** | (1) Mapping drone controller integrated: UWB sub + Realsense + occupancy grid accumulation across frames (camera-frame → world-frame via UWB) + ArUco landing-pad detection → write `landing_pads.json` with `(world_xyz, aruco_id, marker_image_path)`. (2) Write helper `decide_landing_validity()` (stub until we know the encoding). (3) Run summary + STATUS.txt writer. | Mapping drone controller runs end-to-end against mock MAVSDK + mock UWB + real D435. Outputs `top_down.png`, `landing_pads.json`, marker images. |
 
-**Decision point at end of day:** if we're Pre-University, Z pivots to helping K make Challenge 2 bulletproof for the rest of T-3 / T-2 / T-1.
+(University confirmed — no pivot needed. Z stays on mapping drone, K stays on swarm, both critical.)
 
 ### T-3 — Sun 7 June (buffer)
 
@@ -95,7 +95,7 @@ A's lighter load is intentional — model training is the longest-iteration task
 | Person | Tasks |
 |---|---|
 | **A** | Final model training run on best dataset. Export `.onnx` using `convertyolotoonnx_2.py` exact settings. Pack training data + script + ONNX model on USB in case we need to retrain at venue. |
-| **K** | Dry run #2 — full sim of Challenge 2 (2A landing + 2B search/snapshot) end-to-end against mocks. Aim for smooth muscle memory. If we're University: also help Z dry-run Challenge 1. |
+| **K** | Dry run #2 — full sim of Challenge 2 (2A landing + 2B search/snapshot) end-to-end against mocks. Aim for smooth muscle memory. Also help Z dry-run Challenge 1 (we're University, both challenges are ours). |
 | **Z** | (1) Finalise `semifinal/runbook.md` — roles, T+timeline, fallbacks for Challenge 1 + Challenge 2. Print on paper. (2) USB packaging: code + `best.pt` + `best.onnx` + docs + offline `pyhulax` mirror + `semifinal_scrape.md` + `CHALLENGE_BREAKDOWN.md` onto two USB sticks. |
 
 
@@ -199,8 +199,8 @@ Z: ready for Challenge 1 at venue [T-1]
 | ArUco landing-pad validity rule undisclosed | Medium | Code reads + reports all marker IDs regardless. When org reveals the rule (Day 1), add the classifier in <30 min. |
 | Code crashes mid-run | Medium | `try/finally land + disarm` everywhere. Watchdog 60s. Battery failsafe enabled. |
 | Org's drones differ from what we trained for | Low | We've reviewed all org reference code; adaptation should be small. |
-| **WE'RE PRE-UNIVERSITY** | TBD | Then Challenge 1 isn't ours. Z's mapping work becomes nice-to-have / training. Pivot all effort to Challenge 2. |
-| **WE'RE UNIVERSITY** | TBD | Then Challenge 1 IS ours and it's the biggest single deliverable. Mapping + ArUco classifier critical. |
+| ~~Pre-University~~ | N/A | We are University (confirmed 2026-06-05). |
+| **University category** (confirmed) | DONE | Challenge 1 IS ours. Mapping drone + ArUco landing-pad classifier is the biggest single deliverable. K + Z carry full load. |
 
 ---
 

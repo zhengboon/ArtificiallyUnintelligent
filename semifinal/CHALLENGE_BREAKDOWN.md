@@ -15,11 +15,11 @@ Military-themed reconnaissance + ambush mission.
 | Pre-University | $1800 | $1300 | $900 |
 | University | $1800 | $1300 | $900 |
 
-**⚠️ We need to confirm which category we're in.** Challenge 1 is University-only — affects whether we need to do mapping at all.
+**✅ Confirmed 2026-06-05: we are University category.** Both Challenge 1 AND Challenge 2 are ours. Challenge 1 mapping is a core deliverable, not optional.
 
 ---
 
-## Challenge One — Reconnaissance (University teams only)
+## Challenge One — Reconnaissance (University teams only — ✅ that's us)
 
 ### Hardware
 - **1 Mapping Drone** with Intel Realsense stereo camera
@@ -56,7 +56,7 @@ Military-themed reconnaissance + ambush mission.
 - Launched from our C2 Terminal
 
 #### Mission
-1. Based on Challenge 1 mapping output (will be provided to all teams, even Pre-University), strategise + pick 3 valid landing zones
+1. Based on Challenge 1 mapping output (we produce it ourselves as a University team), strategise + pick 3 valid landing zones
 2. Launch all 3 Hulas to land on those zones simultaneously
 
 #### Scoring
@@ -66,7 +66,7 @@ Military-themed reconnaissance + ambush mission.
 - Mission planner: take mapping output → choose 3 landing zones → assign 1 Hula per zone → plan paths
 - Each Hula independently navigates to its landing zone
 - Coordination: stagger takeoffs / altitudes to avoid mid-air collisions
-- **For Pre-University:** "mapping information will be provided" — so even without Challenge 1, we get the data we need for Challenge 2
+- (Pre-University teams get the mapping info provided to them; we generate it ourselves in Challenge 1 and feed it into our own Challenge 2 planner)
 
 ### Part 2B — Hunt the convoy
 
@@ -184,12 +184,12 @@ Military-themed reconnaissance + ambush mission.
 
 ## Open questions (file with org, in priority order)
 
-1. **Are we University or Pre-University?** (Determines if Challenge 1 applies to us at all.)
+1. ~~Are we University or Pre-University?~~ **CONFIRMED University 2026-06-05**
 2. **What's the encoding for ArUco-marker → valid/invalid?** Specific IDs? Even/odd? Bit pattern?
 3. **What target class(es) does the RoboMaster YOLO model need?** Is "RoboMaster ground robot" the only class, or are there variations?
 4. **Will training images of the RoboMaster robots be released?** Or do we have to source them?
 5. **Time budget per challenge?** The day is 9hr but how is it allocated — back-to-back, separate runs, retries allowed?
-6. **What's "the mapping information will be provided"?** Pre-University gets the map from Challenge 1's output — what format? Image? JSON of pad positions + validity?
+6. ~~"The mapping information will be provided" format question~~ — N/A for us, we produce our own. Internal handoff format from our Challenge 1 → Challenge 2 planner is our call.
 7. **Can we test against the C2 Terminal before Day 1?** Or first-time-we-see-it on Wed 10 Jun?
 8. **Snapshot for Challenge 2B = a single photo, or video, or just bbox JSON?**
 9. **Do the RoboMaster targets move (continuous patrol) or randomly teleport?**
