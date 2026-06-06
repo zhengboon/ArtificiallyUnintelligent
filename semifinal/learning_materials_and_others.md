@@ -219,7 +219,7 @@ if ids is not None:
 | Detection model | **ArUco via OpenCV** (primary, per 6/6 5:00 am clarification); YOLO via `pyhulax.video.YOLODetector` (.pt) as backup/insurance | **ArUco via OpenCV** (primary for landing-validity confirmation); YOLO via RKNN on NPU as backup |
 | Connection | TCP/UDP over WiFi | **Serial** over `/dev/ttyS6:921600` |
 
-> Note: per the 6/6 5:00 am org clarification ("hula drone to detect aruco marker on ground robots"), YOLO is de-escalated to insurance/backup on both platforms; ArUco (DICT_6X6_250) is the primary RoboMaster detection method.
+> Note: per the 6/6 5:00 am org clarification ("hula drone to detect aruco marker on ground robots"), YOLO is de-escalated to insurance/backup on both platforms; ArUco markers (default `DICT_6X6_250`, exact dictionary TBD Day-1) are the primary RoboMaster detection method.
 
 ### IMPORTANT clarification from L5 (5/6/2026)
 The **RKNN conversion codes are on the org-provided machine**, not something we run on our own laptop. That machine runs a **Ubuntu 22.04 VM** (same constraint as qualifier). So:
@@ -311,6 +311,65 @@ This aligns with our docs cascade today: A's RoboMaster YOLO is no longer critic
 
 ---
 
+## 💬 Team chat — 2026-06-06 evening + 2026-06-07 early AM (YOLO killed, swarm search algo, laptop reliability)
+
+> **[6/6/2026 9:35 pm] kai sheng:** im not sure if we are supposed to be working on any codes at the moment
+> **[6/6/2026 9:35 pm] zhengboon:** They say prepare
+>
+> **[6/6/2026 9:36 pm] kai sheng:** i will try to work on the search algo for the hula swarm drones
+> **[6/6/2026 9:36 pm] zhengboon:** I loaning my friend Intel depth camera if y'all test codes
+>
+> **[6/6/2026 10:13 pm] Abi Bas:** Nope not using yolo
+>
+> **[7/6/2026 0:13 am] Abi Bas:** facing some issues on my laptop. It's been repeating quite often
+
+### Key takeaways
+- **YOLO officially dead** per A's "Nope not using yolo" (6/6 22:13). A may still poke at TensorFlow / ImageAI / OpenCV alternatives, but those are exploratory — there is no YOLO insurance pipeline anymore. Confirms what the 6/6 5:00 am org clarification already pointed at: ArUco-only for RoboMaster detection.
+- **A's laptop is a reliability risk** (7/6 00:13, "It's been repeating quite often"). Day-1 contingency: assume A may lose the ability to run anything off own laptop. Anything A is responsible for needs to be runnable from the org-provided dedicated laptop (C2 Terminal) or from another teammate's machine.
+- **Backup depth camera secured** — Z is loaning a friend's Intel depth camera (close-to-D435, not the exact model) for code-test sessions before 10 June. Redundancy for the Realsense D430/D450 we'll get at venue.
+- **K starting Hula swarm search algorithm** (6/6 21:36). This is the search-pattern piece for Challenge 2B (no map layout from org + RoboMaster ground robots may or may not carry UWB tags → visual search likely required). Tracks against the same open question already logged with the UWB API block above.
+- **Still open:** do challenges run **parallel or sequential**? Z asked "are we doing 2 challenges at once or 1 then 2?" — unanswered in team chat, needs a fresh org ticket. Materially affects whether one team member can hand off between platforms or whether we need both running simultaneously.
+
+---
+
+## 🔥 Q&A — 2026-06-06 evening + 2026-06-07 AM (ArUco beside landing pads + marker size/dict + ticket etiquette)
+
+> **FlyingExplorers_ChuaTseHui** — 6/6/2026 2:50 pm
+> *(re: ArUco markers near landing pads for Challenge 2)*
+
+> **BH2026ROBOVERSE** OP — 6/6/2026 9:34 pm
+>
+> Yes, there is aruco marker near the "landing" pad. You can use aruco marker for landing aid if you choose to. Do note the aruco marker is not that marker that is mentioned in the pyhulax that kinda of "auto" land.
+
+> **RoyalRecruits** — 6/6/2026 6:15 pm
+> *(re: ArUco marker physical size + dictionary)*
+
+> **BH2026ROBOVERSE** OP — 6/6/2026 9:32 pm
+>
+> 20cm x 20cm. The exact dictionary will be announced on the day.
+
+> **BH2026ROBOVERSE** OP — 6/6/2026 9:47 pm
+>
+> *(ticket etiquette)* Please close old support tickets and open fresh ones for new questions, so the queue stays prioritised.
+
+**Confirms:**
+- **ArUco markers exist beside Challenge 2 landing pads too** (not just Challenge 1's landing pads). Same fiducial-aided landing pattern on BOTH platforms — Hula uses `cv2.aruco` directly rather than the `pyhulax` landing-marker auto-land helper. The org explicitly distinguishes "this ArUco" from "the pyhulax auto-land marker" — they are different markers; we detect this ArUco ourselves and command the descent.
+- **Marker physical size: 20cm × 20cm.** Useful range estimate: with the D435 RGB stream (640×480, ~70° HFOV), a 20cm marker spans a few hundred pixels at 1m and drops below ~30 px around 5–6m, where detection becomes unreliable. Mapping-drone scan altitude should keep markers inside that reliable detection band.
+- **Exact ArUco dictionary will be announced ON THE DAY** — NOT pre-confirmed as `DICT_6X6_250`. The L2 sample code's `DICT_6X6_250` is illustrative, not authoritative. Our code must accept a runtime dictionary override and route it through `cv2.aruco.getPredefinedDictionary(...)`.
+- **Ticket etiquette:** close stale support tickets; open a fresh ticket per new question.
+
+**Current code state (audited 2026-06-07):**
+- `mapping_drone/mapping.py`'s `ArucoDetector` accepts an `--aruco-dict` override (also exposed via `controller.py`). The lookup table currently supports **9 of the 20 possible dictionaries** the org could announce:
+  - Supported (uppercase short-form, exact match): `4X4_50`, `4X4_100`, `4X4_250`, `5X5_250`, `6X6_50`, `6X6_100`, `6X6_250`, `6X6_1000`, `7X7_250`.
+  - **Not supported (will raise `ValueError`):** `4X4_1000`; `5X5_50`, `5X5_100`, `5X5_1000`; `7X7_50`, `7X7_100`, `7X7_1000`; all four AprilTag variants (`APRILTAG_16h5`, `APRILTAG_25h9`, `APRILTAG_36h10`, `APRILTAG_36h11`).
+  - **Also not normalised:** lowercase short-form (`6x6_250`), long-form (`DICT_6X6_250`), and hyphenated/alias variants are all rejected. The lookup is a strict `dict_name not in _ARUCO_DICTS` check on uppercase keys.
+- **Action item before 10 June:** broaden `_ARUCO_DICTS` to cover all 16 ArUco sizes + 4 AprilTag variants, normalise case, and strip an optional `DICT_` prefix — otherwise there's a ~55% chance the announced dict is rejected outright at the venue. (Open as a fresh support ticket only if we need clarification on the announcement timing; the code fix is on us.)
+
+**Still open with org (re-asked but unanswered):**
+- STINKIES — *"what codes should we come prepared with on 10 June?"* (re-asked 6/6/2026 2:13 pm). Slides + L1–L5 imply heavy pre-prep; org has not given an explicit checklist.
+
+---
+
 ## Source channels (for future scrapes)
 
 | Channel | What lives there |
@@ -335,3 +394,4 @@ If/when more materials drop, append below verbatim. Keep annotations at the bott
 | 2026-06-05 (AM) | Confirmed University category. | Z |
 | 2026-06-05 (PM) | YOLOv11 base + `_2.py` canonical conversion scripts; mapping-drone stack confirmed (Ubuntu 22.04 + ROS2 + OpenCV + RKNN NPU ~50 FPS); C2 Terminal = Windows host + Ubuntu 22.04 VM; mapping drone accessed from C2 via NoMachine; drones shared, dedicated laptop per team. | Z |
 | 2026-06-06 (AM) | Major scope clarifications + new material drop: (1) Hula drones detect ArUco markers on ground robots (NOT YOLO) — A's training pivots away from RoboMaster YOLO. (2) Map layout NOT provided. (3) All 3 team members should attend both days. (4) New UWB API for Hula swarm released: `UWBParserThread.py` (USB-serial @921600, NOT ROS2). Pulled into `semifinal/uwb_api_hula_swarm/`. | Z |
+| 2026-06-06 (PM) → 2026-06-07 (AM) | Three org drops captured: (1) ArUco markers exist beside Challenge 2 landing pads as landing aid (use `cv2.aruco` directly, not the pyhulax auto-land helper). (2) Marker size 20cm × 20cm; **exact dictionary announced on the day** — code must accept any of 16 ArUco + 4 AprilTag variants. (3) Org asks teams to close stale tickets and open fresh ones per question. Audit: `_ARUCO_DICTS` currently supports only 9/20 possible dictionaries — action item to broaden before 10 June. | Z |

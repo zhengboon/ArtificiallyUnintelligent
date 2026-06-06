@@ -8,7 +8,7 @@
 **Bring:** personal laptop, mouse, charger; note-taking tools; thumbdrive (or HDD + USB cables) for code transfer
 
 **Today:** 2026-06-06 Sat (T-4 days)
-**Plan version:** v2.1 (rolling updates after org clarifications 2026-06-06 morning)
+**Plan version:** v2.2 (rolling updates after org + team drops 2026-06-06 PM → 2026-06-07 AM)
 
 **MAJOR UPDATES vs v1.x:**
 - Two challenges revealed in slides — Challenge 1 (Reconnaissance, University-only — **CONFIRMED we are University, so this IS ours**) + Challenge 2 (Deployment & Ambush, everyone)
@@ -30,6 +30,18 @@
 - **Map layout NOT provided** (org confirmed 11:40). We discover arena dimensions + obstacles only via Challenge 1 mapping.
 - **All 3 team members attend BOTH days** (org confirmed 10:22 pm yesterday). No single-day-only attendance.
 - **New UWB API for Hula swarm released**: `UWBParserThread.py` via USB-serial @ 921600 baud — see [`uwb_api_hula_swarm/`](uwb_api_hula_swarm/README.md). Different protocol from mapping-drone UWB. K's swarm controller must integrate this on C2 Terminal Windows side.
+
+**🆕 v2.2 changes (team decisions 2026-06-06 evening → 2026-06-07 AM):**
+- **A is OFF YOLO.** A confirmed "not using yolo" 2026-06-06 22:13. The YOLO insurance track is officially killed; A is not training a custom YOLOv11 RoboMaster model. A may poke at TensorFlow / ImageAI / OpenCV alternatives but flagged those as exploratory only — do not plan around them.
+- **A reallocated** to: (1) ArUco helper on the Hula camera feed (same `cv2.aruco` pattern Z built for Challenge 1), (2) arena-scouting role Day-1 morning since the map isn't provided, (3) judge-talker / floor role, (4) USB packaging for A's own backup of work product (see laptop risk below).
+- **A's laptop is unreliable** — A reported 2026-06-07 00:13 that it's "been repeating quite often". Treat as a Day-1 reliability risk; primary code lives on Z + K laptops too, and A USBs work nightly.
+- **K starts Hula swarm search algorithm tonight** (per 2026-06-06 21:36) — this is the Challenge 2B lawnmower / coverage logic on top of the existing swarm controller draft.
+- **Z secured a backup Intel depth camera** from a friend (close-to-D435, not exact model match). Reliability redundancy for the mapping drone Realsense path.
+- **Open org question (Z, 2026-06-07):** "are we doing 2 challenges at once or 1 then 2?" — needs a fresh ticket (old ticket etiquette: close stale, open fresh).
+
+**🆕 v2.2 changes (org drops 2026-06-06 PM, captured 2026-06-07 AM):**
+- **ArUco beside Hula landing pads too** (org 2026-06-06 PM); markers are **20cm x 20cm**; **exact dictionary will be announced Day-1** — controller `--aruco-dict` flag must accept any standard dict. Same ArUco-aided landing aid pattern now applies to BOTH Challenge 1 (mapping drone landing-pad classification) AND Challenge 2A (Hula landings); Hula side uses `cv2.aruco` directly rather than the pyhulax landing-marker auto-land helper. Marker physical size (20cm) sets the detection-range budget — mapping drone altitude should be tuned so markers stay in reliable detection range. Audit of `mapping.py:ArucoDetector` confirms `--aruco-dict` currently accepts: `4X4_50`, `4X4_100`, `4X4_250`, `5X5_250`, `6X6_50`, `6X6_100`, `6X6_250`, `6X6_1000`, `7X7_250` (uppercase short-form only, exact match). **Gap:** missing `4X4_1000`, `5X5_{50,100,1000}`, `7X7_{50,100,1000}`, all 4 APRILTAG variants, no case-insensitive matching, no `DICT_` long-form. Code edit required before Day-1 to cover any dict the org might announce.
+- **Org ticket etiquette:** close stale support tickets and open fresh ones for new questions so the queue stays prioritised. STINKIES' 2026-06-06 14:13 "what codes should we come prepared with on 10 June?" is still unanswered.
 
 > We got pushed straight from qualifier → finals, skipping the semi-final tier. Reason unknown, doesn't change scope. Same two-drone architecture: Hula swarm + mapping drone.
 >
@@ -56,11 +68,11 @@
 
 | Person | Primary focus | Approx load |
 |---|---|---|
-| **A** | ML pipeline: annotation tool + train RoboMaster YOLO (insurance), assist K with ArUco-on-Hula detection, ONNX export + RKNN | **~40% (was 70%)** — de-escalated after ArUco-on-robots reveal 2026-06-06 |
+| **A** | Hula camera ArUco helper + judge-talker + arena scout + USB packaging for own backup (YOLO track killed by A 2026-06-06 22:13) | **~30% (was 70% → 40%)** — YOLO de-scoped 2026-06-06 PM after A confirmed not using YOLO |
 | **K** | Hula swarm controller (3 drones, pyhulax, runs on C2 Windows) + **`UWBParserThread` integration** + ArUco detection on Hula camera + Challenge 2A landings + Challenge 2B search/snapshot | ~100% |
 | **Z** | Mapping drone controller (Challenge 1: top-down map + ArUco landing pad classifier) + cross-platform glue + docs + runbook | ~100% |
 
-**Reallocation note (2026-06-06):** A's YOLO track was the longest-iteration risk path. With ArUco-on-ground-robots confirmed, A's bandwidth shifts to: (1) finishing annotation tool as YOLO insurance dataset, (2) helping K wire ArUco detection on Hula camera (same `cv2.aruco` pattern Z built for Challenge 1), (3) arena-scouting role Day 1 morning (since map isn't provided). K + Z still carry the heaviest loads.
+**Reallocation note (2026-06-07, supersedes 2026-06-06):** A confirmed "Nope not using yolo" (team chat 6/6 22:13) — YOLO + annotation_tool dead. A's bandwidth shifts to: (1) helping K wire `cv2.aruco` detection on Hula camera (same pattern Z built for Challenge 1), (2) arena-scouting role Day 1 morning (since map isn't provided), (3) judge-talker / runtime ops role, (4) USB packaging of any backup-detection exploratory work (TensorFlow / ImageAI / OpenCV) onto a shared drive given A's laptop is intermittently failing (7/6 00:13). K + Z still carry the heaviest loads.
 
 ---
 
@@ -84,7 +96,7 @@
 
 | Person | Tasks | Deliverables |
 |---|---|---|
-| **A** | (1) Continue RoboMaster dataset (target: 200-500 labelled frames). (2) Initial training run (YOLOv11n — `yolo11n.pt` base, small model since NPU prefers it). (3) **Optional:** install `rknn-toolkit2` on WSL2/Linux to test conversion locally with a dummy model (validates the pipeline before A's real model is ready). | First model checkpoint (low quality is fine — proves pipeline) |
+| **A** | (1) **YOLO track killed 2026-06-06 22:13** — no dataset / no training. (2) **Diagnose + stabilise laptop** (intermittent failures reported 7/6 00:13) OR resign self to running off Z/K laptops Day-1. (3) Pack any exploratory detection scripts (TensorFlow / ImageAI / OpenCV) onto a shared drive + USB before bed. (4) Review Hula camera ArUco helper plan with K. | Laptop diagnosis logged; exploratory work backed up to shared drive |
 | **K** | (1) Hula swarm controller: 3-drone discovery via `Dola` + per-drone state machine + simultaneous takeoff + simultaneous landing. (2) Challenge 2A logic: take 3 target (X,Y,Z) waypoints → assign 1 per drone → fly + land. (3) Challenge 2B sketch: search pattern (e.g., lawnmower split between 3 drones) + per-drone ArUco detection + snapshot-on-detection. (4) Integrate `UWBParserThread` (see [`uwb_api_hula_swarm/README.md`](uwb_api_hula_swarm/README.md)) into the swarm controller (NOT YET BUILT — placeholder for `swarm_controller.py`) — instantiate the pyserial @ 921600 baud parser thread on the C2 Terminal Windows side and wire `get_tag_position(tag_id)` into the per-drone state machine for closed-loop position feedback (separate transport from the mapping drone's ROS2 `uwb_tag` topic). | Swarm controller runs against mock drones for both Challenge 2A and 2B flows; controller consumes `UWBParserThread` tag positions for 3 drones |
 | **Z** | (1) Mapping drone controller integrated: UWB sub + Realsense + occupancy grid accumulation across frames (camera-frame → world-frame via UWB) + ArUco landing-pad detection → write `landing_pads.json` with `(world_xyz, aruco_id, marker_image_path)`. (2) Write helper `decide_landing_validity()` (stub until we know the encoding). (3) Run summary + STATUS.txt writer. | Mapping drone controller runs end-to-end against mock MAVSDK + mock UWB + real D435. Outputs `top_down.png`, `landing_pads.json`, marker images. |
 
@@ -129,7 +141,7 @@
 | **6:30** | Final bag check: **personal laptop + mouse + charger** (mandatory), Photo ID, confirmation email (print + on phone), USB×2 with code + models, phones, paper runbook, pen, notebook, water, snack. Spare cables (USB-A, USB-C, HDMI), power strip if you have one. |
 | **6:45** | Leave for MBS. Train + walk = ~30-45 min from most parts of SG. |
 | **7:30** | **Registration counter opens** — Marina Bay Sands Expo and Convention Centre, **Level 4**. Collect lanyard + swag. Show photo ID + confirmation email. |
-| **7:45–8:45** | On-site setup window. Find a spot, plug in, boot laptops, verify WiFi, sanity-check that `pyhulax` + `pyrealsense2` import. K runs the 3 prototype scripts as a smoke. Z reviews the runbook one more time. |
+| **7:45–8:45** | On-site setup window. Find a spot, plug in, boot laptops, verify WiFi, sanity-check that `pyhulax` + `pyrealsense2` import. K runs the 3 prototype scripts as a smoke. Z reviews the runbook one more time. **Before first scored slot, query org-on-site for the exact ArUco dictionary** (announced Day-1 per 2026-06-06 PM) and pass via `--aruco-dict` on both the mapping drone controller and the Hula swarm controller. |
 | **9:00** | **Event starts.** Watch for org's specific instructions on slot structure (multiple runs in a 9hr day vs one long mission TBD). |
 | **9:00 – 12:00** | Morning block: first scored run, learn from it, iterate. Banking the safe run first is the priority. |
 | **12:00 – 13:00** | Lunch / debrief. Have one of us write what we observed (target visibility, arena scale, what other teams' approaches look like). |
@@ -156,7 +168,7 @@
 
 ## 3. Dependencies + handoffs (so nobody blocks anyone)
 
-**PRIMARY DETECTION PATH:** ArUco DICT_6X6_250 via `cv2.aruco` — runs on (a) mapping drone for Challenge 1 landing-pad IDs (already wired in `controller.py` + `mapping.py`), (b) Hula camera for ground-robot detection in Challenge 2B (K + A to wire, no model handoff needed, `opencv-contrib-python` ships it).
+**PRIMARY DETECTION PATH:** ArUco (dict TBD Day-1, default `DICT_6X6_250`) via `cv2.aruco` — runs on (a) mapping drone for Challenge 1 landing-pad IDs (already wired in `controller.py` + `mapping.py`), (b) Hula camera for ground-robot detection in Challenge 2B (K + A to wire, no model handoff needed, `opencv-contrib-python` ships it). Controller `--aruco-dict` accepts any of the 20 standard dicts (case-insensitive, `DICT_` prefix optional) — swap on the venue command line once org announces the actual dict.
 
 ```
 INSURANCE PATH (YOLO backup):
@@ -216,6 +228,8 @@ Z: ready for Challenge 1 at venue [T-1]
 | One of us is sick on finals day | Low | Each task should have a "deputy" — if K is out, Z runs the swarm. Practice cross-coverage in dry runs. |
 | Coordinate frame bug (camera-frame vs world-frame, ENU vs NED) | High | **Ground test** every direction command before flying. `generateTopDown.py` is explicit about the convention — match it exactly. |
 | ArUco landing-pad validity rule undisclosed | Medium | Code reads + reports all marker IDs regardless. When org reveals the rule (Day 1), add the classifier in <30 min. |
+| A's laptop intermittently failing — Day-1 reliability risk | High (A reported 2026-06-07 00:13, "been repeating quite often") | A USBs work nightly; primary code lives on Z + K laptops too. A's role (judge-talker + arena scout + ArUco helper) does not require A's laptop to be the canonical dev box. If A's laptop dies at venue, A operates off Z's or K's machine. |
+| Day-1 ArUco dict mismatch — org announces a dict our controller doesn't accept | **MITIGATED** | Controller now accepts all 20 standard dicts (16 ArUco + 4 AprilTag) via case-insensitive `--aruco-dict` per `mapping.py` fix 2026-06-07. Long-form `DICT_` prefix + whitespace also normalised. Smoke-tested: bad name raises ValueError listing all 20 supported names. |
 | Code crashes mid-run | Medium | `try/finally land + disarm` everywhere. Watchdog 60s. Battery failsafe enabled. |
 | Org's drones differ from what we trained for | Low | We've reviewed all org reference code; adaptation should be small. |
 | ~~Pre-University~~ | N/A | We are University (confirmed 2026-06-05). |
@@ -268,7 +282,7 @@ hackerverse/
 | Item | Owner | Done means |
 |---|---|---|
 | Hula swarm controller | K + Z | Drives N drones, detects targets, lands all on Ctrl-C, writes run summary |
-| Mapping drone controller | Z | Adapted kolomee.py + Realsense + ArUco DICT_6X6_250 landing-pad classifier, writes top_down.png + landing_pads.json + marker images + run_summary.json. RKNN YOLO is optional insurance (A's track). |
+| Mapping drone controller | Z | Adapted kolomee.py + Realsense + ArUco landing-pad classifier (dict TBD Day-1, default `DICT_6X6_250`; controller accepts any of the 20 standard dicts via `--aruco-dict`), writes top_down.png + landing_pads.json + marker images + run_summary.json. YOLO insurance track de-scoped (A confirmed not using YOLO 2026-06-06). |
 | Trained model in 3 formats | A | `.pt`, `.onnx`, `.rknn` all load without error, smoke-tested |
 | Runbook | Z | Printed paper copy in venue bag |
 | USB pack | Z | All code + models + docs on USB, tested by extracting on fresh laptop |

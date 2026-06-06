@@ -118,7 +118,7 @@ python -m mapping_drone.controller [flags]
 | `--mock-all`          | All three mocks. Pure laptop run, no hardware.                                |
 | `--waypoints PATH`    | JSON list of `[n_m, e_m, alt_m]`. Default = 4-pt demo square.                 |
 | `--gimbal-pitch DEG`  | Gimbal tilt; `-90` = straight down (DEFAULT, canonical down-facing mapping).  |
-| `--aruco-dict NAME`   | Short ArUco dictionary name (e.g. `6X6_250` [default], `4X4_50`, `5X5_250`). See below. |
+| `--aruco-dict NAME`   | ArUco/AprilTag dictionary name (e.g. `6X6_250` [default], `4X4_50`, `APRILTAG_36h11`). Case-insensitive, optional `DICT_` prefix. See below. |
 | `--max-flight-time-s` | Hard cap before forced land. Default `240` s.                                 |
 | `--mavsdk-address ADDR` | MAVSDK system address. Default `serial:///dev/ttyS6:921600`.                |
 | `--runs-dir DIR`      | Parent directory for `run_<ts>` output dirs. Default `mapping_drone/runs` (relative to CWD). |
@@ -135,15 +135,35 @@ the occupancy-grid maths assumes a nadir view.
 
 ### `--aruco-dict`
 
-Selects which OpenCV ArUco dictionary the detector tries against incoming
-frames. Defaults to `6X6_250` (i.e. `cv2.aruco.DICT_6X6_250`) — the
-dictionary the organisers confirmed they will use for the RoboMaster
-ground-robot markers and the same dict the mock RealSense draws. Pass
-e.g. `--aruco-dict 5X5_250` if the organisers swap the printed marker set
-on the day. Accepted names are the short identifiers used as keys in
-`mapping._ARUCO_DICTS`: `4X4_50`, `4X4_100`, `4X4_250`, `5X5_250`,
-`6X6_50`, `6X6_100`, `6X6_250` (default), `6X6_1000`, `7X7_250` — NOT the
-raw `cv2.aruco.DICT_*` constants.
+Selects which OpenCV ArUco/AprilTag dictionary the detector tries against
+incoming frames. Default is `6X6_250` (i.e. `cv2.aruco.DICT_6X6_250`) for
+prototyping; the actual dictionary will be announced by org Day-1 and can
+be overridden via `--aruco-dict` at runtime (case-insensitive, any of the
+20 supported). Per the org Discord (2026-06-06 21:32):
+
+> ArUco markers are 20cm x 20cm. Exact dictionary will be announced
+> Day-1.
+
+The same markers sit next to both Challenge 1 and Challenge 2 (Hula)
+landing pads, so the mapping drone's detector has to cope with whatever
+size/count combination drops on the day.
+
+Accepted names (20 total — 16 ArUco sizes + 4 AprilTag variants), all
+keyed in `mapping._ARUCO_DICTS`:
+
+- ArUco 4x4: `4X4_50`, `4X4_100`, `4X4_250`, `4X4_1000`
+- ArUco 5x5: `5X5_50`, `5X5_100`, `5X5_250`, `5X5_1000`
+- ArUco 6x6: `6X6_50`, `6X6_100`, `6X6_250` (default), `6X6_1000`
+- ArUco 7x7: `7X7_50`, `7X7_100`, `7X7_250`, `7X7_1000`
+- AprilTag: `APRILTAG_16h5`, `APRILTAG_25h9`, `APRILTAG_36h10`, `APRILTAG_36h11`
+
+The lookup is case-insensitive and tolerates an optional `DICT_` prefix,
+so `6x6_250`, `DICT_6X6_250`, `dict_apriltag_36h11`, and
+`APRILTAG_36H11` all resolve to the same dictionary. AprilTag suffixes
+are internally normalised to the lowercase-`h` spelling OpenCV uses
+(`36h11`, not `36H11`) — pass them in any case, the detector reconciles.
+Unknown names raise `ValueError` with the full list of 20 accepted keys
+in the message.
 
 Examples:
 
@@ -309,6 +329,35 @@ markers you printed yourself. The marker dictionary in `--aruco-dict` must
 match the one used to generate the printed tags. Re-generate the tags from
 `cv2.aruco.getPredefinedDictionary(cv2.aruco.<NAME>)` using the same name
 you pass on the CLI.
+
+The exact ArUco dictionary will be announced by org on Day-1. The default
+is `DICT_6X6_250` for prototyping but can be overridden via `--aruco-dict`
+at runtime (case-insensitive, any of the 20 supported). The full accepted
+set — built programmatically by `mapping._build_aruco_dict_table()` and
+exposed as `mapping.ALL_SUPPORTED_DICT_NAMES` — is all 16 ArUco
+size/count combinations (`4X4`/`5X5`/`6X6`/`7X7` x `50`/`100`/`250`/`1000`)
+plus the 4 AprilTag variants (`APRILTAG_16h5`, `APRILTAG_25h9`,
+`APRILTAG_36h10`, `APRILTAG_36h11`). The detector normalises the
+incoming name: case is ignored and a leading `DICT_` is stripped, so
+`6x6_250`, `DICT_6X6_250`, and `APRILTAG_36H11` all resolve correctly.
+Any name outside the 20 raises `ValueError` at construction time with the
+full supported list in the error message — no silent fallback. (The old
+9-entry hardcoded literal in `mapping._ARUCO_DICTS` has been retired; no
+patch should be needed regardless of which dict org picks Day-1.)
+
+Marker physical size is 20 cm x 20 cm. Per the org Discord
+(2026-06-06 21:32):
+
+> ArUco markers are 20cm x 20cm.
+
+On the D435 RGB stream (640x480, ~70 deg HFOV) a 20 cm marker subtends
+roughly a few hundred px at 1 m and drops below ~30 px at 5-6 m where
+detection becomes unreliable. Pick mapping-drone flight altitude so the
+markers stay well above that lower bound while still covering the survey
+area. Same markers are placed near both Challenge 1 and Challenge 2
+landing pads (org, 2026-06-06) — the mapping drone only needs to detect
+them, not auto-land on them (the pyhulax landing-marker helper is a
+separate mechanism on the Hula side).
 
 **Landing pads appear under the floor / altitudes go negative airborne.**
 You bypassed `OccupancyGrid.integrate` and called `camera_to_world`
