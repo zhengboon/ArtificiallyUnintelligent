@@ -7,8 +7,9 @@ as valid and odd marker IDs as invalid; this is a guess to keep the pipeline
 end-to-end testable.
 
 When the organisers publish the real rule, the expected change is a one-line
-edit to `_RULES['default']` (or, if the rule needs lookup tables / external
-state, the body of `decide_landing_validity`).
+edit to the lambda for `_RULES[_DEFAULT_RULE]` (currently the `'even'` entry),
+or — if the rule needs lookup tables / external state — to the body of
+`decide_landing_validity`.
 
 Runtime override
 ----------------
@@ -73,7 +74,8 @@ def decide_landing_validity(aruco_id: int) -> bool:
 
     STUB. Org has not published the rule. Default placeholder: even IDs valid.
     REPLACE this function body when org publishes the actual rule — typically
-    a one-line change to ``_RULES['default']`` or this function.
+    a one-line change to ``_RULES[_DEFAULT_RULE]`` (currently the ``'even'``
+    lambda) or this function.
 
     Honours the ``MAPPING_DRONE_VALIDITY`` env var; see module docstring.
     """

@@ -4,9 +4,11 @@ Provides a real ROS2 subscriber (UwbNode) and a programmable mock
 (MockUwbNode) behind a common Protocol so the controller can be tested
 on a laptop without rclpy installed.
 
-Coordinate convention (see CLAUDE.md): the ROS2 'uwb_tag' topic publishes
-PoseStamped in ENU. We swap axes here so callers always receive
-NED-style north/east (n = pose.position.y, e = pose.position.x).
+Coordinate convention: the ROS2 'uwb_tag' topic publishes PoseStamped in
+ENU (x=east, y=north, z=up). MAVSDK/controller callers in this repo work
+in NED-style (north, east), so we swap axes here: n = pose.position.y,
+e = pose.position.x. See mapping_drone/README.md "Coordinate-frame
+callout" section for the full PX4 NED vs world ENU rationale.
 """
 
 from __future__ import annotations
@@ -109,8 +111,7 @@ class UwbNode:
         logger.info("UwbNode started, subscribed to '%s'", self._topic)
 
     def _on_pose(self, msg: object) -> None:
-        # ENU -> NED-style axis swap (CLAUDE.md):
-        #   n = pose.position.y, e = pose.position.x
+        # ENU (ROS2) -> NED-style axis swap: n = pose.position.y, e = pose.position.x
         try:
             pose = msg.pose  # type: ignore[attr-defined]
             n = float(pose.position.y)
@@ -160,8 +161,10 @@ class UwbNode:
 class MockUwbNode:
     """Programmable in-process UWB source for laptop/CI testing.
 
-    Default position is (0.0, 0.0) with ready=False until either
-    set_position() is called or start() forces ready=True via a fix.
+    Default position is (0.0, 0.0) with ready=False; ready flips to True
+    only after the first set_position() call. start()/stop() merely toggle
+    an internal _started lifecycle flag for parity with the real UwbNode
+    and do not affect readiness.
     """
 
     def __init__(self, initial_n: float = 0.0, initial_e: float = 0.0) -> None:

@@ -1,13 +1,28 @@
-# BrainHack 2026 RoboVerse — Semi-Final Prep
+# BrainHack 2026 RoboVerse — Finals Prep
 
-**Status:** Qualified 2026-05-22 (top 26 of ~70 teams advance). Semi-final date TBA.
-**Physical run sessions: 2026-06-10 and 2026-06-11** — hands-on hardware time.
+**Status:** Advanced to FINALS 2026-06-03 (skipped semifinal tier). Category: University (confirmed 2026-06-05).
+**Finals: 2026-06-10 + 2026-06-11, 9am-6pm, Marina Bay Sands Expo & Convention Centre Level 4.** All 3 team members should attend both days (per org 2026-06-05 22:22). Registration 10 June 7:30am — bring Photo ID + confirmation email; smart casual, no slippers.
 **Scope shift:** Sim → real hardware. TWO drone platforms (Hula swarm + mapping drone).
 
-> **T-7 / T-8 to physical run.** Prep plan: see [§17 below](#17-pre-physical-run-checklist-t-7).
-> **Major update 2026-06-03:** Org dropped L3 + L4 + L5. Revealed a SECOND drone (the "mapping drone") with UWB + MAVSDK + Realsense + onboard NPU, distinct from the Hula swarm.
+> **T-4 / T-5 to finals (10-11 June 2026, Marina Bay Sands Expo & Convention Centre, Level 4).** Prep plan: see [§17 below](#17-pre-physical-run-checklist-t-4).
+> **Major update 2026-06-03:** Org released L3 (UWB), and L4 + L5 are now Pulled into-tree (`learning_material_4_realsense/` + `learning_material_5_yolo_rknn/`). Revealed a SECOND drone (the "mapping drone") with UWB + MAVSDK + Realsense + onboard NPU, distinct from the Hula swarm.
 
-This is the working knowledge base for the semi-final. Everything we know so far, organised so any team member can pick up where another left off.
+> **2026-06-03:** Team bumped straight to FINALS (skipping semifinal tier). Finals are 2026-06-10/11, 9am-6pm both days at Marina Bay Sands Expo L4. All 3 members should attend both days (per org 2026-06-05 22:22).
+> **2026-06-05:** University category confirmed. YOLOv11 base required (`yolo11n.pt`); use `_2.py` variants of convert scripts. Mapping drone: Ubuntu 22.04 + ROS2 + OpenCV + RKNN NPU @ ~50 FPS. C2 Terminal = Windows + Ubuntu 22.04 VM; access mapping drone via NoMachine from C2.
+> **2026-06-06 05:00:** "Hula drone to detect aruco marker on ground robots." Detection of RoboMaster ground robots is **ArUco-based, not YOLO**. A's YOLO is insurance/backup only.
+> **2026-06-06 11:28:** New Hula-swarm UWB API: `UWBParserThread.py` over pyserial @ 921600 baud (see `uwb_api_hula_swarm/`). DIFFERENT transport from mapping drone's ROS2 `uwb_tag` topic.
+> **2026-06-06 11:40:** Map layout will NOT be provided — discover via Challenge 1.
+
+## Finals logistics (org confirmations 2026-06-05 / 2026-06-06)
+- **Event:** FINALS (we skipped semi-final tier — confirmed 2026-06-03), University category (2026-06-05).
+- **Dates:** Wed 10 Jun + Thu 11 Jun 2026, 9am-6pm both days.
+- **Venue:** Marina Bay Sands Expo & Convention Centre, **Level 4**.
+- **Registration:** 10 Jun, 7:30 am — bring **Photo ID + confirmation email**.
+- **Dress:** smart casual, **NO slippers / uncovered footwear**.
+- **Bring:** personal laptop + mouse + charger + thumbdrive.
+- **Attendance:** All 3 members should attend BOTH days (org guidance 2026-06-05 22:22).
+
+This is the working knowledge base for the finals. Everything we know so far, organised so any team member can pick up where another left off. (Note: directory name `semifinal/` and any lingering "semi-final" wording are historical — we advanced straight to finals.)
 
 ---
 
@@ -15,37 +30,41 @@ This is the working knowledge base for the semi-final. Everything we know so far
 
 ### Two drone platforms, not one
 
-The semi-final involves **TWO distinct drone systems** working together:
+The finals involve **TWO distinct drone systems** working together:
 
 | | **Hula swarm** | **Mapping drone** |
 |---|---|---|
 | Quantity | Multiple (count TBC) | One |
 | SDK | `pyhulax` | `mavsdk` (Python) |
-| Position source | Optical flow + optional QR mat | **UWB tag** (real-time XY), PX4 NED (Z) |
+| Position source | Optical flow + optional QR mat + **UWB via UWBParserThread (pyserial @ 921600)** | **UWB tag** (real-time XY), PX4 NED (Z) |
 | Position interface | `drone.get_position()` | **ROS2 topic `uwb_tag`** (`PoseStamped`) |
 | Control style | High-level `move_to(x,y,z)` (blocks) | **Velocity-setpoint P-controller** at 10Hz |
 | Depth camera | Built-in optical flow | **Realsense D430/D450/D435** (`pyrealsense2`) |
 | Compute location | On host laptop | **On the drone itself** (Rockchip SBC with NPU) |
-| Detection model | YOLO via `pyhulax.video.YOLODetector` (`.pt`) | **YOLO via RKNN** (`.pt → .onnx → .rknn`, NPU-accelerated) |
+| Detection model | **ArUco** (`DICT_6X6_250`) primary; YOLO via `pyhulax.video.YOLODetector` as backup | **YOLO via RKNN** (`.pt → .onnx → .rknn`, NPU-accelerated) |
 | Connection | TCP/UDP over WiFi | **Serial** (`/dev/ttyS6:921600`) |
 | Carry over from qualifier | Asyncio patterns, depth math, run summary | **MUCH more** — asyncio, MAVSDK, offboard pre-warm, velocity control, watchdog |
 
+*Note: per 2026-06-06 org clarification ("hula drone to detect aruco marker on ground robots"), Hula detection of RoboMaster ground robots is ArUco-based. A's YOLO pipeline is retained as insurance/backup only. Hula swarm now also has UWB via `UWBParserThread.py` (pyserial @ 921600 baud) running on C2 Terminal Windows side — see `uwb_api_hula_swarm/`. This is a different transport from the mapping drone's ROS2-based UWB on `/dev/ttyS6`.*
+
 ### Likely role split (our hypothesis until org clarifies)
 - **Hula swarm**: broad-area parallel searching, find target candidates fast across the arena
-- **Mapping drone**: careful precision work — build the actual map, photograph high-value targets, position-accurate via UWB
+- **Mapping drone**: careful precision work — build the actual map (layout NOT given — must be discovered), photograph high-value targets, position-accurate via UWB
 
 ### What changed vs qualifier
-| | Qualifier (sim) | Semi-final (real hardware) |
+| | Qualifier (sim) | Finals (real hardware) |
 |---|---|---|
 | Platform | x500_vision in PX4 SITL + Gazebo Harmonic | **Real Hula drones (swarm) + real mapping drone** |
 | SDKs | MAVSDK only | **pyhulax (Hulas)** + **MAVSDK (mapping drone)** |
 | Pose source | Gazebo simulation truth + PX4 EKF | **VIO/optical flow (Hulas)** + **UWB tag (mapping drone)** |
 | Camera (RGB) | Gazebo IMX214 via `gz.transport13` | **Hula's onboard camera** + **Realsense on mapping drone** |
 | Depth sensor | Sim depth camera | **Realsense D435** (we have one) via `pyrealsense2` |
-| Targets | Yellow + red barrels | Likely barrels + **fiducial markers** (ArUco / QR / AprilTag) |
+| Targets | Yellow + red barrels | 5 RoboMaster ground robots carrying ArUco markers (DICT_6X6_250). Primary detection = ArUco (org-confirmed 2026-06-06). YOLO retained as insurance only. |
 | Control loop | Asyncio + offboard velocity setpoints | **pyhulax: blocking calls** + **mapping: asyncio + velocity P-ctrl** |
 | Coordination | Single drone | **Multiple platforms, multiple processes** |
 | ML deployment | YOLO `.pt` on laptop | **YOLO `.pt → .onnx → .rknn` on NPU** for mapping drone, `.pt` for Hulas |
+| Map layout | Provided as occupancy grid / known arena | **NOT provided — discover via Challenge 1** (org 2026-06-06 11:40) |
+| Compute setup | Org laptop + Ubuntu VM | **C2 Terminal = Windows host + Ubuntu 22.04 VM**; access mapping drone via **NoMachine** from C2 (org 2026-06-05 PM) |
 
 **The good news:** ~70% of our qualifier code carries over for the mapping drone (MAVSDK + asyncio + offboard pre-warm + velocity ctrl + watchdog + run summary). The Hula side gets a lot for free from the SDK.
 
@@ -57,7 +76,7 @@ The semi-final involves **TWO distinct drone systems** working together:
 
 | Asset | Where | Hula swarm | Mapping drone |
 |---|---|---|---|
-| YOLOv8 training pipeline (`best.pt`) | `models/best.pt` | ✅ Use directly via `YOLODetector` | ⚠️ Convert `.pt → .onnx → .rknn` for NPU |
+| YOLO training pipeline (`best.pt`, qualifier YOLOv8 — retrain on YOLOv11 base `yolo11n.pt` per org 2026-06-05; insurance/backup only since ArUco is primary RoboMaster detector per 2026-06-06) | `models/best.pt` | ✅ Use as backup via `YOLODetector` | ⚠️ Convert `.pt → .onnx → .rknn` for NPU |
 | Depth → 3D unprojection math | `searchctl/controller.py` mapping section | N/A (use drone cam) | ✅ Identical formula for Realsense |
 | Top-down occupancy mapping | `searchctl/controller.py:457-687` | N/A | ✅ Pattern fully reuses with Realsense+UWB |
 | Asyncio + signal-handling scaffolding | `searchctl/controller.py:765-942` | ⚠️ Partial (pyhulax is sync, use threads) | ✅ Direct reuse |
@@ -65,11 +84,13 @@ The semi-final involves **TWO distinct drone systems** working together:
 | MAVSDK velocity setpoints | qualifier `controller.py` | N/A | ✅ Identical |
 | Watchdog + emergency-land | qualifier `controller.py` | ✅ Reuse | ✅ Reuse |
 | Run-summary + STATUS.txt writer | qualifier `controller.py` | ✅ Reuse | ✅ Reuse |
-| Wall-follow FSM | `searchctl/wall_following.py` | ❌ Hula has `set_barrier_mode()` built-in | ❌ Mapping drone navigates by waypoint, not wall-follow |
+| Wall-follow FSM | `searchctl/wall_following.py` | ❌ Hula has `set_barrier_mode()` built-in | ❌ Mapping drone explores then navigates by waypoint (see note below) |
+
+> **Note (org 2026-06-06 11:40):** Map layout is **NOT provided** — Challenge 1 is to discover the arena layout. Default waypoints in `mapping_drone/controller.py` (`[(0,0,1.5),(2,0,1.5),(2,2,1.5),(0,2,1.5)]`) assume the arena is already known; we need an exploration pre-pass (e.g. frontier-based or expanding lawnmower seeded by UWB anchor positions) before locking in fixed waypoints. Wall-follow is still wrong for the mapping drone, but pure waypoint nav is also insufficient until exploration is done.
 
 ---
 
-## 2. Hardware stack (semi-final)
+## 2. Hardware stack (finals)
 
 ### 2.1 Hula drones (swarm, count TBD)
 - **WiFi-networked** — laptop and drones must share the network
@@ -80,7 +101,8 @@ The semi-final involves **TWO distinct drone systems** working together:
 - Default battery refusal: <20% (configurable but be careful)
 
 ### 2.2 Mapping drone (single, separate platform)
-- **Onboard SBC** with NPU (Rockchip — likely RK3588 on Orange Pi 5 / Radxa Rock 5)
+- **Onboard SBC**: Ubuntu 22.04 + ROS2 + OpenCV + RKNN NPU @ ~50 FPS (org-confirmed 2026-06-05)
+- **Access**: NoMachine from the C2 Terminal (Windows host + Ubuntu 22.04 VM)
 - **PX4 flight controller** connected via UART → `/dev/ttyS6` at 921600 baud
 - **UWB tag** for indoor XY position, real-time via UWB anchors in the arena
 - **Realsense D430 / D450** depth camera (functionally equivalent to our D435)
@@ -266,13 +288,17 @@ Dictionary `DICT_6X6_250` is the org's example — confirm at venue if they use 
 - [ ] Mission planner / area partitioning (lawnmower, divide-and-conquer)
 - [ ] Detection pipeline that consumes multiple video streams
 - [ ] Realsense host-side depth integration (if needed)
-- [ ] Target deduplication across drones (don't double-count same QR)
+- [ ] Target dedup across drones — RoboMasters are MOVING ground robots; dedup by ArUco ID (DICT_6X6_250), not by world-position clustering, since position will drift between sightings.
 - [ ] Run summary + judge artifacts (carry over from qualifier)
 - [ ] STATUS.txt live status across all drones
 - [ ] WiFi diagnostic / health check at startup
 - [ ] Emergency-land-all on Ctrl-C / battery low
 - [ ] Per-drone heartbeat/timeout watchdog
-- [ ] YOLO retraining for any new target classes (K)
+- [ ] YOLO retraining for any new target classes (K) — INSURANCE ONLY; primary RoboMaster detection is ArUco (DICT_6X6_250) per 2026-06-06 Discord ("hula drone to detect aruco marker on ground robots")
+- [ ] ArUco DICT_6X6_250 detection pipeline on Hula video streams → RoboMaster IDs + world coords (PRIMARY target detection)
+- [ ] UWBParserThread.py integration on C2 Terminal (Windows side) for Hula swarm UWB (pyserial @ 921600 baud — see `uwb_api_hula_swarm/`)
+- [ ] NoMachine session setup from C2 Terminal to mapping drone (access path per org 2026-06-05)
+- [ ] C2 split: mapping drone code runs in C2's Ubuntu 22.04 VM (ROS2 side); Hula swarm code runs on C2 Windows side
 
 ### Get for free from SDK
 - ✅ Drone discovery (`dola.py`)
@@ -289,26 +315,35 @@ Dictionary `DICT_6X6_250` is the org's example — confirm at venue if they use 
 
 ## 6. Open questions for the org (file as Discord support tickets)
 
-### Mapping drone (NEW, highest priority after L3+L5)
+### 6a. Still open
+
+**Mapping drone (highest priority)**
 1. **Is the mapping drone provided?** Or BYO compute module + flight controller + UWB tag + Realsense + chassis?
 2. **What's the SBC?** RK3588 (Orange Pi 5) vs RK3568 changes RKNN inference speed.
-3. **What ROS2 distro on the drone?** Humble vs Jazzy affects `rclpy` API.
-4. **What's the UWB anchor layout?** Anchor count + positions + arena dimensions → accuracy + dead zones.
-5. **What does "mapping" output look like for the judge?** Top-down PNG, point cloud .ply, occupancy grid .npy, or all three?
-6. **Does the Hula swarm see UWB data too**, or is UWB exclusive to the mapping drone? If shared, we could fuse it as a position prior for the Hulas.
+3. **What's the UWB anchor layout?** Anchor count + positions + arena dimensions → accuracy + dead zones.
+4. **What does "mapping" output look like for the judge?** Top-down PNG, point cloud .ply, occupancy grid .npy, or all three?
+5. **UWBParserThread serial port path on C2 Terminal Windows** — which COM port does the pyserial @ 921600 baud connection use? Will org pre-configure or do we probe?
+6. **Are the 5 RoboMaster ArUco IDs (DICT_6X6_250) known in advance** and mapped to specific robots, or must we discover the ID→robot mapping at run time?
 
-### Hula swarm
+**Hula swarm**
+
 7. **How many Hula drones in the swarm?** Affects parallelisation, WiFi load, code complexity.
 8. **Are there QR landmarks in the arena for `set_qr_localization()`?** If yes, absolute positioning is free for the swarm too.
-9. **What ArUco dictionary?** Org sample used `DICT_6X6_250` — confirm.
 
-### Both / general
-10. **What's the target set?** Same barrels? ArUco markers? AprilTags? QR with payloads? Mix?
-11. **What's the scoring rubric?** Per-marker points? Coverage points? Time bonus? Like qualifier?
-12. **WiFi setup at venue?** Shared SSID for all teams' drones? Per-team? Bandwidth concerns?
-13. **Slot duration?** Qualifier was 40 min including setup. Semi-final probably similar.
-14. **VM still mandatory?** Qualifier required org laptop+VM. Same for semi-final?
-15. **L4 + L5 Drive folders not publicly accessible** (auth required) — please re-share with "Anyone with the link" set to **viewer**, not "Restricted".
+**Both / general**
+
+9. **What's the scoring rubric?** Per-marker points? Coverage points? Time bonus? Like qualifier?
+10. **WiFi setup at venue?** Shared SSID for all teams' drones? Per-team? Bandwidth concerns?
+
+### 6b. Resolved / partially resolved
+
+11. **What ROS2 distro on the drone?** — Ubuntu 22.04 confirmed by org 2026-06-05, so almost certainly ROS2 Humble; one detail to confirm at venue.
+12. **Does the Hula swarm see UWB data too?** Partially answered 2026-06-06: Hulas now have their own UWB via `UWBParserThread.py` (pyserial @ 921600 baud) — a **separate transport** from the mapping drone's ROS2-based UWB on `/dev/ttyS6`. Fusion would require bridging two different UWB stacks.
+13. **What ArUco dictionary?** CLOSED: DICT_6X6_250 confirmed for RoboMaster ground-robot markers (org Discord 2026-06-06).
+14. ~~What's the target set?~~ **Resolved 2026-06-06:** 5 RoboMaster ground robots carrying ArUco markers (DICT_6X6_250). Hula drones detect via ArUco; A's YOLOv11 (yolo11n.pt) is insurance/backup only.
+15. **Slot duration?** Confirmed 2026-06-05: Finals run 9am-6pm on both 10 + 11 June 2026 at Marina Bay Sands Expo & Convention Centre Level 4. All 3 team members should attend both days.
+16. **VM still mandatory?** Confirmed 2026-06-05: C2 Terminal is Windows + Ubuntu 22.04 VM; mapping drone is accessed from C2 via NoMachine.
+17. ~~L4 + L5 Drive folders not publicly accessible~~ — L5 resolved: org released yolo11n.pt + _2.py convert scripts 2026-06-05 and we pulled them into `learning_material_5_yolo_rknn/`. L4 (Realsense) — pulled into `learning_material_4_realsense/`.
 
 ---
 
@@ -319,9 +354,11 @@ Dictionary `DICT_6X6_250` is the org's example — confirm at venue if they use 
 | [`semifinal/huladola.py`](huladola.py) | **L1**: org's swarm example — discovery + control + video | ✅ Reviewed |
 | [`semifinal/dola.py`](dola.py) | **L1**: drone discovery library (UDP 8668) | ✅ Reviewed |
 | Sample code in [`semifinal_scrape.md`](semifinal_scrape.md) | **L2**: ArUco detection + pixel→3D | ✅ Reviewed |
-| [`semifinal/learning_material_3_uwb/kolomee.py`](learning_material_3_uwb/kolomee.py) | **L3**: UWB + MAVSDK mapping drone control | ✅ Pulled + analysed ([README](learning_material_3_uwb/README.md)) |
-| [`semifinal/learning_material_4_realsense/`](learning_material_4_realsense/) | **L4**: Realsense reference code | ⏳ Files auth-locked, awaiting org reshare ([placeholder](learning_material_4_realsense/README.md)) |
-| [`semifinal/learning_material_5_yolo_rknn/`](learning_material_5_yolo_rknn/) | **L5**: YOLO `.pt → .onnx → .rknn` + RKNN detection | ⏳ Files auth-locked, awaiting org reshare ([placeholder](learning_material_5_yolo_rknn/README.md)) |
+| [`semifinal/learning_material_3_uwb/kolomee.py`](learning_material_3_uwb/kolomee.py) | **L3**: UWB + MAVSDK mapping drone control (MAVSDK-based reference for mapping drone only — Hula UWB now uses different transport) | ✅ Pulled + analysed ([README](learning_material_3_uwb/README.md)) |
+| [`semifinal/learning_material_4_realsense/`](learning_material_4_realsense/) | **L4**: Realsense reference code | ✅ Pulled (generateTopDown.py, getDepth.py, getDepthAndDetect.py, getDepthPointCloud.py, getInfra.py, getRGB.py, getSyncDepthColor.py, rknndecoder.py) |
+| [`semifinal/learning_material_5_yolo_rknn/`](learning_material_5_yolo_rknn/) | **L5**: YOLO `.pt → .onnx → .rknn` + RKNN detection | ✅ Pulled — convert/ (convertyolotoonnx.py + _2.py, convertrknn.py + convertrknn2.py) and detection/ (getDepthAndDetect.py, rknndecoder.py, testrknn_with_display.py); YOLOv11 base (`yolo11n.pt`) per 2026-06-05 org clarification — use _2.py variants |
+| [`semifinal/mapping_drone/`](mapping_drone/) | Z's mapping-drone stack (controller, mapping, realsense, uwb, run_writer, validity) — post-v3 stable | ✅ In-tree |
+| [`semifinal/uwb_api_hula_swarm/`](uwb_api_hula_swarm/) | **NEW 2026-06-06**: Hula swarm UWB via pyserial @ 921600 (UWBParserThread.py) — runs on C2 Terminal Windows side | ✅ In-tree |
 | `learning/Supplementary1.pdf` | VIO (Visual-Inertial Odometry) | ✅ Reviewed |
 | `learning/Supplementary2.pdf` | Search + Map + YOLO + Occupancy Grid | ✅ Reviewed |
 | https://pyhulax.xenops.ae | pyhulax SDK reference | ✅ Mirrored at [`docs/pyhulax/`](docs/pyhulax/) + analysed at [`docs/pyhulax_analysis.md`](docs/pyhulax_analysis.md) |
@@ -355,7 +392,7 @@ Dictionary `DICT_6X6_250` is the org's example — confirm at venue if they use 
 - Detection slower than ArUco but more robust to occlusion
 
 ### Barrels (carry-over from qualifier)
-- K's `best.pt` model already trained; retrain with semi-final dataset when org provides
+- K's `best.pt` model already trained; retrain with finals dataset when org provides
 - May need new classes if targets differ
 - Inference: Ultralytics YOLO, same pipeline as qualifier
 
@@ -378,8 +415,9 @@ Dictionary `DICT_6X6_250` is the org's example — confirm at venue if they use 
 - **Mapping side (when hardware available):** test the kolomee.py pattern, validate UWB integration
 
 ### Z (orchestration + Realsense + mapping drone code)
-- **Hula swarm orchestrator** — one thread per drone, shared state, per-drone FSM (skeleton in §10)
-- **Mapping drone orchestrator** — adapt kolomee.py pattern: ROS2 UWB subscriber + MAVSDK + Realsense capture
+- **Hula swarm orchestrator** — one thread per drone, shared state, per-drone FSM (skeleton in §10). NOT YET BUILT — `swarm_controller.py` placeholder, see §14 layout for target path.
+- **Mapping drone stack (post-v3 stable):** code lives at `mapping_drone/` — `controller.py` (MAVSDK waypoint runner, reads `pvn.position.down_m`, subscribes to `attitude_euler` for `drone_yaw`, pumps mock UWB when MockUWB+MockMAVSDK active), `mapping.py` (camera→world corrected: `x_b=cp*z_c+sp*y_c, y_b=x_c, z_b=sp*z_c-cp*y_c`), `run_writer.py` (`save_marker_image` accepts `bbox_xyxy`), `realsense.py`, `uwb.py` (ROS2 `uwb_tag` PoseStamped subscriber), `validity.py` (`decide_landing_validity(aruco_id)` with `MAPPING_DRONE_VALIDITY` env override).
+- Default waypoints: `[(0,0,1.5),(2,0,1.5),(2,2,1.5),(0,2,1.5)]`, `--gimbal-pitch=-90`, `runs_dir='mapping_drone/runs'` (relative — avoids double-path).
 - Realsense pipeline + intrinsics + depth-aware ArUco (already prototyped in [`prototypes/aruco_realsense.py`](prototypes/aruco_realsense.py))
 - Run-summary / STATUS.txt writer (carry over from qualifier)
 - Emergency-land-all + Ctrl-C across BOTH platforms
@@ -557,11 +595,14 @@ semifinal/
 ├── README.md              ← this file
 ├── huladola.py            ← org's example (read-only reference)
 ├── dola.py                ← discovery library (read-only reference)
-├── controller.py          ← our swarm orchestrator (to be built)
-├── detection.py           ← detection pipeline (to be built)
-├── planner.py             ← mission planner (to be built)
-├── realsense_node.py      ← Realsense host-side wrapper (to be built)
-├── world_state.py         ← shared state + targets registry (to be built)
+├── mapping_drone/         ← Z's mapping-drone stack (post-v3 stable: controller.py,
+│                            mapping.py, run_writer.py, realsense.py, uwb.py, validity.py)
+├── uwb_api_hula_swarm/    ← NEW 2026-06-06: UWBParserThread.py for Hula UWB (pyserial @ 921600)
+├── swarm_controller.py    ← our swarm orchestrator (NOT YET BUILT — placeholder)
+├── detection.py           ← detection pipeline (NOT YET BUILT — placeholder)
+├── planner.py             ← mission planner (NOT YET BUILT — placeholder)
+├── realsense_node.py      ← Realsense host-side wrapper (NOT YET BUILT — placeholder)
+├── world_state.py         ← shared state + targets registry (NOT YET BUILT — placeholder)
 ├── tests/                 ← unit tests, mocks
 ├── logs/                  ← runtime logs
 ├── runs/                  ← per-mission artifact directories
@@ -578,40 +619,53 @@ semifinal/
 - OpenVINS: https://docs.openvins.com/
 - AprilTag: https://github.com/AprilRobotics/apriltag
 - pyzbar (QR): https://pypi.org/project/pyzbar/
-- Our qualifier repo state: commit `3c4f6c7` (v0.7.2) on `zb` branch
+- Qualifier repo state: commit `3c4f6c7` (v0.7.2) on `zb` branch (sim-era reference only)
+- Finals repo (this directory): `mapping_drone/` post-v3 stable stack (controller.py + mapping.py with corrected camera_to_world, run_writer.py, realsense.py, uwb.py, validity.py); `uwb_api_hula_swarm/` added 2026-06-06 (UWBParserThread.py for Hula swarm UWB on C2 Terminal Windows via pyserial @ 921600)
 - Drive folder (Hula examples): https://drive.google.com/drive/folders/19ni5GmRy8cBzX98TybsToQa4a17LbYi5
 
 ---
 
-## 17. Pre-physical-run checklist (T-7)
+## 17. Pre-physical-run checklist (T-4)
 
-Physical run sessions: **2026-06-10** + **2026-06-11**. Goal: arrive with everything that doesn't need drone-in-hand already working, so the physical time is spent on hardware integration, not setup.
+Physical run sessions: **2026-06-10** + **2026-06-11** (both days, all 3 members per org guidance 2026-06-05 22:22). Today is T-4. Goal: arrive with everything that doesn't need drone-in-hand already working, so the physical time is spent on hardware integration, not setup.
 
-### By T-5 (Wed 5 Jun) — software that needs no drone
+### By T-4 (Sat 6 Jun) — OVERDUE / finish today (software that needs no drone)
 - [ ] Laptop on the team's WiFi/Tailscale + log_broadcaster reaching the desktop sink
 - [ ] `pip install "pyhulax[all]"` + `pyrealsense2` + `opencv-contrib-python` + `numpy` clean install on the laptop
 - [ ] Smoke import: `python3 -c "from pyhulax import DroneAPI; from pyhulax.video import YOLODetector; import pyrealsense2; import cv2; print('OK')"`
 - [ ] Realsense D435 hardware verified (the verify script in `semifinal/README.md` §3.3 — prints intrinsics + a sample depth value)
 - [ ] ArUco prototype script working: webcam → detect `DICT_6X6_250` → pixel→3D unproject using webcam calibration
-- [ ] K's `best.pt` confirmed loadable by `pyhulax.video.YOLODetector` (or convert to ONNX for `ONNXDetector`)
+- [ ] K's `best.pt` confirmed loadable by `pyhulax.video.YOLODetector` (or convert to ONNX for `ONNXDetector`) — (insurance only — primary detection is ArUco). Base model: YOLOv11 (`yolo11n.pt`) per 2026-06-05 PM org clarification.
 - [ ] Print test ArUco markers (3-4 IDs at 10cm, 20cm sizes) — tape around a room
+- [x] UWBParserThread.py landed at `uwb_api_hula_swarm/` (2026-06-06 org release)
 
-### By T-2 (Sun 8 Jun) — swarm orchestrator skeleton
-- [ ] `semifinal/controller.py` skeleton from [§10 code skeleton above](#10-skeleton-code-starting-point) compiles + runs against mock drones
+### By T-2 (Mon 8 Jun) — swarm orchestrator skeleton
+- [ ] `semifinal/swarm_controller.py` skeleton from [§10 code skeleton above](#10-skeleton-code-starting-point) compiles + runs against mock drones (NOTE: `swarm_controller.py` NOT YET BUILT — placeholder)
 - [ ] State machine per drone: idle → takeoff → cruise → detect_check → return → land
-- [ ] Shared target registry with dedup logic (unit-tested without drones)
+- [ ] Shared target registry with dedup logic (unit-tested without drones) — dedup by ArUco ID (RoboMasters are moving)
 - [ ] Run summary writer (carry over from qualifier)
 - [ ] STATUS.txt live status across all drones
 - [ ] Emergency-land-all on Ctrl-C / battery low — tested with mock drones throwing errors
 
+### By T-1 (Tue 9 Jun) — last-mile integration
+- [ ] NoMachine access to mapping drone verified from C2 Terminal
+- [ ] Both Windows + Ubuntu 22.04 VM sides of C2 Terminal smoke-tested
+- [ ] UWBParserThread.py verified @ 921600 baud on actual C2 hardware (COM port confirmed)
+- [ ] Map-discovery (Challenge 1) plan rehearsed — "Map layout will not be provided" (org 2026-06-06 11:40)
+- [ ] Thumbdrive packed with code + offline docs (mark NOT YET BUILT items clearly)
+
 ### On the day of (10/11 Jun)
+- [ ] Photo ID + confirmation email on hand (registration 10 Jun 7:30am at Marina Bay Sands Expo Level 4)
+- [ ] Smart casual dress — NO slippers / uncovered footwear
+- [ ] Personal laptop + mouse + charger + thumbdrive
+- [ ] All 3 members present both days
 - [ ] Drones charged + spare batteries
 - [ ] D435 + USB-C cable
 - [ ] Laptop charged + power adapter
 - [ ] WiFi router config tested (if BYO)
 - [ ] Printed ArUco markers + measuring tape
 - [ ] Notebook for jotting drone IPs, plane IDs, observed quirks
-- [ ] Log broadcaster running on desktop so this assistant can watch in real time
+- [ ] Log broadcaster running on desktop for real-time monitoring
 
 ### What we want to validate on the physical run
 1. Drone discovery (Dola broadcasts arrive, all drones enumerate)
@@ -640,5 +694,5 @@ The whole point of arriving prepared is: by the time we have drones in hand, eve
 
 ---
 
-*Last updated: 2026-06-03 (T-7 to physical run sessions).*
+*Last updated: 2026-06-06 (T-4 to finals — Marina Bay Sands Expo & Convention Centre, Level 4).*
 *Update this file every time new info lands — it's the single source of truth for the team.*

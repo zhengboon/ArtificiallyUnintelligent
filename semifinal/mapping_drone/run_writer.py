@@ -55,8 +55,10 @@ def _fmt_xyz(xyz: tuple[float, float, float] | None) -> str:
 def _fmt_pose(pose: tuple[float, float, float, float] | None) -> str:
     if pose is None:
         return "n/a"
-    n, e, d, yaw = pose
-    return f"N={n:+.2f}m E={e:+.2f}m D={d:+.2f}m yaw={yaw:+.1f}deg"
+    # Third element is altitude positive-up, matching controller.py which
+    # passes `-self.state.drone_down` and _fmt_xyz above which also uses U=.
+    n, e, u, yaw = pose
+    return f"N={n:+.2f}m E={e:+.2f}m U={u:+.2f}m yaw={yaw:+.1f}deg"
 
 
 def _pad_is_valid(pad: dict[str, Any]) -> bool:

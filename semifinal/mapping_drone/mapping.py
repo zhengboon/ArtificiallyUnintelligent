@@ -1,7 +1,8 @@
 """Mapping primitives: ArUco detection, world-frame occupancy grid, and the
 camera->world transform used by the controller.
 
-Coordinate conventions (see project CLAUDE.md):
+Coordinate conventions (see mapping_drone/README.md,
+"Coordinate-frame callout: PX4 NED down_m vs world Up"):
     Camera frame: Z forward (out of lens), X right, Y down.
     World frame:  N north, E east, U up.
     Drone pose given as (n_m, e_m, down_m, yaw_deg) — down_m is PX4 NED down,

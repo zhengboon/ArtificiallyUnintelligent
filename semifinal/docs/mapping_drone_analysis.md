@@ -15,8 +15,8 @@ This is internal cheat-sheet form — what's there, what's important, what the g
 2. **UWB tag for indoor position** (real-time, anchor-based). Replaces GPS, replaces optical-flow drift, replaces VIO calibration faff.
 3. **Position commands are disabled by the org for safety.** Control is via **velocity setpoints** in a closed-loop P-controller — exactly like our qualifier offboard mode, except the position feedback comes from UWB instead of EKF/Gazebo truth.
 4. **The compute runs ON the drone** (Rockchip SBC with NPU), connected to PX4 via UART (`/dev/ttyS6:921600`). Our laptop talks to the drone over the network, not to the flight controller directly.
-5. **Detection is NPU-accelerated** via RKNN format. K's `best.pt` must be converted `.pt → .onnx → .rknn` before deployment.
-6. **Realsense D430/D450 onboard** provides depth + RGB for mapping + photos.
+5. **Primary detection of RoboMaster ground robots is ArUco-based** (DICT_6X6_250) per org's 2026-06-06 05:00 Discord clarification — the Hula/mapping drone detects ArUco markers on the ground robots. A's YOLO is de-escalated to backup/insurance only. If deployed as fallback, the base model is now YOLOv11 (`yolo11n.pt`, not `best.pt`/YOLOv8), and we use the `_2.py` variants of the convert scripts to produce `.rknn` for the RKNN NPU.
+6. **Realsense D430/D450 onboard** provides depth + RGB for mapping + photos, and provides depth fusion at the ArUco marker centroid for target pose estimation.
 7. **NED coordinate system + ENU UWB axis swap.** UWB publishes `PoseStamped` in ENU; the script swaps `ros.y → N, ros.x → E` when reading. **One of the most error-prone things in the file.**
 
 ---
@@ -265,13 +265,22 @@ Dependency: `rclpy` is not a `pip install` — it ships with the ROS2 distro ins
 ### 7.4 RKNN inference
 - Convert `.pt → .onnx → .rknn` once, on a host (x86 Linux)
 - Run with `rknnlite` on the drone (already installed on the SBC image)
-- ~60-120 FPS YOLOv8n on RK3588 NPU (quantised int8)
+- ~50 FPS YOLOv11n on the mapping drone's RKNN NPU (per org's 2026-06-05 PM clarification; base is `yolo11n.pt`, quantised int8)
 - See [`learning_material_5_yolo_rknn/README.md`](../learning_material_5_yolo_rknn/README.md) for conversion details
 
 ### 7.5 Realsense onboard
 - `pyrealsense2` works identically to laptop install (our `prototypes/aruco_realsense.py` patterns reuse)
 - Mount means stable known offset from drone frame to camera frame → can build globally-consistent map
 - See [`prototypes/aruco_realsense.py`](../prototypes/aruco_realsense.py) for the canonical depth+ArUco pattern
+
+### 7.6 ArUco-first ground-robot detection (NEW per org 2026-06-06 05:00)
+Per org Discord 2026-06-06 05:00: "hula drone to detect aruco marker on ground robots." RoboMaster detection is therefore **ArUco-based, not YOLO-based**.
+
+- Dictionary: `cv2.aruco.DICT_6X6_250` (same dictionary our qualifier prototypes already use)
+- Pipeline: `cv2.aruco.detectMarkers(gray, dict)` → `cv2.aruco.estimatePoseSingleMarkers(corners, marker_len_m, K, dist)` for per-marker rvec/tvec, then fuse with Realsense depth at the marker centroid `(u, v)` to refine `Z` (and recover `X, Y` from pinhole intrinsics if pose estimation is noisy)
+- Each ground robot carries a unique marker ID → built-in dedup by ID (no clustering / NMS hacks needed)
+- A's YOLO training (formerly critical path) drops to **insurance/backup only**. Effort shifts to ArUco pose estimation + Realsense depth fusion + body→world transform via UWB pose
+- Reuse `prototypes/aruco_realsense.py` patterns directly on the mapping drone
 
 ---
 
@@ -280,12 +289,13 @@ Dependency: `rclpy` is not a `pip install` — it ships with the ROS2 distro ins
 These determine the implementation:
 
 1. **What "mapping" produces.** Top-down PNG? Point cloud .ply? Occupancy grid? Need scoring rubric.
-2. **What target classes K should train for.** Probably yellow/red barrels + maybe fiducials, but org hasn't released the target list.
+2. **Target list is now confirmed: RoboMasters via ArUco markers (DICT_6X6_250)** per org 2026-06-06 05:00. A's YOLO training is insurance only — no further "what classes?" question for the primary detector.
 3. **Whether the Hula swarm + mapping drone need to coordinate** (e.g., swarm finds candidate, mapping drone goes confirm at high resolution) or operate independently.
+    - Note: two separate UWB transports now exist — (a) mapping drone subscribes to ROS2 topic `uwb_tag` (PoseStamped, ENU, on the drone's Ubuntu 22.04 SBC); (b) Hula swarm uses `UWBParserThread.py` via pyserial @ 921600 baud on the C2 Terminal Windows side (see [`uwb_api_hula_swarm/`](../uwb_api_hula_swarm/)). Any coordination between the two stacks must bridge across these transports and across coordinate frames (mapping drone NED/ENU vs Hula world = x=right, y=forward, z=up cm).
 4. **Whether we get to bring the mapping drone home** or can only touch it at the venue / on physical run days.
-5. **UWB anchor positions + arena dimensions** → drives mission planning.
+5. **Map layout will NOT be provided** (org 2026-06-06 11:40). Arena dimensions + UWB anchor positions must be discovered during Challenge 1 — this is literally the mapping drone's job. Mission planning must start with exploration, not a known floor plan. (This is now a design constraint, not an open ticket.)
 
-Items 1-3 are the most blocking. File as support tickets ASAP.
+Items 1 and 3 are the most blocking. File as support tickets ASAP.
 
 ---
 
@@ -395,13 +405,22 @@ This is a sketch. Real impl will need:
 
 ## 11. Action items
 
-1. ⏳ Wait for L4 + L5 unlocked Drive folders
-2. ⏳ Wait for org clarification on mapping drone provision (BYO or supplied)
-3. ⏳ K starts on Hula side smoke (no mapping drone needed)
-4. ⏳ A finishes YOLO training, exports ONNX
-5. ⏳ Z drafts `semifinal/mapping_drone/controller.py` skeleton from §9 + carry-over from qualifier
-6. ⏳ Plan SSH/log access path to the mapping drone for the 10/11 June physical run
+(Action list updated to reflect 2026-06-06 ground truth — earlier items have been resolved or superseded by org clarifications below.)
+
+1. ✅ **Finals confirmed — no semifinal tier.** We advanced straight to finals on 10–11 June 2026 at Marina Bay Sands Expo Level 4, 9am–6pm both days (org 2026-06-03).
+2. ⏳ **All 3 members attend both days** (org 2026-06-05 22:22). Registration 10 June 7:30am with Photo ID + confirmation email; smart casual dress (no slippers); bring laptop + mouse + charger + thumbdrive.
+3. ⏳ **Access to mapping drone is via NoMachine from the C2 Terminal** (Windows host + Ubuntu 22.04 VM), not raw SSH (org 2026-06-05 PM). Plan the NoMachine workflow + log retrieval path before the run.
+4. ⏳ **Primary RoboMaster detection is ArUco** (DICT_6X6_250) on the ground robots per org 2026-06-06 05:00. A's YOLOv11 work (yolo11n.pt base, `_2.py` convert variants → `.rknn`) is **insurance/backup only**, no longer critical path.
+5. ⏳ **Map layout will NOT be provided** (org 2026-06-06 11:40). Challenge 1 is a discovery problem — remove any assumption that the floor plan is supplied; bias mission planning toward exploration.
+6. ⏳ **New Hula-swarm UWB API released 2026-06-06 11:28**: `UWBParserThread.py` via pyserial @ 921600 baud on the C2 Terminal Windows side (see [`uwb_api_hula_swarm/`](../uwb_api_hula_swarm/)). Distinct transport from the mapping drone's ROS2 `uwb_tag` topic — track for any swarm/mapping-drone bridging.
+7. ⏳ K starts on Hula side smoke (no mapping drone needed).
+8. ⏳ Z drafts `semifinal/mapping_drone/controller.py` skeleton from §9 + carry-over from qualifier. (Current state: `semifinal/mapping_drone/` already contains `controller.py`, `mapping.py`, `run_writer.py`, `realsense.py`, `uwb.py`, `validity.py`, `__init__.py`, `README.md`.)
+9. ⏳ **Open question still pending**: whether we can prepare/test code before 10/11 June or only on-site (STINKIES 2026-06-05 22:35, unanswered).
+
+Resolved / dropped from earlier list:
+- L4 + L5 Drive folders unlocked (no longer waiting).
+- Mapping drone provision clarified: Ubuntu 22.04 + ROS2 + OpenCV + RKNN NPU @ ~50 FPS (org 2026-06-05 PM). BYO not required.
 
 ---
 
-*Last updated: 2026-06-03 (after L3 + L4 + L5 announcement).*
+*Last updated: 2026-06-06 (post org 2026-06-06 ArUco + UWB-API + no-map clarifications).*

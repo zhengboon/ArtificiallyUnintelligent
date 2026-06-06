@@ -847,10 +847,28 @@ class MappingController:
                 try:
                     await asyncio.wait_for(scan_task, timeout=WAYPOINT_PAUSE_S + 5.0)
                 except asyncio.TimeoutError:
+                    logger.warning("scan task timed out at waypoint %d", idx + 1)
                     scan_task.cancel()
+                    try:
+                        await scan_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                except Exception as exc:
+                    # Realsense.grab() / detector.detect_in_frame() can raise
+                    # uncaught hardware/RKNN/OpenCV exceptions. Without this
+                    # handler they would escape run_mission, bypass the
+                    # emergency_land path, and leave the cancelled scan_task
+                    # un-awaited (asyncio warning + half-written file I/O).
+                    logger.warning("scan task failed at waypoint %d: %s", idx + 1, exc)
+                    if not scan_task.done():
+                        scan_task.cancel()
+                        try:
+                            await scan_task
+                        except (asyncio.CancelledError, Exception):
+                            pass
                 try:
                     await hover_task
-                except Exception:
+                except (asyncio.CancelledError, Exception):
                     pass
 
             if self.state.aborted:
@@ -1018,6 +1036,13 @@ async def run(args: argparse.Namespace) -> tuple[int, RunWriter | None, "Mapping
 
     run_writer = RunWriter(run_dir, run_ts)
 
+    # Load waypoints BEFORE acquiring any hardware. A malformed/empty
+    # waypoints JSON raises JSONDecodeError / FileNotFoundError / ValueError;
+    # doing this early means we fail fast without leaking the UWB rclpy spin
+    # thread, Realsense pipeline, or MAVSDK connection.
+    waypoints = _load_waypoints(args.waypoints)
+    logger.info("waypoints: %s", waypoints)
+
     uwb = _build_uwb(args)
     realsense = _build_realsense(args)
 
@@ -1074,9 +1099,6 @@ async def run(args: argparse.Namespace) -> tuple[int, RunWriter | None, "Mapping
             signal.signal(signal.SIGINT, _sig_fallback)
         except (ValueError, OSError):
             logger.debug("signal.signal(SIGINT) fallback failed", exc_info=True)
-
-    waypoints = _load_waypoints(args.waypoints)
-    logger.info("waypoints: %s", waypoints)
 
     aborted = False
     try:
@@ -1189,30 +1211,50 @@ def main() -> int:
         result_box["writer"] = writer
         result_box["controller"] = controller
 
+    def _best_effort_finalise(box: dict[str, Any]) -> None:
+        """Run RunWriter.finalise() best-effort from an outer exception path.
+
+        Called when an exception (KeyboardInterrupt or any unexpected error)
+        escapes asyncio.run() and bypasses run()'s own finally block. If the
+        writer was never built (early failure in waypoints/RunWriter/UWB
+        construction) box["writer"] is None and we silently skip.
+        """
+        writer = box.get("writer")
+        controller = box.get("controller")
+        if writer is None:
+            return
+        try:
+            total_s = 0.0
+            aborted_flag = True
+            grid: Any = None
+            if controller is not None:
+                if controller.state.started_at > 0:
+                    total_s = time.monotonic() - controller.state.started_at
+                aborted_flag = bool(
+                    controller.state.aborted or controller.state.stop_requested
+                )
+                grid = controller.grid
+            if grid is None:
+                grid = OccupancyGrid(resolution_m=0.05, size_m=20.0)
+            writer.finalise(grid, total_s, aborted_flag)
+        except Exception:
+            logger.exception("best-effort finalise failed")
+
     try:
         asyncio.run(_outer())
     except KeyboardInterrupt:
         logger.warning("KeyboardInterrupt at top level — attempting best-effort finalise")
-        writer = result_box.get("writer")
-        controller = result_box.get("controller")
-        if writer is not None:
-            try:
-                total_s = 0.0
-                aborted_flag = True
-                grid: Any = None
-                if controller is not None:
-                    if controller.state.started_at > 0:
-                        total_s = time.monotonic() - controller.state.started_at
-                    aborted_flag = bool(
-                        controller.state.aborted or controller.state.stop_requested
-                    )
-                    grid = controller.grid
-                if grid is None:
-                    grid = OccupancyGrid(resolution_m=0.05, size_m=20.0)
-                writer.finalise(grid, total_s, aborted_flag)
-            except Exception:
-                logger.exception("best-effort finalise after KeyboardInterrupt failed")
+        _best_effort_finalise(result_box)
         return 130
+    except Exception:
+        # Any unguarded exception that escapes run() (e.g. _load_waypoints
+        # ValueError on empty file, ImportError from _load_real_mavsdk,
+        # unexpected crash in _build_drone) would otherwise dump a raw
+        # traceback and skip finalise. Log it cleanly and still try to leave
+        # a coherent run_<ts>/ directory behind.
+        logger.exception("run() raised an unhandled exception — attempting best-effort finalise")
+        _best_effort_finalise(result_box)
+        return 1
     return int(result_box.get("code", 1))
 
 

@@ -118,8 +118,10 @@ python -m mapping_drone.controller [flags]
 | `--mock-all`          | All three mocks. Pure laptop run, no hardware.                                |
 | `--waypoints PATH`    | JSON list of `[n_m, e_m, alt_m]`. Default = 4-pt demo square.                 |
 | `--gimbal-pitch DEG`  | Gimbal tilt; `-90` = straight down (DEFAULT, canonical down-facing mapping).  |
-| `--aruco-dict NAME`   | OpenCV ArUco dictionary name (e.g. `DICT_4X4_50`, `DICT_5X5_100`). See below. |
+| `--aruco-dict NAME`   | Short ArUco dictionary name (e.g. `6X6_250` [default], `4X4_50`, `5X5_250`). See below. |
 | `--max-flight-time-s` | Hard cap before forced land. Default `240` s.                                 |
+| `--mavsdk-address ADDR` | MAVSDK system address. Default `serial:///dev/ttyS6:921600`.                |
+| `--runs-dir DIR`      | Parent directory for `run_<ts>` output dirs. Default `mapping_drone/runs` (relative to CWD). |
 | `--log-level`         | `INFO` (default) or `DEBUG`.                                                  |
 
 ### `--gimbal-pitch`
@@ -134,10 +136,14 @@ the occupancy-grid maths assumes a nadir view.
 ### `--aruco-dict`
 
 Selects which OpenCV ArUco dictionary the detector tries against incoming
-frames. Defaults to the dictionary used in arena rehearsal markers; pass
-e.g. `--aruco-dict DICT_5X5_100` if the organisers swap the printed marker
-set on the day. Accepted names are exactly the `cv2.aruco.DICT_*`
-identifiers.
+frames. Defaults to `6X6_250` (i.e. `cv2.aruco.DICT_6X6_250`) — the
+dictionary the organisers confirmed they will use for the RoboMaster
+ground-robot markers and the same dict the mock RealSense draws. Pass
+e.g. `--aruco-dict 5X5_250` if the organisers swap the printed marker set
+on the day. Accepted names are the short identifiers used as keys in
+`mapping._ARUCO_DICTS`: `4X4_50`, `4X4_100`, `4X4_250`, `5X5_250`,
+`6X6_50`, `6X6_100`, `6X6_250` (default), `6X6_1000`, `7X7_250` — NOT the
+raw `cv2.aruco.DICT_*` constants.
 
 Examples:
 
@@ -152,7 +158,7 @@ python -m mapping_drone.controller --mock-uwb --mock-mavsdk
 python -m mapping_drone.controller --real --gimbal-pitch -90 --waypoints arena.json
 
 # Real run with a different printed-marker dictionary
-python -m mapping_drone.controller --real --aruco-dict DICT_5X5_100 --waypoints arena.json
+python -m mapping_drone.controller --real --aruco-dict 5X5_250 --waypoints arena.json
 ```
 
 ## Output artifacts
@@ -160,7 +166,7 @@ python -m mapping_drone.controller --real --aruco-dict DICT_5X5_100 --waypoints 
 Everything lands under:
 
 ```
-semifinal/mapping_drone/runs/run_<YYYYMMDD_HHMMSS>/
+<cwd>/mapping_drone/runs/run_<YYYYMMDD_HHMMSS>/
   STATUS.txt              # plaintext, refreshed every 5 s
   run_summary.json        # full machine-readable record
   top_down.png            # final occupancy grid visualisation
@@ -170,6 +176,11 @@ semifinal/mapping_drone/runs/run_<YYYYMMDD_HHMMSS>/
   markers/
     marker_<id>_<seq>.jpg
 ```
+
+Note: `--runs-dir` defaults to `mapping_drone/runs` (relative to the
+directory you launch from). On the drone we launch from inside
+`semifinal/`, so artifacts land in `semifinal/mapping_drone/runs/...`. If
+you launch from elsewhere, pass `--runs-dir <abs-path>`.
 
 `STATUS.txt` is the file to hand a judge mid-flight: state, seconds airborne,
 pose, sightings so far, unique pad list with validity, battery percent.
@@ -271,9 +282,10 @@ the USB-C cable (must be USB 3.x — the supplied cables are colour-coded).
 `realsense-viewer` from `librealsense` confirms the device is alive. For
 dev without hardware use `--mock-realsense`.
 
-**MAVSDK serial port.**  Default is `/dev/ttyS6:921600`. If you see
-`MAVSDK: connection failed` check `dmesg | tail` for the actual ttyS port
-and pass it via the connection string in `controller.py`. The org PX4 build
+**MAVSDK serial port.**  Default is `serial:///dev/ttyS6:921600`. If you
+see `MAVSDK: connection failed` check `dmesg | tail` for the actual ttyS
+port and pass it via `--mavsdk-address` (e.g.
+`--mavsdk-address serial:///dev/ttyAMA0:921600`). The org PX4 build
 sometimes enumerates as `/dev/ttyAMA0` on a fresh boot.
 
 **NoMachine lag at the venue.**  The C2 Terminal pushes frames over wifi.
@@ -284,7 +296,10 @@ also `cat` it from a second terminal.
 **Position-stuck watchdog fires.**  If the drone hasn't moved >0.3 m in
 20 s after the grace period it lands. Usually means waypoints are unreachable
 (altitude too low, UWB anchor outside expected volume) or P-gains too soft
-for the current battery. Carry-over behaviour from the qualifier.
+for the current battery. Thresholds were tuned against qualifier-era mocks;
+revalidate against finals waypoints if the arena geometry differs from our
+2x2 m test square, and consider relaxing the 0.3 m / 20 s threshold if the
+finals arena is smaller or UWB noise is higher.
 
 **`cv2.aruco` not found.**  You installed `opencv-python` instead of
 `opencv-contrib-python`. Uninstall both then reinstall contrib.

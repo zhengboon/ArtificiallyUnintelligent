@@ -152,6 +152,8 @@ class MockRealsenseNode:
 
     def __init__(self, seed: int | None = None) -> None:
         self._rng = random.Random(seed)
+        # seeded numpy Generator so depth-hole locations are reproducible too
+        self._np_rng = np.random.default_rng(seed)
         self._intrinsics = SimpleNamespace(
             fx=608.12,
             fy=608.12,
@@ -181,7 +183,7 @@ class MockRealsenseNode:
         noise = self._rng.randint(0, 30)
         color[..., 1] = np.clip(color[..., 1].astype(int) + noise, 0, 255).astype(np.uint8)
 
-        marker_id = self._rng.randint(0, 49)
+        marker_id = self._rng.randint(0, 249)
         marker_img = self._generate_marker(marker_id, self.MARKER_PX)
         max_x = self.WIDTH - self.MARKER_PX - 1
         max_y = self.HEIGHT - self.MARKER_PX - 1
@@ -194,8 +196,8 @@ class MockRealsenseNode:
         depth = np.full((self.HEIGHT, self.WIDTH), self.DEFAULT_DEPTH_MM, dtype=np.uint16)
         # sprinkle some zero (invalid-depth) pixels
         num_holes = self._rng.randint(20, 60)
-        ys = np.random.randint(0, self.HEIGHT, size=num_holes)
-        xs = np.random.randint(0, self.WIDTH, size=num_holes)
+        ys = self._np_rng.integers(0, self.HEIGHT, size=num_holes)
+        xs = self._np_rng.integers(0, self.WIDTH, size=num_holes)
         depth[ys, xs] = 0
 
         return RealsenseFrame(

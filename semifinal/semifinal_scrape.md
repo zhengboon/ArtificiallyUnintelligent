@@ -89,8 +89,8 @@ if ids is not None:
 2. **Drone has a tiltable gimbal** controlled by code — `set_camera_angle()` in pyhulax. Useful for floor-level targets.
 3. **Revise Supp 1 + Supp 2.** They're in [`learning/Supplementary1.pdf`](../learning/Supplementary1.pdf) and [`learning/Supplementary2.pdf`](../learning/Supplementary2.pdf). Supp 1 covers VIO (relevant because Hula uses VIO for position). Supp 2 covers mapping + occupancy grid (occupancy-grid mapping was flagged as the natural Final Challenge next step).
 4. **More materials coming.** Org will post `pyrealsense2` how-to + deeper Hula swarm material as separate drops. Watch the channel.
-5. **Fiducial markers likely target.** ArUco / QR / AprilTag. OpenCV handles ArUco and QR; AprilTag needs `pip install apriltag` (or `pupil-apriltags`).
-6. **Dictionary in sample:** `DICT_6X6_250`. Confirm at venue — may differ.
+5. **Fiducial markers ARE the target (CONFIRMED 2026-06-06 05:00 org Discord).** Org clarified "hula drone to detect aruco marker on ground robots" — ArUco on RoboMasters is the primary Hula detection path. YOLO (K's RoboMaster training) is de-escalated to backup/insurance only. OpenCV handles ArUco and QR; AprilTag needs `pip install apriltag` (or `pupil-apriltags`) but is not needed for the confirmed ArUco path.
+6. **Dictionary confirmed:** `DICT_6X6_250` — used by org for ArUco markers on RoboMaster ground robots (confirmed via Discord 2026-06-06; matches the org's sample code above).
 7. **Sample shows depth → 3D unprojection** using camera intrinsics `(fx, fy, cx, cy)`. Identical formula to what we used in qualifier mapping pipeline; reusable.
 
 ---
@@ -106,6 +106,8 @@ if ids is not None:
 (Google Drive — folder contains [`kolomee.py`](learning_material_3_uwb/kolomee.py) which has been pulled in.)
 
 **Big reveal:** there is a SEPARATE "mapping drone" distinct from the Hula swarm. It uses MAVSDK (not pyhulax), has a UWB tag for real-time indoor position, and is controlled via closed-loop velocity commands.
+
+**UPDATE 2026-06-06:** Hula swarm ALSO gets UWB now, via `UWBParserThread.py` (pyserial @ 921600 baud) running on the **C2 Terminal Windows host** — a DIFFERENT transport from the mapping drone's ROS2 `uwb_tag` PoseStamped topic. So both fleets are UWB-aware, but via separate APIs. See `uwb_api_hula_swarm/` (UWBParserThread.py + UWB_API_Hula_swarm.pdf).
 
 ---
 
@@ -135,7 +137,11 @@ if ids is not None:
 
 **Big reveal:** the mapping drone is a **Rockchip-based SBC** (RKNN = Rockchip Neural Network format). Likely RK3588 / RK3568 onboard — Orange Pi 5 / Radxa Rock or similar. K's `best.pt` needs a two-step conversion: `.pt → .onnx → .rknn` to run on-board with NPU acceleration.
 
-**Implication for A's training:** K can keep training PyTorch YOLO; the conversion step is independent. But the **target output format** for deployment is RKNN, not `.pt`.
+**Implication for K's training:** K can keep training PyTorch YOLO; the conversion step is independent. But the **target output format** for deployment is RKNN, not `.pt`.
+
+> **NOTE 2026-06-05 (org Discord):** YOLOv11 base required — train from `yolo11n.pt` (not v8). Use the `_2.py` variants of the convert scripts in the Drive folders. Mapping drone runs Ubuntu 22.04 + ROS2 + OpenCV + RKNN NPU at ~50 FPS. C2 Terminal = Windows host + Ubuntu 22.04 VM (NOT dual-boot, NOT WSL); access mapping drone via NoMachine from C2.
+>
+> **NOTE 2026-06-06 (org Discord):** Hula drones detect RoboMasters via **ArUco markers on the ground robots**, so K's YOLO is now insurance/backup, not the primary detector.
 
 ---
 
@@ -180,3 +186,5 @@ If/when more semi-final materials drop, append to this file under a new `## Lear
 |---|---|---|
 | 2026-06-02 | Initial scrape: Learning Materials 1 + 2 (Hula swarm + fiducial markers) | Z |
 | 2026-06-03 | Added Learning Materials 3 + 4 + 5. Two-drone architecture revealed (Hula swarm + mapping drone with UWB+Realsense+NPU). L3 file pulled (`kolomee.py`); L4 + L5 folders auth-gated, need manual download. | Z |
+| 2026-06-05 | Org clarifications: University category confirmed; YOLOv11 base required (yolo11n.pt); use _2.py variants of convert scripts; mapping drone runs Ubuntu 22.04 + ROS2 + OpenCV + RKNN NPU @ ~50 FPS; C2 Terminal = Windows host + Ubuntu 22.04 VM; access mapping drone via NoMachine from C2; all members should attend both finals days. | Z |
+| 2026-06-06 | Org: Hula drone detects ArUco markers on RoboMaster ground robots (detection is ArUco-based, NOT YOLO — K's YOLO de-escalated to insurance). New Hula-swarm UWB API released: UWBParserThread.py via pyserial @ 921600 baud (different from mapping drone's ROS2 `uwb_tag` topic) — pulled into `uwb_api_hula_swarm/`. Map layout will NOT be provided. Team advanced straight to FINALS (skipped semifinal tier): 10-11 June 2026, 9am-6pm, MBS Expo & Convention Centre Level 4; registration 10 June 7:30am, bring Photo ID + confirmation email; smart casual, no slippers; bring personal laptop + mouse + charger + thumbdrive. | Z |
