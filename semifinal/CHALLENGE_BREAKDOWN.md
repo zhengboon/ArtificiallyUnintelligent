@@ -17,12 +17,16 @@ Military-themed reconnaissance + ambush mission.
 
 **✅ Confirmed 2026-06-05: we are University category.** Both Challenge 1 AND Challenge 2 are ours. Challenge 1 mapping is a core deliverable, not optional.
 
-### 🆕 Updates from 2026-06-05 evening + 2026-06-06 AM
+### 🆕 Updates from 2026-06-05 evening + 2026-06-06 AM + 2026-06-06 PM + 2026-06-07
 
 - **All 3 team members should attend both days** (org: *"It is best that all members of team can be there on both days as there are plenty to do"*).
 - **Map layout WILL NOT be provided** (org 2026-06-06 11:40). We discover dimensions + obstacle positions at venue — Challenge 1 mapping is the only way we'll know the arena.
 - **Hula ground-robot detection uses ArUco markers, NOT YOLO** (org 2026-06-06 5:00 am). A's YOLO training is no longer critical-path.
 - **New UWB API for Hula swarm released**: `UWBParserThread.py` via USB-serial @ 921600 baud — NOT ROS2, NOT same as mapping drone's UWB. See [`uwb_api_hula_swarm/`](uwb_api_hula_swarm/README.md). Runs on C2 Terminal Windows.
+- **ArUco markers also placed next to Challenge 2 Hula landing pads** (org 2026-06-06 21:34, replying to FlyingExplorers). Same marker pattern as Challenge 1's landing pads — usable as Hula landing aid via `cv2.aruco`. NOT the pyhulax "auto-land" marker (that's a separate pyhulax feature with its own marker spec).
+- **ArUco markers 20cm × 20cm, exact dictionary TBD Day-1** (org 2026-06-06 21:32). Physical size confirmed; dictionary will be announced at venue and could be any of 16 ArUco sizes or 4 AprilTag variants. Our code must accept a runtime dict override.
+- **Org ticket etiquette:** close stale support tickets, open fresh ones for new questions so the queue stays prioritised (org 2026-06-06 21:47).
+- **A officially killed YOLO training** (team chat 2026-06-06 22:13). Detection of ground robots is now 100% ArUco via `cv2.aruco`. A reassigned to Hula camera helper + arena scout.
 
 ---
 
@@ -74,6 +78,7 @@ Military-themed reconnaissance + ambush mission.
 - Each Hula independently navigates to its landing zone
 - Coordination: stagger takeoffs / altitudes to avoid mid-air collisions
 - (Pre-University teams get the mapping info provided to them; we generate it ourselves in Challenge 1 and feed it into our own Challenge 2 planner)
+- **ArUco landing aid available:** org confirmed 2026-06-06 PM that ArUco markers are placed next to the Hula landing pads too (not only Challenge 1's landing pads). Hulas can use `cv2.aruco` on the onboard camera as a visual landing aid to refine the final descent on top of UWB-based positioning. **Important:** these ArUco markers are NOT the pyhulax "auto-land" marker — pyhulax's auto-land is a separate feature with its own marker spec. Use the same dict resolution path as the mapping drone (markers are 20cm × 20cm, exact dictionary announced Day-1).
 
 ### Part 2B — Hunt the convoy
 
@@ -204,7 +209,7 @@ The RoboMasters carry **ArUco markers**. Detection uses `cv2.aruco` (we already 
 ## Open questions (file with org, in priority order)
 
 1. ~~Are we University or Pre-University?~~ **CONFIRMED University 2026-06-05**
-2. **What's the encoding for ArUco-marker → valid/invalid?** Specific IDs? Even/odd? Bit pattern? (Still open)
+2. **What's the encoding for ArUco-marker → valid/invalid?** Specific IDs? Even/odd? Bit pattern? (Still open as of 2026-06-07 — open a fresh ticket per org's 2026-06-06 21:47 ticket etiquette.)
 3. ~~What target class(es) does the RoboMaster YOLO model need?~~ **OBSOLETED 2026-06-06: ArUco, not YOLO** — but: are different RoboMasters distinguished by different ArUco IDs, or do they all use the same?
 4. ~~Will training images of the RoboMaster robots be released?~~ **OBSOLETED 2026-06-06: ArUco, not YOLO** — A's annotation pipeline still useful as YOLO backup.
 5. **Time budget per challenge?** The day is 9hr but how is it allocated — back-to-back, separate runs, retries allowed? (Still open)
@@ -216,4 +221,6 @@ The RoboMasters carry **ArUco markers**. Detection uses `cv2.aruco` (we already 
 11. 🆕 **Do RoboMaster ground robots carry UWB tags?** If yes, swarm can fly Hulas to their reported (x, y) and use ArUco only for ID confirmation; if no, swarm needs a visual search pattern.
 12. 🆕 **What tag_ids do the 3 Hulas (and possibly RoboMasters) have?** Org should publish a mapping; likely labelled on hardware at venue.
 13. 🆕 **What's the UWB origin?** Where is (0, 0) in the arena? Likely calibrated against a known landmark at venue.
-14. 🆕 **Should we pre-prep code, or build only Day 1?** Org didn't answer — STINKIES asked 5/6 10:35pm but no response by 6/6 noon. Default: bring everything pre-built (we are).
+14. 🆕 **Should we pre-prep code, or build only Day 1?** Org didn't answer — STINKIES asked 5/6 10:35pm, re-asked 6/6 14:13 ("what codes should we come prepared with on 10 June?"), still no response by 6/7 AM. Default: bring everything pre-built (we are).
+15. 🆕 **Exact ArUco dictionary to be announced Day-1** (org 2026-06-06 21:32: *"The exact dictionary will be announced on the day"*). Could be any of: `DICT_4X4_{50,100,250,1000}`, `DICT_5X5_{50,100,250,1000}`, `DICT_6X6_{50,100,250,1000}`, `DICT_7X7_{50,100,250,1000}`, or AprilTag variants `DICT_APRILTAG_{16h5,25h9,36h10,36h11}`. Our `mapping.py:ArucoDetector` and `controller.py --aruco-dict` flag currently default to `DICT_6X6_250` and accept a subset of short-form names; widen this lookup before venue so any announced dict is accepted (today's `_ARUCO_DICTS` covers ~9 of the 20 possible options — see audit notes).
+16. 🆕 **Do Challenges 1 and 2 run in parallel (both drone types active at once) or sequentially (Challenge 1 fully complete → Challenge 2)?** — Z asked team chat 2026-06-06, no answer in chat. File fresh org ticket per 2026-06-06 21:47 etiquette.

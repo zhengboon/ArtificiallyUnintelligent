@@ -12,6 +12,11 @@
 > **2026-06-06 05:00:** "Hula drone to detect aruco marker on ground robots." Detection of RoboMaster ground robots is **ArUco-based, not YOLO**. A's YOLO is insurance/backup only.
 > **2026-06-06 11:28:** New Hula-swarm UWB API: `UWBParserThread.py` over pyserial @ 921600 baud (see `uwb_api_hula_swarm/`). DIFFERENT transport from mapping drone's ROS2 `uwb_tag` topic.
 > **2026-06-06 11:40:** Map layout will NOT be provided — discover via Challenge 1.
+> **2026-06-06 21:32 PM (captured 2026-06-07 AM):** ArUco markers are **20cm x 20cm** physical size. **EXACT dictionary will be announced on the day** — code must accept a runtime dict choice (NOT pre-confirmed as DICT_6X6_250). Could be any of 16 ArUco sizes (4X4/5X5/6X6/7X7 × 50/100/250/1000) or 4 AprilTag variants (16h5, 25h9, 36h10, 36h11). See §6b #13 + §3.4.
+> **2026-06-06 21:34 PM (captured 2026-06-07 AM):** ArUco markers are placed near **Challenge 2 landing pads ALSO** (not just Challenge 1's landing pads). Same ArUco-aided landing pattern for BOTH challenges; Hula side uses `cv2.aruco` rather than the pyhulax landing-marker auto-land helper. Source: BH2026ROBOVERSE in reply to FlyingExplorers 2026-06-06 14:50.
+> **2026-06-06 21:47 PM (captured 2026-06-07 AM):** Org ticket etiquette — close old support tickets and open fresh ones for new questions so the queue stays prioritised. Any still-open question we have should be filed as a NEW ticket.
+> **2026-06-06 PM (team chat):** ArUco beside Hula pads + 20cm + dictionary TBD Day-1 (org drops captured above). Team consequences: §3.4 audit shows current `mapping_drone/mapping.py:_ARUCO_DICTS` rejects ~55% of possible Day-1 announcements — pre-venue expansion to all 20 dicts is the top blocker.
+> **2026-06-07 AM (team chat):** A killed the YOLO track (6/6 22:13 "Nope not using yolo" — TF/ImageAI/OpenCV may be explored but exploratory only). K is on Hula swarm SEARCH ALGORITHM tonight (6/6 21:36). Z secured a backup Intel depth camera from a friend (close-to-D435, not exact) for redundancy. A's laptop is unreliable (7/6 00:13 — "It's been repeating quite often"); Day-1 reliability risk for anything that must run off A's laptop.
 
 ## Finals logistics (org confirmations 2026-06-05 / 2026-06-06)
 - **Event:** FINALS (we skipped semi-final tier — confirmed 2026-06-03), University category (2026-06-05).
@@ -216,7 +221,12 @@ if ids is not None:
         # → unproject via depth/intrinsics to get 3D position
 ```
 
-Dictionary `DICT_6X6_250` is the org's example — confirm at venue if they use a different one.
+Dictionary `DICT_6X6_250` is the org's example and the default used by `mapping_drone/mapping.py:ArucoDetector`. **Per org 2026-06-06 PM the EXACT dictionary will be announced on the day** — code must accept a runtime dict choice via `controller.py --aruco-dict <name>`.
+
+**Runtime override surface (audited 2026-06-07 against `mapping_drone/mapping.py:_ARUCO_DICTS`):**
+- Accepted today (9 values, uppercase short-form, exact match): `4X4_50`, `4X4_100`, `4X4_250`, `5X5_250`, `6X6_50`, `6X6_100`, `6X6_250`, `6X6_1000`, `7X7_250`.
+- **NOT accepted today** (will raise `ValueError` from `mapping.py` line 63-64): `4X4_1000`, `5X5_50`, `5X5_100`, `5X5_1000`, `7X7_50`, `7X7_100`, `7X7_1000`, all 4 AprilTag variants (`APRILTAG_16h5`, `APRILTAG_25h9`, `APRILTAG_36h10`, `APRILTAG_36h11`), lowercase short-form (`6x6_250`), long-form (`DICT_6X6_250`).
+- Org could announce any of 16 ArUco sizes + 4 AprilTag variants → roughly half of the possible announcements are rejected by the current code. Expand `_ARUCO_DICTS` + normalise case + strip `DICT_` prefix before the venue.
 
 ### 3.5 QR / AprilTag (other fiducials)
 - QR: `pyzbar` or `cv2.QRCodeDetector` or **drone's built-in `recognize_qr()`**
@@ -294,7 +304,7 @@ Dictionary `DICT_6X6_250` is the org's example — confirm at venue if they use 
 - [ ] WiFi diagnostic / health check at startup
 - [ ] Emergency-land-all on Ctrl-C / battery low
 - [ ] Per-drone heartbeat/timeout watchdog
-- [ ] YOLO retraining for any new target classes (K) — INSURANCE ONLY; primary RoboMaster detection is ArUco (DICT_6X6_250) per 2026-06-06 Discord ("hula drone to detect aruco marker on ground robots")
+- [ ] ~~YOLO retraining for any new target classes (K) — INSURANCE ONLY; primary RoboMaster detection is ArUco (DICT_6X6_250) per 2026-06-06 Discord ("hula drone to detect aruco marker on ground robots")~~ **OBSOLETED 2026-06-06: A confirmed not training YOLO** (6/6 22:13 "Nope not using yolo"; A may explore TensorFlow/ImageAI/OpenCV alternatives but exploratory only)
 - [ ] ArUco DICT_6X6_250 detection pipeline on Hula video streams → RoboMaster IDs + world coords (PRIMARY target detection)
 - [ ] UWBParserThread.py integration on C2 Terminal (Windows side) for Hula swarm UWB (pyserial @ 921600 baud — see `uwb_api_hula_swarm/`)
 - [ ] NoMachine session setup from C2 Terminal to mapping drone (access path per org 2026-06-05)
@@ -334,16 +344,19 @@ Dictionary `DICT_6X6_250` is the org's example — confirm at venue if they use 
 
 9. **What's the scoring rubric?** Per-marker points? Coverage points? Time bonus? Like qualifier?
 10. **WiFi setup at venue?** Shared SSID for all teams' drones? Per-team? Bandwidth concerns?
+11. **Do Challenges 1 and 2 run in parallel or sequentially?** — fresh org ticket. Affects whether the mapping drone can be running Challenge 1 (map discovery) while the Hula swarm runs Challenge 2 (landing on pads), or whether all compute/team focus is on one at a time. Z asked this in team chat 2026-06-06; no answer in chat — must be filed as a new support ticket per org etiquette.
 
 ### 6b. Resolved / partially resolved
 
-11. **What ROS2 distro on the drone?** — Ubuntu 22.04 confirmed by org 2026-06-05, so almost certainly ROS2 Humble; one detail to confirm at venue.
-12. **Does the Hula swarm see UWB data too?** Partially answered 2026-06-06: Hulas now have their own UWB via `UWBParserThread.py` (pyserial @ 921600 baud) — a **separate transport** from the mapping drone's ROS2-based UWB on `/dev/ttyS6`. Fusion would require bridging two different UWB stacks.
-13. **What ArUco dictionary?** CLOSED: DICT_6X6_250 confirmed for RoboMaster ground-robot markers (org Discord 2026-06-06).
-14. ~~What's the target set?~~ **Resolved 2026-06-06:** 5 RoboMaster ground robots carrying ArUco markers (DICT_6X6_250). Hula drones detect via ArUco; A's YOLOv11 (yolo11n.pt) is insurance/backup only.
-15. **Slot duration?** Confirmed 2026-06-05: Finals run 9am-6pm on both 10 + 11 June 2026 at Marina Bay Sands Expo & Convention Centre Level 4. All 3 team members should attend both days.
-16. **VM still mandatory?** Confirmed 2026-06-05: C2 Terminal is Windows + Ubuntu 22.04 VM; mapping drone is accessed from C2 via NoMachine.
-17. ~~L4 + L5 Drive folders not publicly accessible~~ — L5 resolved: org released yolo11n.pt + _2.py convert scripts 2026-06-05 and we pulled them into `learning_material_5_yolo_rknn/`. L4 (Realsense) — pulled into `learning_material_4_realsense/`.
+12. **What ROS2 distro on the drone?** — Ubuntu 22.04 confirmed by org 2026-06-05, so almost certainly ROS2 Humble; one detail to confirm at venue.
+13. **Does the Hula swarm see UWB data too?** Partially answered 2026-06-06: Hulas now have their own UWB via `UWBParserThread.py` (pyserial @ 921600 baud) — a **separate transport** from the mapping drone's ROS2-based UWB on `/dev/ttyS6`. Fusion would require bridging two different UWB stacks.
+14. **What ArUco dictionary?** **RE-OPENED / DEFERRED to Day-1 (org 2026-06-06 21:32 PM, captured 2026-06-07 AM):** the EXACT dictionary will be announced on the day. DICT_6X6_250 remains the working default. `mapping_drone/mapping.py` was patched 2026-06-07 to accept any of 16 ArUco sizes + 4 AprilTag variants via case-insensitive `--aruco-dict` (smoke-tested, 20/20). No pre-venue code work needed.
+15. **ArUco beside Hula (Challenge 2) landing pads?** **RESOLVED 2026-06-06 21:34 PM (captured 2026-06-07 AM):** Yes — ArUco markers are placed near Challenge 2 landing pads as well as Challenge 1's landing pads. Hula uses `cv2.aruco` for the landing aid (NOT the pyhulax landing-marker auto-land helper, which is a different marker).
+16. **ArUco physical size?** **RESOLVED 2026-06-06 21:32 PM (captured 2026-06-07 AM):** **20cm x 20cm.** Implication: with D435 RGB 640x480 / ~70° HFOV, a 20cm marker subtends a few hundred px at 1m and drops toward ~30 px around 5-6m where detection gets unreliable — tune the mapping-drone flight altitude so markers stay in the reliable detection range.
+17. ~~What's the target set?~~ **Resolved 2026-06-06:** 5 RoboMaster ground robots carrying ArUco markers. Hula drones detect via ArUco; A's YOLO track was killed by A on 2026-06-06 22:13 ("Nope not using yolo").
+18. **Slot duration?** Confirmed 2026-06-05: Finals run 9am-6pm on both 10 + 11 June 2026 at Marina Bay Sands Expo & Convention Centre Level 4. All 3 team members should attend both days.
+19. **VM still mandatory?** Confirmed 2026-06-05: C2 Terminal is Windows + Ubuntu 22.04 VM; mapping drone is accessed from C2 via NoMachine.
+20. ~~L4 + L5 Drive folders not publicly accessible~~ — L5 resolved: org released yolo11n.pt + _2.py convert scripts 2026-06-05 and we pulled them into `learning_material_5_yolo_rknn/`. L4 (Realsense) — pulled into `learning_material_4_realsense/`.
 
 ---
 
@@ -694,5 +707,5 @@ The whole point of arriving prepared is: by the time we have drones in hand, eve
 
 ---
 
-*Last updated: 2026-06-06 (T-4 to finals — Marina Bay Sands Expo & Convention Centre, Level 4).*
+*Last updated: 2026-06-07 (T-3 to finals — Marina Bay Sands Expo & Convention Centre, Level 4).*
 *Update this file every time new info lands — it's the single source of truth for the team.*

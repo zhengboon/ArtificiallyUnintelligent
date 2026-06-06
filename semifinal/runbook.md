@@ -3,7 +3,7 @@
 **Finals: Wed 10 + Thu 11 June 2026, 9:00am – 6:00pm**
 **Venue: Marina Bay Sands Expo and Convention Centre, Level 4**
 **Category: University**
-**Tasks: Challenge 1 (Reconnaissance) + Challenge 2A (3-Hula landings) + Challenge 2B (RoboMaster hunt via ArUco DICT_6X6_250 on robots; YOLOv11 is insurance only)**
+**Tasks: Challenge 1 (Reconnaissance) + Challenge 2A (3-Hula landings) + Challenge 2B (RoboMaster hunt via ArUco markers on robots — dict TBD Day-1, default DICT_6X6_250)**
 
 **Attendance: All 3 members (K, Z, A) attend BOTH Day 1 and Day 2 — org confirmed 2026-06-05 22:22 SGT.**
 
@@ -18,14 +18,16 @@
 - [ ] Confirm USB×2 contents (run `ls semifinal/thumbdrive/` and verify all listed below):
   - `controllers/` (semifinal/mapping_drone/ + semifinal/swarm_controller.py **(TODO: file does not exist yet — see Night-Before task above)** + tests)
   - `models/best.pt` (K's qualifier model, in case of fallback)
-  - `models/best.onnx` (A's RoboMaster YOLOv11 export — INSURANCE only; ArUco DICT_6X6_250 is primary per org 2026-06-06)
+  - `models/best.onnx` (A's old qualifier export — kept on USB as dead-weight backup only; YOLO track was killed 2026-06-06 22:13, A no longer training. ArUco is the primary detector; exact dict is TBD Day-1, default DICT_6X6_250.)
   - `docs/` (CHALLENGE_BREAKDOWN.md + FINALS_PLAN.md + learning_materials_and_others.md + offline pyhulax mirror + uwb_api_hula_swarm/UWB_API_Hula_swarm.pdf)
   - `prototypes/` (the 3 prototype scripts as fallback verification)
   - `uwb_api_hula_swarm/` (UWBParserThread.py + UWB_API_Hula_swarm.pdf — REQUIRED for Hula swarm UWB on C2 Terminal Windows side, pyserial @ 921600 baud; per org 2026-06-06 11:28)
   - `setup.sh` (one-command laptop bootstrap)
   - `runbook.md` (this file, printed too)
 - [ ] **TWO USB sticks**, identical contents
-- [ ] All 3 personal laptops (one per team member) charged to 100%. Org provides the C2 Terminal — personal laptops are dev / backup / artifact viewing.
+- [ ] **A: USB the latest `annotation_tool/` + any backup-detection-path work (OpenCV / TensorFlow / ImageAI exploratory scripts) to a shared drive AND both USB sticks** — A's laptop has been repeating / hanging often (noted 2026-06-07 00:13), so we cannot assume A can run anything off it on the day. K and Z must be able to pick up A's work from the USB if A's laptop dies.
+- [ ] All 3 personal laptops (one per team member) charged to 100%. Org provides the C2 Terminal — personal laptops are dev / backup / artifact viewing. **A's laptop is unreliable — treat it as a stretch resource, not a dependency.**
+- [ ] **Packing: backup depth camera** — Z brings the Intel depth camera borrowed from a friend (close-to-D435, not exact). If the org-issued / onboard Realsense fails, this is our fallback.
 - [ ] 3 phones charged
 - [ ] **Photo IDs** (IC / EZ-Link / Passport) — all 3 of us
 - [ ] **Confirmation email** printed AND on phone
@@ -65,6 +67,11 @@
 ### Step 2 (T+30 min – 60 min): Org briefing + drone slot allocation
 - [ ] Listen for org's full briefing on slot structure, scoring, and arena tour.
 - [ ] Note our drone testing slots (they will be announced).
+- [ ] **Ask org-on-site (A walks to the org desk in person AND files fresh Discord tickets — per org's 2026-06-06 21:47 etiquette, close any stale tickets first then open new ones, one question per ticket):**
+  - (a) Exact ArUco / AprilTag dictionary in use today (it is one of 20 possibilities: ArUco 4X4/5X5/6X6/7X7 × {50,100,250,1000}, or AprilTag 16h5/25h9/36h10/36h11). STINKIES already asked 2026-06-06 14:13 and got no answer — we re-ask Day-1 morning.
+  - (b) Are Challenge 1 and Challenge 2 (2A + 2B) run **in parallel** in one slot, or **sequentially** (C1 first, then C2)? Z asked in team chat and there is no answer yet — confirm with org directly.
+  - As soon as (a) lands → pass it via `--aruco-dict <name>`. The code now accepts all 20 dicts (see mapping.py `_build_aruco_dict_table`), so no code change should be required even for an unexpected dict — but A/K double-checks the smoke test still passes with the announced name before the first scored slot.
+  - As soon as (b) lands → tell K + Z so we know whether to chain C1 → C2 outputs live, or budget for two separate run sessions.
 - [ ] Note the validity rule for ArUco markers (org said they'll publish it).
   - As soon as we know: **update `semifinal/mapping_drone/validity.py`** — single line in `decide_landing_validity()`. Test by re-running mock mission.
 - [ ] **Map layout is NOT provided** (org clarified 2026-06-06 11:40). During the org's arena tour, A walks the perimeter, sketches obstacle positions, paces out approximate dimensions (L × W), and photographs the floor/markings.
@@ -72,6 +79,7 @@
 
 ### Step 3 (T+60 min – first slot): Pre-slot prep
 - [ ] Pre-flight smoke test, again, with the validity rule applied.
+- [ ] **Confirm the exact ArUco / AprilTag dictionary name announced by org today** (org confirmed 2026-06-06 21:32 that the exact dict is announced on the day; markers are 20cm x 20cm). Pass it to both controllers via `--aruco-dict <dict_name>` for the first scored slot. Default in code is `6X6_250`. `mapping_drone/mapping.py` now builds the dict table via `_build_aruco_dict_table()` and accepts all 20 possibilities (ArUco `{4X4,5X5,6X6,7X7}_{50,100,250,1000}` + AprilTag `{16h5,25h9,36h10,36h11}`). Normalization handles `DICT_` prefix, case, and whitespace, so the announced name (e.g. `DICT_6X6_250`, `6x6_250`, ` APRILTAG_36H11 `) should all resolve. If startup still raises `ValueError`, the error message lists every accepted name — copy that and tell K immediately.
 - [ ] **Battery check**: confirm each drone's battery >70% on the Hula app (Windows side) / mapping-drone GCS (Ubuntu VM side) before takeoff. Below 50% → swap before launch.
 - [ ] Lock down which run config to use for the first attempt (see Run configurations below).
 - [ ] Print or screenshot the planned mission waypoints (in case the laptop slows / crashes mid-run).
@@ -97,14 +105,14 @@
 ### Step 6: First scored slot — Challenge 2B (RoboMaster hunt)
 - [ ] Org launches the 5 RoboMaster ground robots.
 - [ ] Run `swarm_controller.py --task 2b --search-pattern lawnmower-3way`.
-- [ ] Watch Hulas split arena, fly, detect RoboMasters via **ArUco markers (DICT_6X6_250) on the robots**, snapshot. **YOLOv11 (A's best.onnx) runs as backup only if ArUco misses** (per org 2026-06-06 05:00).
+- [ ] Watch Hulas split arena, fly, detect RoboMasters via **ArUco markers on the robots (dict TBD Day-1; default DICT_6X6_250 — confirm with org-on-site, see Step 2)**, snapshot. **YOLO track is killed** (A confirmed 2026-06-06 22:13, no longer training) — ArUco is the sole detection path. If ArUco misses entirely, fall back to manual judge-walked notes from A.
 - [ ] Each Hula returns + lands. Snapshots saved under `runs/run_*/snapshots/`.
 - [ ] Show judge: snapshot images with bbox overlays + count of unique robots detected.
 
 ### Step 7: Lunch (12:00 – 13:00) — debrief
 - [ ] Quick standup. What worked? What sucked? What to change for afternoon?
 - [ ] **If mapping was bad:** retrain altitude / gimbal pitch. Tweak in `controller.py` constants.
-- [ ] **If detection rate was low:** A retrains model on snapshots taken during the morning run.
+- [ ] **If detection rate was low:** check the announced ArUco dict was actually applied (`--aruco-dict <name>` matches the smoke-test output); lower altitude / re-verify `--gimbal-pitch -90`; A reviews snapshot bbox overlays to flag whether markers are out-of-FOV vs out-of-range. (No model retrain — YOLO track killed 2026-06-06.)
 - [ ] **If timing was slow:** review waypoint plan, raise altitude for faster scan.
 - [ ] Sync code changes to USB. Push to repo if connected.
 
@@ -156,7 +164,7 @@ Apply Day 1 lessons. Same wake-up routine. No new registration (lanyard from Day
 |---|---|---|
 | **Keyboard** | K | drives terminal + NoMachine session, executes commands, swaps SD cards, monitors process health |
 | **Screen-watcher** | Z | watches `STATUS.txt` + log_broadcaster (Tailscale), calls out detections + classifications, holds runbook |
-| **Judge-talker / floor / arena scout** | A | answers judge questions, communicates with org coordinators, takes photos of arena/drones for our records, **sketches obstacles + estimates bounds for waypoint config (map not provided by org)** |
+| **Judge-talker / arena scout / hand-on-camera-feed** | A | answers judge questions, communicates with org coordinators, takes photos of arena/drones for our records, **sketches obstacles + estimates bounds for waypoint config (map not provided by org)**, sits on the live camera feed during runs and calls out misses. **No YOLO retrain duty** — A killed the YOLO track 2026-06-06; the freed slot is now arena scouting + judge-facing + camera-watch. |
 
 Cross-coverage: each role has a deputy. If K is sick, Z takes keyboard; if Z is sick, A takes screen-watching; if A is sick, K talks to judge (with Z holding runbook).
 
@@ -217,10 +225,11 @@ python3 semifinal/swarm_controller.py --task 2a --single-drone --pads_file ...
 | Hula drones not discovered by Dola | Check WiFi network — drones + C2 must be on same network. Try `set_wifi_band(band_5ghz=True)` per Hula. |
 | `STATUS.txt` not updating | Check our controller wrote to the right `run_dir`. The path is logged at startup. |
 | Top-down map blank | Realsense intrinsics might be wrong. Check `controller.py --log-level DEBUG` for intrinsics print. |
-| ArUco detection returns nothing | Try `--aruco-dict 5X5_250` or `--aruco-dict 4X4_250` (valid names live in `mapping_drone/mapping.py` `_ARUCO_DICTS` — no `DICT_` prefix, no AprilTag support). Confirm marker is in FOV — lower altitude and verify `--gimbal-pitch -90`. Note: org uses `DICT_6X6_250` (the default), so a dict mismatch is unlikely unless the rules change. |
+| ArUco detection returns nothing | Re-confirm the announced dict with org-on-site (see Step 2 / Step 3). All 20 possibilities are accepted by the controller — ArUco `{4X4,5X5,6X6,7X7}_{50,100,250,1000}` + AprilTag `{16h5,25h9,36h10,36h11}` — and the `DICT_` prefix / case / whitespace are normalized. If startup raised `ValueError`, the error lists every accepted name; copy-paste the announced name and retry. Confirm marker is in FOV — lower altitude and verify `--gimbal-pitch -90`. |
+| ArUco marker physical size / detection range | Markers are **20cm x 20cm** (org confirmed 2026-06-06 21:32). On D435 RGB 640x480 (~70deg HFOV) the marker subtends ~hundreds of px at 1m and drops below ~30 px around 5-6m where detection becomes unreliable. A: pace this out during the arena scout so the mapping-drone cruise altitude in `arena_waypoints_safe.json` keeps markers in reliable detection range. Same marker also appears near Challenge 2 landing pads (org 2026-06-06 21:34) — Hula side uses `cv2.aruco`, not the pyhulax auto-land helper. |
 | Wrong landing-pad validity classification | Edit `mapping_drone/validity.py` `decide_landing_validity()` — should be a one-liner. |
 | Hula collides mid-air during Challenge 2A | Stagger takeoffs by 5 s, assign different altitudes per drone (1.2 / 1.5 / 1.8 m) |
-| RoboMaster not detected | ArUco is primary: confirm `DICT_6X6_250`, check gimbal pitch (-90 default), lower altitude for marker FOV. If still nothing, A enables YOLO insurance path — lower confidence (0.5 → 0.35 → 0.25) and confirm A's `best.rknn` is loaded (logged at startup). |
+| RoboMaster not detected | ArUco is the sole detection path (YOLO killed 2026-06-06). Confirm the announced dict matches what was passed via `--aruco-dict <name>` (default `DICT_6X6_250`); check gimbal pitch (-90 default); lower altitude for marker FOV (markers are 20cm × 20cm — detection drops below ~30 px around 5-6m on the D435). If still nothing, A reports robot positions verbally from the camera-feed watch + we ask judge whether a re-fly slot is possible. |
 | Battery dies mid-flight | Built-in failsafe should auto-land. Ask coordinator for spare battery. **(Procedural prevention: see Step 3 / Step 4 battery checks added below.)** |
 | C2 Terminal Windows crashes | Reboot. Re-load our code from USB. State is in `runs/` which is persisted to disk. |
 | Mapping drone NoMachine session laggy | Edit code in our local editor → `scp` to drone → re-run via SSH (faster than IDE-in-NoMachine). |
@@ -234,7 +243,7 @@ python3 semifinal/swarm_controller.py --task 2a --single-drone --pads_file ...
 |---|---|---|
 | Z | ______ | runbook holder |
 | K | ______ | drone hardware lead |
-| A | ______ | judge-talker / ML retrain on the fly |
+| A | ______ | judge-talker / arena scout / hand-on-camera-feed |
 | Discord | keep open on phone | for org last-minute announcements |
 | brainhackreg@dsta.gov.sg | (registration questions only) |
 | brainhack@pico.com | (registration questions only) |

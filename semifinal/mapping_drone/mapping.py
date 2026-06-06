@@ -42,17 +42,64 @@ class ArucoSighting:
 # ---------------------------------------------------------------------------
 # ArUco detector
 # ---------------------------------------------------------------------------
-_ARUCO_DICTS = {
-    "4X4_50": cv2.aruco.DICT_4X4_50,
-    "4X4_100": cv2.aruco.DICT_4X4_100,
-    "4X4_250": cv2.aruco.DICT_4X4_250,
-    "5X5_250": cv2.aruco.DICT_5X5_250,
-    "6X6_50": cv2.aruco.DICT_6X6_50,
-    "6X6_100": cv2.aruco.DICT_6X6_100,
-    "6X6_250": cv2.aruco.DICT_6X6_250,
-    "6X6_1000": cv2.aruco.DICT_6X6_1000,
-    "7X7_250": cv2.aruco.DICT_7X7_250,
-}
+def _build_aruco_dict_table() -> dict[str, int]:
+    """Build the {suffix: cv2.aruco.DICT_* constant} table by probing
+    cv2.aruco for every ArUco size/count combination plus the AprilTag
+    variants. Older OpenCV builds may not expose every constant; missing
+    ones are skipped silently so import keeps working.
+
+    Key format matches the cv2.aruco attribute name with the 'DICT_' prefix
+    stripped: e.g. 'DICT_6X6_250' -> '6X6_250', 'DICT_APRILTAG_36h11' ->
+    'APRILTAG_36h11'. AprilTag suffixes keep their lowercase 'h' because
+    that's how OpenCV spells the constants.
+    """
+    table: dict[str, int] = {}
+    # ArUco: 4 sizes x 4 counts = 16 dicts.
+    for size in ("4X4", "5X5", "6X6", "7X7"):
+        for count in (50, 100, 250, 1000):
+            attr = f"DICT_{size}_{count}"
+            if hasattr(cv2.aruco, attr):
+                table[f"{size}_{count}"] = getattr(cv2.aruco, attr)
+    # AprilTag: 4 variants. OpenCV uses lowercase 'h' in the constant name.
+    for variant in ("16h5", "25h9", "36h10", "36h11"):
+        attr = f"DICT_APRILTAG_{variant}"
+        if hasattr(cv2.aruco, attr):
+            table[f"APRILTAG_{variant}"] = getattr(cv2.aruco, attr)
+    return table
+
+
+_ARUCO_DICTS = _build_aruco_dict_table()
+ALL_SUPPORTED_DICT_NAMES = tuple(sorted(_ARUCO_DICTS.keys()))
+logger.info(
+    "ArUco/AprilTag dictionaries available: %d (%s)",
+    len(ALL_SUPPORTED_DICT_NAMES),
+    ", ".join(ALL_SUPPORTED_DICT_NAMES),
+)
+
+
+def _normalize_dict_name(dict_name: str) -> str:
+    """Normalize a user-supplied dict name to the canonical key used in
+    _ARUCO_DICTS.
+
+    Accepts:
+      * Long form with 'DICT_' prefix ('DICT_6X6_250').
+      * Lowercase or mixed case for ArUco sizes ('6x6_250').
+      * Mixed case AprilTag names ('apriltag_36h11', 'APRILTAG_36H11').
+
+    For AprilTag keys we preserve the lowercase 'h' in the trailing hex
+    code (the OpenCV constant uses '36h11', not '36H11').
+    """
+    key = dict_name.strip()
+    if key.upper().startswith("DICT_"):
+        key = key[5:]
+    if key.upper().startswith("APRILTAG"):
+        # Uppercase only up to and including the underscore after APRILTAG,
+        # then lowercase the trailing hex code so '36h11' stays '36h11'.
+        head, sep, tail = key.partition("_")
+        if sep:
+            return f"{head.upper()}_{tail.lower()}"
+        return head.upper()
+    return key.upper()
 
 
 class ArucoDetector:
@@ -60,10 +107,15 @@ class ArucoDetector:
     otherwise falls back to the legacy detectMarkers signature."""
 
     def __init__(self, dict_name: str = "6X6_250") -> None:
-        if dict_name not in _ARUCO_DICTS:
-            raise ValueError(f"Unknown ArUco dict: {dict_name}")
-        self.dict_name = dict_name
-        aruco_dict_id = _ARUCO_DICTS[dict_name]
+        key = _normalize_dict_name(dict_name)
+        if key not in _ARUCO_DICTS:
+            supported = sorted(_ARUCO_DICTS.keys())
+            raise ValueError(
+                f"Unknown ArUco dict: {dict_name!r}. Supported "
+                f"({len(supported)}): {supported[:20]}"
+            )
+        self.dict_name = key
+        aruco_dict_id = _ARUCO_DICTS[key]
 
         if hasattr(cv2.aruco, "getPredefinedDictionary"):
             self._dictionary = cv2.aruco.getPredefinedDictionary(aruco_dict_id)
