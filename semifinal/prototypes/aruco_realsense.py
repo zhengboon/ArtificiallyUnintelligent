@@ -23,8 +23,11 @@ Notes:
   - The output (X, Y, Z) is in the CAMERA frame (not world / drone frame).
     To get world-frame, fuse with drone pose:
       world = R_camera_to_drone @ (X, Y, Z) + drone_position_world
-  - Depth at the centre pixel can be 0 (no return — too close, reflective,
-    or just bad luck). The script skips those.
+  - Depth at the marker centre is sampled as a non-zero median over a 5x5
+    window around (u, v) — more robust than a single pixel against the
+    occasional zero-return. If the entire neighbourhood has no depth return
+    (too close, reflective, or just bad luck), the script skips that marker.
+    The JSONL `depth_mm` field reflects this local median, not a single pixel.
   - Depth + colour are aligned via rs.align so pixel coordinates map 1:1.
 """
 
@@ -110,11 +113,18 @@ def main() -> int:
                 for mc, mid in zip(corners, ids.flatten()):
                     mid = int(mid)
                     c = mc.reshape((4, 2))
-                    u = int((c[0][0] + c[2][0]) / 2)
-                    v = int((c[0][1] + c[2][1]) / 2)
+                    u = int(c[:, 0].mean())
+                    v = int(c[:, 1].mean())
                     if not (0 <= u < depth.shape[1] and 0 <= v < depth.shape[0]):
                         continue
-                    d_mm = int(depth[v, u])
+                    # Non-zero median over a 5x5 window — more robust than a
+                    # single pixel against sporadic zero-returns on shiny /
+                    # near-range surfaces.
+                    y0, y1 = max(0, v - 2), v + 3
+                    x0, x1 = max(0, u - 2), u + 3
+                    patch = depth[y0:y1, x0:x1]
+                    nz = patch[patch > 0]
+                    d_mm = int(np.median(nz)) if nz.size else 0
                     if d_mm == 0:
                         cv2.putText(color, f"ID={mid} no-depth",
                                     (u + 6, v - 6), cv2.FONT_HERSHEY_SIMPLEX,

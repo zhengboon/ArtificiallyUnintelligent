@@ -85,11 +85,17 @@ Dictionary: DICT_6X6_250
 + ID=5  (X=+0.045, Y=-0.010, Z=0.815) m   distance=0.817 m
 ```
 
-The 3D coords are in the **camera frame** (X=right, Y=down, Z=forward away from lens). To get world coords later, fuse with drone pose:
+The 3D coords are in the **camera frame** (X=right, Y=down, Z=forward away from lens). To get world coords later, fuse with drone pose in two stages — camera→body, then body→world:
 
 ```
-world_xyz = R_cam_to_drone @ cam_xyz + drone_position
+# camera -> drone body (folds in gimbal pitch); cam_offset_in_drone is the
+# lens position in the drone body frame (~0 for the Realsense mount we use)
+body_xyz = R_cam_to_drone @ cam_xyz + cam_offset_in_drone
+# drone body -> world ENU via current yaw (and roll/pitch if you care)
+world_xyz = R_drone_to_world @ body_xyz + drone_position_world
 ```
+
+See `mapping_drone/mapping.py::camera_to_world` for the canonical implementation we actually use in the swarm — it applies gimbal pitch around camera X, then MAVSDK yaw around world up, then adds (north, east, alt). Note `cam_offset_in_drone` is currently treated as zero there.
 
 ## Troubleshooting
 
@@ -104,4 +110,4 @@ world_xyz = R_cam_to_drone @ cam_xyz + drone_position
 
 ## When to delete these
 
-These are validation prototypes, not part of the swarm controller. Once `semifinal/controller.py` integrates the same patterns, you can keep these around for re-verification but they're not on the dependency path.
+These are validation prototypes, not part of the swarm controller. Once `semifinal/mapping_drone/controller.py` integrates the same patterns, you can keep these around for re-verification but they're not on the dependency path.

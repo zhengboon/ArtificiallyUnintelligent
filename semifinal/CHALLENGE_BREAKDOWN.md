@@ -17,6 +17,13 @@ Military-themed reconnaissance + ambush mission.
 
 **✅ Confirmed 2026-06-05: we are University category.** Both Challenge 1 AND Challenge 2 are ours. Challenge 1 mapping is a core deliverable, not optional.
 
+### 🆕 Updates from 2026-06-05 evening + 2026-06-06 AM
+
+- **All 3 team members should attend both days** (org: *"It is best that all members of team can be there on both days as there are plenty to do"*).
+- **Map layout WILL NOT be provided** (org 2026-06-06 11:40). We discover dimensions + obstacle positions at venue — Challenge 1 mapping is the only way we'll know the arena.
+- **Hula ground-robot detection uses ArUco markers, NOT YOLO** (org 2026-06-06 5:00 am). A's YOLO training is no longer critical-path.
+- **New UWB API for Hula swarm released**: `UWBParserThread.py` via USB-serial @ 921600 baud — NOT ROS2, NOT same as mapping drone's UWB. See [`uwb_api_hula_swarm/`](uwb_api_hula_swarm/README.md). Runs on C2 Terminal Windows.
+
 ---
 
 ## Challenge One — Reconnaissance (University teams only — ✅ that's us)
@@ -79,15 +86,22 @@ Military-themed reconnaissance + ambush mission.
 2. Launch 3 Hulas to search for them
 3. **Take snapshots of each ground robot**
 
+#### Detection: ArUco, NOT YOLO (CONFIRMED 2026-06-06 5:00 am)
+
+Org confirmed: *"hula drone to detect aruco marker on ground robots."*
+
+The RoboMasters carry **ArUco markers**. Detection uses `cv2.aruco` (we already have it integrated for Challenge 1's landing-pad classifier) — NOT a YOLO model. This means:
+- A's YOLO training task is **deprioritised** (no longer critical-path).
+- K's swarm controller only needs `cv2.aruco` on the Hula camera feed.
+- A YOLO backup model is still nice insurance, but optional.
+
 #### Scoring
 - Successful + accurate snapshots + minimum time
 
-#### Implications
-- This is what K's YOLO model needs to detect: **RoboMaster ground robots** (not the qualifier's barrels)
-- A's training set should be RoboMaster footage
-- Hula camera + onboard YOLO (or stream to C2 + YOLO there) for detection
-- Snapshot = `take_photo()` on the Hula when detection fires
+#### Implications (updated)
+- Snapshot = `take_photo()` on the Hula when ArUco detection fires
 - Hunting strategy: divide arena into 3 zones, one Hula per zone
+- IF the RoboMasters also have UWB tags (open question), the Hulas can fly directly to each robot's reported (x, y) and visually confirm with ArUco instead of running a search pattern.
 
 ---
 
@@ -135,9 +149,12 @@ Military-themed reconnaissance + ambush mission.
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  OUR PERSONAL LAPTOP (for dev / pre-venue prep)             │
-│  - K trains YOLO model (.pt)                                │
-│  - Convert to ONNX locally for testing                      │
-│  - Write swarm controller (test against mocks)              │
+│  - ArUco (cv2.aruco DICT_6X6_250) prototype on Hula camera  │
+│    feed — PRIMARY RoboMaster detection path                 │
+│  - A trains YOLOv11 model (yolo11n.pt) — INSURANCE/BACKUP   │
+│    only; convert via convertyolotoonnx_2.py for org VM      │
+│  - Write swarm controller (pyhulax + UWBParserThread mocks) │
+│    (NOT YET BUILT — swarm_controller.py placeholder)        │
 │  - Write mapping drone controller (test against mocks)      │
 │  - Realsense prototypes against our D435                    │
 │  → Code + model on USB to bring to venue                    │
@@ -152,6 +169,7 @@ Military-themed reconnaissance + ambush mission.
 │    - pyhulax (swarm control)                                │
 │    - UWB Python class for swarm pos                         │
 │    - Our swarm_controller.py runs HERE                      │
+│      (NOT YET BUILT — placeholder, TODO before venue)       │
 │                                                             │
 │  Ubuntu 22.04 VM side:                                      │
 │    - rknn-toolkit2 (convert .onnx → .rknn)                  │
@@ -186,12 +204,16 @@ Military-themed reconnaissance + ambush mission.
 ## Open questions (file with org, in priority order)
 
 1. ~~Are we University or Pre-University?~~ **CONFIRMED University 2026-06-05**
-2. **What's the encoding for ArUco-marker → valid/invalid?** Specific IDs? Even/odd? Bit pattern?
-3. **What target class(es) does the RoboMaster YOLO model need?** Is "RoboMaster ground robot" the only class, or are there variations?
-4. **Will training images of the RoboMaster robots be released?** Or do we have to source them?
-5. **Time budget per challenge?** The day is 9hr but how is it allocated — back-to-back, separate runs, retries allowed?
-6. ~~"The mapping information will be provided" format question~~ — N/A for us, we produce our own. Internal handoff format from our Challenge 1 → Challenge 2 planner is our call.
-7. **Can we test against the C2 Terminal before Day 1?** Or first-time-we-see-it on Wed 10 Jun?
-8. **Snapshot for Challenge 2B = a single photo, or video, or just bbox JSON?**
-9. **Do the RoboMaster targets move (continuous patrol) or randomly teleport?**
-10. **Is there a "spawn area" for the Hulas, or do they take off from anywhere?**
+2. **What's the encoding for ArUco-marker → valid/invalid?** Specific IDs? Even/odd? Bit pattern? (Still open)
+3. ~~What target class(es) does the RoboMaster YOLO model need?~~ **OBSOLETED 2026-06-06: ArUco, not YOLO** — but: are different RoboMasters distinguished by different ArUco IDs, or do they all use the same?
+4. ~~Will training images of the RoboMaster robots be released?~~ **OBSOLETED 2026-06-06: ArUco, not YOLO** — A's annotation pipeline still useful as YOLO backup.
+5. **Time budget per challenge?** The day is 9hr but how is it allocated — back-to-back, separate runs, retries allowed? (Still open)
+6. ~~"The mapping information will be provided" format question~~ — N/A for us, we produce our own.
+7. **Can we test against the C2 Terminal before Day 1?** Or first-time-we-see-it on Wed 10 Jun? (Still open)
+8. **Snapshot for Challenge 2B = a single photo, or video, or just bbox JSON?** (Still open — affects Hula camera handling)
+9. **Do the RoboMaster targets move (continuous patrol) or randomly teleport?** (Still open)
+10. **Is there a "spawn area" for the Hulas, or do they take off from anywhere?** (Still open)
+11. 🆕 **Do RoboMaster ground robots carry UWB tags?** If yes, swarm can fly Hulas to their reported (x, y) and use ArUco only for ID confirmation; if no, swarm needs a visual search pattern.
+12. 🆕 **What tag_ids do the 3 Hulas (and possibly RoboMasters) have?** Org should publish a mapping; likely labelled on hardware at venue.
+13. 🆕 **What's the UWB origin?** Where is (0, 0) in the arena? Likely calibrated against a known landmark at venue.
+14. 🆕 **Should we pre-prep code, or build only Day 1?** Org didn't answer — STINKIES asked 5/6 10:35pm but no response by 6/6 noon. Default: bring everything pre-built (we are).

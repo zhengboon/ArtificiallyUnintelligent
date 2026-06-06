@@ -1,0 +1,272 @@
+# Finals Runbook — ArtificiallyUnintelligent
+
+**Finals: Wed 10 + Thu 11 June 2026, 9:00am – 6:00pm**
+**Venue: Marina Bay Sands Expo and Convention Centre, Level 4**
+**Category: University**
+**Tasks: Challenge 1 (Reconnaissance) + Challenge 2A (3-Hula landings) + Challenge 2B (RoboMaster hunt via ArUco DICT_6X6_250 on robots; YOLOv11 is insurance only)**
+
+**Attendance: All 3 members (K, Z, A) attend BOTH Day 1 and Day 2 — org confirmed 2026-06-05 22:22 SGT.**
+
+> Read this aloud as you go. Tick every box. Do not skip. Print on paper as backup.
+
+---
+
+## The night before (Tue 9 June, 21:00 SGT call)
+
+- [ ] **Write `semifinal/swarm_controller.py`** by porting `huladola.py` to the controller pattern (--mock-all, --task 2a/2b flags, pads_file/search-pattern args). Verify `python semifinal/swarm_controller.py --mock-all` prints clean import + lifecycle BEFORE 21:00 call. If we run out of time, fall back to invoking `huladola.py` directly and treat lines that reference `semifinal/swarm_controller.py` as pointing at `huladola.py`. **(NOT YET BUILT — placeholder)**
+- [ ] **Create `semifinal/configs/arena_waypoints_safe.json` and `arena_waypoints_aggressive.json`**. Safe = `[[0,0,1.5],[2,0,1.5],[2,2,1.5],[0,2,1.5]]` (matches controller's DEFAULT_WAYPOINTS). Aggressive = wider/higher e.g. `[[0,0,2.0],[3,0,2.0],[3,3,2.0],[0,3,2.0]]`. Verify both parse as `list[[n_m, e_m, alt_m]]`. **(NOT YET BUILT — placeholder)**
+- [ ] Confirm USB×2 contents (run `ls semifinal/thumbdrive/` and verify all listed below):
+  - `controllers/` (semifinal/mapping_drone/ + semifinal/swarm_controller.py **(TODO: file does not exist yet — see Night-Before task above)** + tests)
+  - `models/best.pt` (K's qualifier model, in case of fallback)
+  - `models/best.onnx` (A's RoboMaster YOLOv11 export — INSURANCE only; ArUco DICT_6X6_250 is primary per org 2026-06-06)
+  - `docs/` (CHALLENGE_BREAKDOWN.md + FINALS_PLAN.md + learning_materials_and_others.md + offline pyhulax mirror + uwb_api_hula_swarm/UWB_API_Hula_swarm.pdf)
+  - `prototypes/` (the 3 prototype scripts as fallback verification)
+  - `uwb_api_hula_swarm/` (UWBParserThread.py + UWB_API_Hula_swarm.pdf — REQUIRED for Hula swarm UWB on C2 Terminal Windows side, pyserial @ 921600 baud; per org 2026-06-06 11:28)
+  - `setup.sh` (one-command laptop bootstrap)
+  - `runbook.md` (this file, printed too)
+- [ ] **TWO USB sticks**, identical contents
+- [ ] All 3 personal laptops (one per team member) charged to 100%. Org provides the C2 Terminal — personal laptops are dev / backup / artifact viewing.
+- [ ] 3 phones charged
+- [ ] **Photo IDs** (IC / EZ-Link / Passport) — all 3 of us
+- [ ] **Confirmation email** printed AND on phone
+- [ ] Print this runbook on paper (in case laptop dies)
+- [ ] Confirm slot booking screenshot pinned in team chat
+- [ ] Confirm transport plan (Somerset MRT → MBS, ~30-45 min)
+- [ ] Lock roles for the day (see Roles below)
+- [ ] Sleep 8 hours
+
+---
+
+## Wednesday morning (10 June, Day 1)
+
+- [ ] **06:00** wake by alarm. Light breakfast. Limit caffeine.
+- [ ] **06:30** final bag check (see Packing checklist in `FINALS_PLAN.md` §9)
+- [ ] **06:45** leave for MBS. Bag: laptop + mouse + charger + USB×2 + ID + printed email + paper runbook + smart casual + covered shoes.
+- [ ] **07:00** meet at Somerset MRT (Exit B) or whoever's coming via different route, locked at Tue night call.
+- [ ] **07:25** arrive Marina Bay Sands. Walk to Level 4.
+- [ ] **07:30** registration counter opens. Collect lanyard + swag. Show photo ID + confirmation email.
+- [ ] **07:45** find our team's table / spot. Plug in laptops + chargers.
+- [ ] **08:00** boot org-provided C2 Terminal (Windows host). Launch the Ubuntu 22.04 VM. Verify both are accessible.
+- [ ] **08:00** pre-event smoke test (no drones yet):
+  - On the C2 Terminal Windows side: import test for pyhulax + opencv + pyserial (`python -c "import serial, serial.tools.list_ports"`) + the new Hula-swarm UWB module (`python -c "import sys; sys.path.insert(0, 'semifinal/uwb_api_hula_swarm'); from UWBParserThread import UWBParserThread"`)
+  - On the C2 Terminal Ubuntu VM: import test for rknn-toolkit2 + pyrealsense2 + rclpy + mavsdk
+  - If any fail → tell judge / coordinator immediately
+
+---
+
+## 09:00 — Event starts (Day 1)
+
+### Step 1 (T+0 – 30 min): Code load
+- [ ] Plug in USB to C2 Terminal. Copy `controllers/` to a working dir.
+- [ ] On Windows side: if `swarm_controller.py` was finished overnight, run it to confirm clean import + lifecycle. **(NOT YET BUILT — placeholder.)** Otherwise: `huladola.py` is a reference example only — has no CLI mock mode. Fallback: smoke-test by importing the module to confirm Python env works, e.g. `python3 -c "import importlib.util, sys; sys.path.insert(0, 'semifinal'); import huladola"`.
+- [ ] On Ubuntu VM: `python3 -m mapping_drone.controller --mock-all` should run a fake mission end-to-end (≈45 s) and write `runs/run_*/STATUS.txt` + `top_down.png`.
+- [ ] If both pass, code is loaded. If either fails, see "If X breaks" cheatsheet at the bottom.
+
+### Step 2 (T+30 min – 60 min): Org briefing + drone slot allocation
+- [ ] Listen for org's full briefing on slot structure, scoring, and arena tour.
+- [ ] Note our drone testing slots (they will be announced).
+- [ ] Note the validity rule for ArUco markers (org said they'll publish it).
+  - As soon as we know: **update `semifinal/mapping_drone/validity.py`** — single line in `decide_landing_validity()`. Test by re-running mock mission.
+- [ ] **Map layout is NOT provided** (org clarified 2026-06-06 11:40). During the org's arena tour, A walks the perimeter, sketches obstacle positions, paces out approximate dimensions (L × W), and photographs the floor/markings.
+- [ ] A reports estimated arena bounds + obstacle list to K before Step 3; K updates `semifinal/configs/arena_waypoints_safe.json` (and `_aggressive.json`) so waypoints fit the real arena. Re-run a mock mission to confirm waypoints parse. **(configs/ dir NOT YET BUILT — see Night-Before task.)**
+
+### Step 3 (T+60 min – first slot): Pre-slot prep
+- [ ] Pre-flight smoke test, again, with the validity rule applied.
+- [ ] **Battery check**: confirm each drone's battery >70% on the Hula app (Windows side) / mapping-drone GCS (Ubuntu VM side) before takeoff. Below 50% → swap before launch.
+- [ ] Lock down which run config to use for the first attempt (see Run configurations below).
+- [ ] Print or screenshot the planned mission waypoints (in case the laptop slows / crashes mid-run).
+
+### Step 4: First scored slot — Challenge 1 (Reconnaissance)
+- [ ] From the C2 Terminal (Windows side), open a NoMachine/SSH session into the **mapping drone** (separate onboard Ubuntu 22.04 + ROS2 + RKNN NPU device — NOT the C2 Terminal's local VM).
+- [ ] `scp` (or USB-copy) the `mapping_drone/` controllers from the C2 Terminal onto the drone.
+- [ ] Connect to the mapping drone and run the controller **on the drone** over that session (`python3 -m mapping_drone.controller --real --waypoints semifinal/configs/arena_waypoints_safe.json`).
+- [ ] Watch `STATUS.txt` live (in another shell: `watch -n 1 cat runs/run_*/STATUS.txt | tail -25`).
+- [ ] K (Keyboard) reads out mapping-drone battery % at takeoff and every 60 s; Z (Screen-watcher) calls "ABORT — RTL" if any drone drops <20% mid-mission.
+- [ ] Screen-watcher (Z) calls out every new sighting + validity classification.
+- [ ] Once mapping drone returns + lands: copy `top_down.png` + `landing_pads.json` + bbox JPGs to USB.
+- [ ] **Show judge** the outputs: top-down map (arena scale), per-pad classification table, marker images.
+- [ ] Note any judge feedback for the afternoon run.
+
+### Step 5: First scored slot — Challenge 2A (3-Hula landings)
+- [ ] Pick 3 valid landing pads from Challenge 1 output (`landing_pads.json`).
+- [ ] Manually edit `semifinal/swarm_controller.py` config OR feed pad coordinates via CLI flag.
+- [ ] Run `swarm_controller.py --task 2a --pads pad1,pad2,pad3`.
+- [ ] Watch all 3 Hulas take off, navigate, land. Pads marked green / red post-land.
+- [ ] Show judge: landed-on-correct-pad evidence.
+
+### Step 6: First scored slot — Challenge 2B (RoboMaster hunt)
+- [ ] Org launches the 5 RoboMaster ground robots.
+- [ ] Run `swarm_controller.py --task 2b --search-pattern lawnmower-3way`.
+- [ ] Watch Hulas split arena, fly, detect RoboMasters via **ArUco markers (DICT_6X6_250) on the robots**, snapshot. **YOLOv11 (A's best.onnx) runs as backup only if ArUco misses** (per org 2026-06-06 05:00).
+- [ ] Each Hula returns + lands. Snapshots saved under `runs/run_*/snapshots/`.
+- [ ] Show judge: snapshot images with bbox overlays + count of unique robots detected.
+
+### Step 7: Lunch (12:00 – 13:00) — debrief
+- [ ] Quick standup. What worked? What sucked? What to change for afternoon?
+- [ ] **If mapping was bad:** retrain altitude / gimbal pitch. Tweak in `controller.py` constants.
+- [ ] **If detection rate was low:** A retrains model on snapshots taken during the morning run.
+- [ ] **If timing was slow:** review waypoint plan, raise altitude for faster scan.
+- [ ] Sync code changes to USB. Push to repo if connected.
+
+### Step 8 (13:00 – 17:30): Afternoon scored slots
+- [ ] Apply morning lessons. Repeat Steps 4 / 5 / 6.
+- [ ] Aim for higher score / faster mission.
+- [ ] If first attempt produced acceptable score: choose to either rerun (risky) or bank.
+- [ ] Save EVERY run's outputs to USB. Don't overwrite.
+
+### Step 9 (17:30 – 18:00): Pack up + artifacts
+- [ ] Copy latest run dir to USB: `latest=$(ls -td mapping_drone/runs/run_* | head -1); cp -r "$latest" /media/$USER/USB-LABEL/saved_runs_day1/`
+- [ ] Confirm artifact integrity: `python3 -c "import json,glob,os; d=sorted(glob.glob('mapping_drone/runs/run_*'))[-1]; j=json.load(open(os.path.join(d,'landing_pads.json'))); print('pads:', j.get('count', len(j.get('pads', []))))"`
+- [ ] After Day-1 Challenge 1, record the `run_<TS>` directory name in `STATUS.txt` and write it on the paper runbook hardcopy (needed for `--pads_file` in later steps; no `run_latest` symlink exists).
+- [ ] Save a backup of the C2 Terminal Ubuntu VM state if allowed (judge tells us).
+- [ ] Thank the judge.
+- [ ] Vacate by 18:00.
+
+### Day 1 evening (after 19:00)
+- [ ] Dinner debrief.
+- [ ] Update `progress.md` with day 1 results.
+- [ ] **DO NOT** introduce big code changes overnight. Small + safe only:
+  - Validity rule (if org clarifies)
+  - Mission waypoints (if arena layout demands re-plan)
+  - Detection confidence threshold (if false positives are killing us)
+- [ ] Pack laptop again. Sleep 8 hrs.
+
+---
+
+## Day 2 — Thu 11 June
+
+Apply Day 1 lessons. Same wake-up routine. No new registration (lanyard from Day 1 still valid). Arrive 08:00.
+
+> All 3 members attend Day 2 too (org confirmed 2026-06-05: best that all team members are there on both days).
+> Still bring photo ID + confirmation email in case of re-screening at the door.
+> No big code changes overnight — only the Day-1 evening short list (validity rule, waypoint tweaks, confidence threshold). If you broke something at 02:00, revert before 08:00.
+
+- [ ] All 3 members present (org: "best that all members of team can be there on both days").
+- [ ] **08:00** at venue. Pre-flight smoke (Step 3).
+- [ ] **09:00** event starts. Apply overnight changes.
+- [ ] Same Steps 4 / 5 / 6 / 7 / 8 / 9 as Day 1.
+- [ ] If Day 1 was clean → push for bonus. If Day 1 had issues → fix and re-run the safe configuration first.
+- [ ] **End of Day 2:** results announced. Whatever happens, write the retro in `progress.md` before leaving.
+
+---
+
+## Roles (lock at Tue 9 Jun 21:00 SGT call)
+
+| Role | Person | Responsibilities |
+|---|---|---|
+| **Keyboard** | K | drives terminal + NoMachine session, executes commands, swaps SD cards, monitors process health |
+| **Screen-watcher** | Z | watches `STATUS.txt` + log_broadcaster (Tailscale), calls out detections + classifications, holds runbook |
+| **Judge-talker / floor / arena scout** | A | answers judge questions, communicates with org coordinators, takes photos of arena/drones for our records, **sketches obstacles + estimates bounds for waypoint config (map not provided by org)** |
+
+Cross-coverage: each role has a deputy. If K is sick, Z takes keyboard; if Z is sick, A takes screen-watching; if A is sick, K talks to judge (with Z holding runbook).
+
+---
+
+## Run configurations (pick ONE per slot)
+
+> **NOTE:** `semifinal/swarm_controller.py` and `semifinal/configs/` are **NOT YET BUILT** as of T-4 days — see Night-Before tasks. If those configs/files do not exist by run time:
+> - `--waypoints` can be **omitted**; controller falls back to built-in `DEFAULT_WAYPOINTS = [(0,0,1.5),(2,0,1.5),(2,2,1.5),(0,2,1.5)]`.
+> - For Hula swarm commands, substitute `semifinal/huladola.py` (the existing prototype) for `semifinal/swarm_controller.py`.
+> - Replace `run_<TS>` with the actual timestamped run dir from Challenge 1 startup log.
+
+### Configuration A — Safe (default first attempt)
+```bash
+# Challenge 1
+python3 -m mapping_drone.controller --real --waypoints semifinal/configs/arena_waypoints_safe.json --gimbal-pitch -90 --max-flight-time-s 240
+
+# Challenge 2A
+python3 semifinal/swarm_controller.py --task 2a --pads_file mapping_drone/runs/run_<TS>/landing_pads.json --select_strategy first_three_valid  # fill <TS> from controller startup log
+
+# Challenge 2B
+python3 semifinal/swarm_controller.py --task 2b --search-pattern lawnmower-3way --confidence 0.5
+```
+
+### Configuration B — Aggressive (if Config A worked and we have time)
+```bash
+# Higher cruise altitude + wider waypoint spacing → faster mapping but lower resolution
+python3 -m mapping_drone.controller --real --waypoints semifinal/configs/arena_waypoints_aggressive.json --gimbal-pitch -75 --max-flight-time-s 180
+
+# More aggressive landing zone selection (closer pads). Replace ... with mapping_drone/runs/run_<TS>/landing_pads.json from Challenge 1.
+python3 semifinal/swarm_controller.py --task 2a --pads_file ... --select_strategy nearest_three
+
+# Lower confidence threshold → more candidate detections
+python3 semifinal/swarm_controller.py --task 2b --search-pattern lawnmower-3way --confidence 0.35
+```
+
+### Configuration C — Recovery (something broke, just get a baseline)
+```bash
+# Mock everything (no drone, no UWB, no Realsense) — safest baseline; just produces artifacts the judge can score on.
+python3 -m mapping_drone.controller --mock-all --waypoints semifinal/configs/arena_waypoints_safe.json
+
+# Single-drone fallback (only 1 of 3 Hulas working). Replace ... with mapping_drone/runs/run_<TS>/landing_pads.json from Challenge 1.
+python3 semifinal/swarm_controller.py --task 2a --single-drone --pads_file ...
+```
+
+---
+
+## Cheatsheet — what to do if X breaks
+
+| Problem | Fix |
+|---|---|
+| USB #1 won't mount | Try USB #2 (identical contents) |
+| Both USBs broken | Ask coordinator if there's wifi; if yes, `gh repo clone zhengboon/ArtificiallyUnintelligent`. Repo is private — Z must have done `gh auth login` on the C2 Terminal once it's available. |
+| `pyhulax` import fails on C2 Windows | Tell judge — they should have it installed. If not, run `pip install --user pyhulax` from our USB. |
+| `pyrealsense2` import fails on Ubuntu VM | Same as above. From USB: `pip install --user pyrealsense2` |
+| `rclpy` import fails (mapping drone Ubuntu) | ROS2 distro might not be activated. Try `source /opt/ros/humble/setup.bash` (or jazzy depending on org install). |
+| Mapping drone won't connect via MAVSDK | Check serial port (`ls /dev/ttyS*`). Possibly drone needs reboot — tell coordinator. |
+| Hula drones not discovered by Dola | Check WiFi network — drones + C2 must be on same network. Try `set_wifi_band(band_5ghz=True)` per Hula. |
+| `STATUS.txt` not updating | Check our controller wrote to the right `run_dir`. The path is logged at startup. |
+| Top-down map blank | Realsense intrinsics might be wrong. Check `controller.py --log-level DEBUG` for intrinsics print. |
+| ArUco detection returns nothing | Try `--aruco-dict 5X5_250` or `--aruco-dict 4X4_250` (valid names live in `mapping_drone/mapping.py` `_ARUCO_DICTS` — no `DICT_` prefix, no AprilTag support). Confirm marker is in FOV — lower altitude and verify `--gimbal-pitch -90`. Note: org uses `DICT_6X6_250` (the default), so a dict mismatch is unlikely unless the rules change. |
+| Wrong landing-pad validity classification | Edit `mapping_drone/validity.py` `decide_landing_validity()` — should be a one-liner. |
+| Hula collides mid-air during Challenge 2A | Stagger takeoffs by 5 s, assign different altitudes per drone (1.2 / 1.5 / 1.8 m) |
+| RoboMaster not detected | ArUco is primary: confirm `DICT_6X6_250`, check gimbal pitch (-90 default), lower altitude for marker FOV. If still nothing, A enables YOLO insurance path — lower confidence (0.5 → 0.35 → 0.25) and confirm A's `best.rknn` is loaded (logged at startup). |
+| Battery dies mid-flight | Built-in failsafe should auto-land. Ask coordinator for spare battery. **(Procedural prevention: see Step 3 / Step 4 battery checks added below.)** |
+| C2 Terminal Windows crashes | Reboot. Re-load our code from USB. State is in `runs/` which is persisted to disk. |
+| Mapping drone NoMachine session laggy | Edit code in our local editor → `scp` to drone → re-run via SSH (faster than IDE-in-NoMachine). |
+| Time running out | Show judge whatever artifacts exist. Even partial top-down + 1 valid pad classification counts. |
+
+---
+
+## Emergency contacts
+
+| Person | Phone | Notes |
+|---|---|---|
+| Z | ______ | runbook holder |
+| K | ______ | drone hardware lead |
+| A | ______ | judge-talker / ML retrain on the fly |
+| Discord | keep open on phone | for org last-minute announcements |
+| brainhackreg@dsta.gov.sg | (registration questions only) |
+| brainhack@pico.com | (registration questions only) |
+
+---
+
+## Score math (for verifying judges + estimating)
+
+| Item | Source | Points (TBC) |
+|---|---|---|
+| Challenge 1 — concept understanding | Org judges qualitatively | TBC |
+| Challenge 1 — mapping speed | Org judges quantitatively | TBC |
+| Challenge 1 — landing-pad classification accuracy | Per pad correctly classified | TBC |
+| Challenge 2A — successful landing on designated pad | Per Hula | TBC |
+| Challenge 2A — accuracy (centre offset) | Distance from pad centre | TBC |
+| Challenge 2A — time | Faster = more | TBC |
+| Challenge 2B — successful + accurate snapshots | Per RoboMaster | TBC |
+| Challenge 2B — time | Faster = more | TBC |
+
+Specific point values not in slides. Update this table when org publishes scoring.
+
+---
+
+## What we DON'T need to worry about
+
+- **Internet at venue** — repo is on USB; pyhulax docs mirrored offline; Discord on phone
+- **Bringing our own laptop hardware** — org provides C2 Terminal; personal laptops are dev/backup only
+
+## Hard constraints (DO worry about these)
+
+- **Wall collisions** — finals are PHYSICAL drones at MBS, so a wall hit = crashed Hula / mapping drone and likely run termination. The qualifier no-penalty rule was sim-only (Roboverse) and does NOT carry over. Treat walls as hard constraints: enforce ≥0.5 m clearance in waypoint files, cap Hula lateral velocity near walls, and verify Realsense-based obstacle distance before any commanded translation. Map layout will NOT be provided (org confirmed 2026-06-06), so clearance must be derived live from the Challenge 1 map.
+
+---
+
+*Runbook v1 — based on org slides (5 Jun 2026) + L1-L5 Discord material. Iterate as we learn more at venue.*
