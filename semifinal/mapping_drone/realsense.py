@@ -54,14 +54,26 @@ class RealsenseAdapter(Protocol):
 class RealsenseNode:
     """Real Intel Realsense (D430/D435/D450) source.
 
-    Streams depth + color at 640x480 @ 30 Hz, aligns depth to color so
-    pixel (u,v) in the colour image indexes the same world point in the
-    depth image.
+    Streams depth + color, preferring 640x480 @ 30 Hz but falling back
+    through a list of candidate profiles if the device/USB combo cannot
+    negotiate the preferred one. Aligns depth to color so pixel (u,v) in
+    the colour image indexes the same world point in the depth image.
     """
 
-    WIDTH = 640
-    HEIGHT = 480
-    FPS = 30
+    # (width, height, fps) — tried in order. First entry is the legacy default.
+    PROFILE_CANDIDATES: tuple[tuple[int, int, int], ...] = (
+        (640, 480, 30),
+        (848, 480, 30),
+        (1280, 720, 30),
+        (640, 480, 15),
+    )
+
+    # Back-compat: code that reads .WIDTH/.HEIGHT/.FPS before start() sees
+    # the preferred profile; after start() these are overwritten with the
+    # profile that actually negotiated.
+    WIDTH = PROFILE_CANDIDATES[0][0]
+    HEIGHT = PROFILE_CANDIDATES[0][1]
+    FPS = PROFILE_CANDIDATES[0][2]
 
     def __init__(self) -> None:
         if not _RS_AVAILABLE:
@@ -70,29 +82,50 @@ class RealsenseNode:
                 "laptop testing or install librealsense on the drone."
             )
         self._pipeline = rs.pipeline()
-        self._config = rs.config()
-        self._config.enable_stream(
-            rs.stream.depth, self.WIDTH, self.HEIGHT, rs.format.z16, self.FPS
-        )
-        self._config.enable_stream(
-            rs.stream.color, self.WIDTH, self.HEIGHT, rs.format.bgr8, self.FPS
-        )
         self._align = rs.align(rs.stream.color)
         self._profile: object | None = None
         self._intrinsics: object | None = None
         self._started = False
+        self.profile_used: tuple[int, int, int] | None = None
+
+    def _build_config(self, width: int, height: int, fps: int) -> "rs.config":
+        cfg = rs.config()
+        cfg.enable_stream(rs.stream.depth, width, height, rs.format.z16, fps)
+        cfg.enable_stream(rs.stream.color, width, height, rs.format.bgr8, fps)
+        return cfg
 
     def start(self) -> None:
         if self._started:
             return
-        self._profile = self._pipeline.start(self._config)
-        color_stream = self._profile.get_stream(rs.stream.color)
-        self._intrinsics = color_stream.as_video_stream_profile().get_intrinsics()
-        self._started = True
-        log.info(
-            "Realsense started: %dx%d @ %d Hz, fx=%.2f cx=%.2f",
-            self.WIDTH, self.HEIGHT, self.FPS,
-            self._intrinsics.fx, self._intrinsics.ppx,
+        errors: list[str] = []
+        for width, height, fps in self.PROFILE_CANDIDATES:
+            cfg = self._build_config(width, height, fps)
+            try:
+                self._profile = self._pipeline.start(cfg)
+            except Exception as exc:
+                errors.append(f"{width}x{height}@{fps}: {exc}")
+                log.warning(
+                    "Realsense profile %dx%d @ %d Hz failed: %s",
+                    width, height, fps, exc,
+                )
+                continue
+            color_stream = self._profile.get_stream(rs.stream.color)
+            self._intrinsics = color_stream.as_video_stream_profile().get_intrinsics()
+            self.WIDTH = width
+            self.HEIGHT = height
+            self.FPS = fps
+            self.profile_used = (width, height, fps)
+            self._started = True
+            log.info(
+                "Realsense started: %dx%d @ %d Hz, fx=%.2f cx=%.2f",
+                width, height, fps,
+                self._intrinsics.fx, self._intrinsics.ppx,
+            )
+            return
+        tried = ", ".join(f"{w}x{h}@{f}" for w, h, f in self.PROFILE_CANDIDATES)
+        raise RuntimeError(
+            f"Realsense pipeline.start() failed for all candidate profiles "
+            f"[{tried}]. Errors: {'; '.join(errors)}"
         )
 
     def stop(self) -> None:

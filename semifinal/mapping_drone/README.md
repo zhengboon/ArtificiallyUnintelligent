@@ -120,7 +120,8 @@ python -m mapping_drone.controller [flags]
 | `--gimbal-pitch DEG`  | Gimbal tilt; `-90` = straight down (DEFAULT, canonical down-facing mapping).  |
 | `--aruco-dict NAME`   | ArUco/AprilTag dictionary name (e.g. `6X6_250` [default], `4X4_50`, `APRILTAG_36h11`). Case-insensitive, optional `DICT_` prefix. See below. |
 | `--max-flight-time-s` | Hard cap before forced land. Default `240` s.                                 |
-| `--mavsdk-address ADDR` | MAVSDK system address. Default `serial:///dev/ttyS6:921600`.                |
+| `--mavsdk-address ADDR` | MAVSDK system address (single). Default `serial:///dev/ttyS6:921600`.       |
+| `--mavsdk-addresses A,B,C` | Comma-separated fallback list; tried in order with 5 s per-address connect timeout. Wins over `--mavsdk-address` when both present. See below. |
 | `--runs-dir DIR`      | Parent directory for `run_<ts>` output dirs. Default `mapping_drone/runs` (relative to CWD). |
 | `--log-level`         | `INFO` (default) or `DEBUG`.                                                  |
 
@@ -307,6 +308,55 @@ see `MAVSDK: connection failed` check `dmesg | tail` for the actual ttyS
 port and pass it via `--mavsdk-address` (e.g.
 `--mavsdk-address serial:///dev/ttyAMA0:921600`). The org PX4 build
 sometimes enumerates as `/dev/ttyAMA0` on a fresh boot.
+
+### `--mavsdk-addresses` (Day-1 fallback walker)
+
+When the PX4 enumerates as a different port between boots (we've observed
+`ttyS6` / `ttyACM0` / `ttyUSB0` all on the same hardware over the course
+of qualifier week) the single-address `--mavsdk-address` flag forces the
+operator to know which port is live before launching the controller.
+
+`--mavsdk-addresses` accepts a comma-separated list and tries each entry
+in order with a 5 s per-address connect timeout, logging every attempt
+and (on success) the line `connected via <addr>`. On all-failed it
+raises `RuntimeError`. When BOTH flags are present `--mavsdk-addresses`
+wins; the single-address path is preserved unchanged for back-compat
+with existing scripts and the operator runbook.
+
+The canonical Day-1 list is defined in `controller.py` as
+`DAY1_MAVSDK_TRY_ORDER`:
+
+```
+serial:///dev/ttyS6:921600
+serial:///dev/ttyACM0:115200
+serial:///dev/ttyUSB0:57600
+udp://:14540
+udp://:14550
+```
+
+Three serial ports (covering every PX4 enumeration we've seen) plus the
+two standard SITL UDP ports so a bench laptop running PX4 SITL or
+jMAVSim also connects with the same one-liner.
+
+Examples:
+
+```
+# Day-1 walk: try all 5 canonical addresses
+python -m mapping_drone.controller --real \
+    --mavsdk-addresses "serial:///dev/ttyS6:921600,serial:///dev/ttyACM0:115200,serial:///dev/ttyUSB0:57600,udp://:14540,udp://:14550"
+
+# Two-address cycle (USB serial OR SITL UDP)
+python -m mapping_drone.controller --real \
+    --mavsdk-addresses "serial:///dev/ttyACM0:115200,udp://:14540"
+
+# Original single-address behaviour (unchanged)
+python -m mapping_drone.controller --real \
+    --mavsdk-address serial:///dev/ttyAMA0:921600
+```
+
+Worst-case wall-clock when every address fails is ~25 s
+(5 entries x 5 s timeout) — fits inside the operator's patience budget
+between hitting Enter and deciding the PX4 is genuinely dead.
 
 **NoMachine lag at the venue.**  The C2 Terminal pushes frames over wifi.
 Run the controller in a `tmux` session so the flight survives a NoMachine

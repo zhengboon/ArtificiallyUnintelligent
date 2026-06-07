@@ -63,6 +63,66 @@ mkdir -p ~/brainhack && cp -r <SHARE>/brainhack/* ~/brainhack/
 cd ~/brainhack && bash setup.sh
 ```
 
+## VM <-> host file transfer (Day-1 plan)
+
+The C2 Terminal is Windows host + Ubuntu 22.04 VM. The USB stick goes into the Windows side; mapping-drone code has to reach the VM. The TODO on line 58 leaves this open — here are the three mechanisms ranked, with the recommendation to try A first and fall back to B if A is broken.
+
+### Option A — VirtualBox Shared Folders (or VMware Shared Folders) via Guest Additions (RECOMMENDED, primary)
+
+Mount a Windows host folder (e.g. `C:\brainhack`) into the VM at `/media/sf_brainhack` (VirtualBox) or `/mnt/hgfs/brainhack` (VMware). Requires Guest Additions / open-vm-tools installed in the VM and the operator's user added to the `vboxsf` group.
+
+- Pros: bidirectional, persistent across reboots, no per-file dance, no USB ownership fight, works for live edits during the day.
+- Cons: needs Guest Additions installed in the VM (org may or may not have done this); user must be in `vboxsf` group or mount won't be readable; symlinks across the boundary can misbehave.
+
+```bash
+# On the Ubuntu VM:
+ls /media/sf_brainhack    # VirtualBox default
+ls /mnt/hgfs/brainhack    # VMware default
+# If neither exists, fall back to Option B.
+mkdir -p ~/brainhack && cp -r /media/sf_brainhack/* ~/brainhack/
+```
+
+### Option B — USB passthrough (mount the USB stick directly into the VM) (BACKUP)
+
+In the VirtualBox/VMware menu, attach the USB device to the guest. The Windows host loses access while the VM owns it; the VM mounts it as `/media/<user>/<LABEL>` automatically.
+
+- Pros: zero config inside the VM (no Guest Additions needed), the USB stick we already prepared is the transfer medium.
+- Cons: one-direction in practice (USB is the source of truth, edits in the VM don't sync back to Windows); USB ownership conflicts with the host — Windows can't read it while VM has it attached; have to detach/reattach to swap directions.
+
+```bash
+# On the Ubuntu VM, after attaching the USB device from the VM menu:
+lsblk                                # find the device, e.g. /dev/sdb1
+ls /media/$USER/                     # auto-mounted label here
+cp -r /media/$USER/<LABEL>/* ~/brainhack/
+```
+
+### Option C — `python -m http.server` on host loopback, `curl` from VM
+
+On the Windows host, serve `C:\brainhack` over HTTP on a port the VM can reach (host-only network or NAT with port-forward). From the VM, `curl` or `wget` the files.
+
+- Pros: zero config in the VM beyond `curl`, works even if Guest Additions and USB passthrough are both broken.
+- Cons: one-direction only (host -> VM), no encryption, manual file-by-file or recursive wget mirror, breaks if the host firewall blocks the port or the VM network mode is wrong.
+
+```powershell
+# On the Windows host (PowerShell), from C:\brainhack:
+python -m http.server 8000 --bind 127.0.0.1
+# Note the host IP the VM sees (often 10.0.2.2 under NAT, or the host-only adapter IP).
+```
+
+```bash
+# On the Ubuntu VM:
+mkdir -p ~/brainhack && cd ~/brainhack
+wget -r -np -nH --cut-dirs=1 http://10.0.2.2:8000/
+```
+
+### Day-1 morning checklist
+
+Do this BEFORE running `setup.sh` so we don't burn registration-window time on transport.
+
+1. Verify shared folder mount — on the VM run `ls /media/sf_brainhack` (VirtualBox) or `ls /mnt/hgfs/brainhack` (VMware). If it lists files, Option A is live.
+2. Test 1 MB file copy — `dd if=/dev/urandom of=/tmp/test.bin bs=1M count=1 && cp /tmp/test.bin /media/sf_brainhack/test.bin && ls -la /media/sf_brainhack/test.bin` to confirm bidirectional write + size matches. Delete the test file after.
+3. Fall back to Option B if A is broken — attach the USB stick to the VM via the VirtualBox/VMware menu, confirm it auto-mounts under `/media/$USER/`, and proceed with `cp -r` from there. If B is also broken (e.g. USB controller not exposed to guest), drop to Option C as last resort.
+
 ## Disk hygiene at venue (if "no space left" or VM is >90% full)
 
 ```bash

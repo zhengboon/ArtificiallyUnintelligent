@@ -29,6 +29,10 @@ Drive folders:
 | `getDepthAndDetect.py` | Realsense + RKNN YOLO + per-detection 3D unprojection (same as `L4/getDepthAndDetect.py`) |
 | `testrknn_with_display.py` | Standalone single-image RKNN test with built-in `post_process_yolov8` decoder |
 
+### `Train_YOLO_Models_new.ipynb` — historical org reference (NOT used in finals)
+
+Included here as historical org reference only. YOLO training was killed by A on 2026-06-06 22:13 and is **not** part of the finals stack — the mapping drone now relies on ArUco-only detection via `mapping_drone/`. The notebook is kept in this folder because it belongs alongside the rest of the org's YOLO/RKNN material for archival continuity, not because anything in the runtime references it.
+
 ## Key confirmed parameters
 
 These are not assumptions anymore — they're in the org's code:

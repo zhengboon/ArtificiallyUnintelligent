@@ -81,6 +81,24 @@ DEFAULT_WAYPOINTS = [
     (0.0, 2.0, 1.5),
 ]
 
+# Day-1 MAVSDK address fallback order. Tried in sequence when the operator
+# passes --mavsdk-addresses (or its default). Covers the three serial ports
+# we've seen the PX4 enumerate as across boots (ttyS6 / ttyACM0 / ttyUSB0)
+# plus the standard SITL UDP ports so a bench laptop with jMAVSim or PX4 SITL
+# also connects without flags.
+DAY1_MAVSDK_TRY_ORDER = [
+    "serial:///dev/ttyS6:921600",
+    "serial:///dev/ttyACM0:115200",
+    "serial:///dev/ttyUSB0:57600",
+    "udp://:14540",
+    "udp://:14550",
+]
+
+# Per-address connect timeout used by the fallback walker. Short enough that
+# cycling through all 5 entries on a totally dead bus still completes inside
+# the operator's patience budget (~25 s worst case).
+MAVSDK_CONNECT_TIMEOUT_S = 5.0
+
 
 # ============================================================
 # Mock MAVSDK
@@ -969,35 +987,143 @@ def _build_realsense(args: argparse.Namespace) -> RealsenseAdapter:
     return RealsenseNode()
 
 
+def _resolve_mavsdk_addresses(args: argparse.Namespace) -> list[str]:
+    """Build the ordered address list the connector should try.
+
+    --mavsdk-addresses (comma-separated list) wins over --mavsdk-address when
+    BOTH are present. When neither is provided, falls back to the single
+    --mavsdk-address default (preserving the back-compat single-address
+    behaviour for existing scripts and the operator runbook).
+    """
+    raw = getattr(args, "mavsdk_addresses", None)
+    if raw:
+        addrs = [a.strip() for a in str(raw).split(",") if a.strip()]
+        if addrs:
+            return addrs
+    return [args.mavsdk_address]
+
+
+async def _connect_with_fallback(
+    drone: Any,
+    addresses: list[str],
+    per_addr_timeout_s: float,
+) -> str:
+    """Try each address in order with a per-attempt connect timeout.
+
+    Returns the address that successfully connected. Raises RuntimeError if
+    every address failed (either by raising or by failing to report
+    is_connected within the timeout).
+    """
+    last_exc: Exception | None = None
+    for addr in addresses:
+        logger.info("MAVSDK connect attempt: %s (timeout %.1fs)", addr, per_addr_timeout_s)
+        try:
+            await asyncio.wait_for(
+                drone.connect(system_address=addr), timeout=per_addr_timeout_s
+            )
+        except asyncio.TimeoutError:
+            logger.warning("MAVSDK connect timed out for %s", addr)
+            continue
+        except Exception as exc:
+            logger.warning("MAVSDK connect raised for %s: %s", addr, exc)
+            last_exc = exc
+            continue
+
+        # connect() returned — now wait (also bounded) for is_connected.
+        try:
+            async def _await_connected() -> None:
+                async for cs in drone.core.connection_state():
+                    if cs.is_connected:
+                        return
+            await asyncio.wait_for(_await_connected(), timeout=per_addr_timeout_s)
+        except asyncio.TimeoutError:
+            logger.warning("MAVSDK is_connected timed out for %s", addr)
+            continue
+        except Exception as exc:
+            logger.warning("MAVSDK connection_state raised for %s: %s", addr, exc)
+            last_exc = exc
+            continue
+
+        logger.info("connected via %s", addr)
+        return addr
+
+    if last_exc is not None:
+        raise RuntimeError(
+            f"MAVSDK failed to connect via any of {addresses}: last error {last_exc!r}"
+        )
+    raise RuntimeError(f"MAVSDK failed to connect via any of {addresses}")
+
+
 async def _build_drone(args: argparse.Namespace) -> tuple[Any, Any]:
+    addresses = _resolve_mavsdk_addresses(args)
     if args.mock_mavsdk or args.mock_all:
         drone = MockMavsdk()
-        await drone.connect(args.mavsdk_address)
+        # In mock mode we still honour the fallback list by walking it once
+        # for the log trail, but every mock connect succeeds — so we just
+        # connect to the first and log which one "won".
+        first = addresses[0]
+        await drone.connect(first)
+        logger.info("connected via %s", first)
         return drone, _MockVelocityNedYaw
     System, VelocityNedYaw = _load_real_mavsdk()
     drone = System()
-    logger.info("connecting MAVSDK to %s", args.mavsdk_address)
-    await drone.connect(system_address=args.mavsdk_address)
-    # wait for connection
-    async for cs in drone.core.connection_state():
-        if cs.is_connected:
-            logger.info("MAVSDK connected")
-            break
+    if len(addresses) == 1:
+        # Preserve original single-address behaviour exactly: one connect
+        # call, then drain connection_state until is_connected (no timeout).
+        # This keeps back-compat for scripts that rely on the old
+        # --mavsdk-address path and want to block indefinitely on a flaky bus.
+        addr = addresses[0]
+        logger.info("connecting MAVSDK to %s", addr)
+        await drone.connect(system_address=addr)
+        async for cs in drone.core.connection_state():
+            if cs.is_connected:
+                logger.info("MAVSDK connected")
+                logger.info("connected via %s", addr)
+                break
+        return drone, VelocityNedYaw
+    # Multi-address path: try each with a bounded timeout.
+    await _connect_with_fallback(drone, addresses, MAVSDK_CONNECT_TIMEOUT_S)
     return drone, VelocityNedYaw
 
 
-def _load_waypoints(path: str | None) -> list[tuple[float, float, float]]:
-    if not path:
-        return list(DEFAULT_WAYPOINTS)
-    data = json.loads(Path(path).read_text())
+def _parse_waypoints_json(data: Any, source_label: str) -> list[tuple[float, float, float]]:
+    """Validate a decoded list-of-3-tuples payload from ``source_label``."""
+    if not isinstance(data, list):
+        raise ValueError(
+            f"{source_label}: expected a JSON list, got {type(data).__name__}"
+        )
     out: list[tuple[float, float, float]] = []
     for row in data:
         if len(row) != 3:
-            raise ValueError(f"waypoint must be [n, e, alt], got {row}")
+            raise ValueError(f"{source_label}: waypoint must be [n, e, alt], got {row}")
         out.append((float(row[0]), float(row[1]), float(row[2])))
     if not out:
-        raise ValueError("waypoints file is empty")
+        raise ValueError(f"{source_label}: waypoints list is empty")
     return out
+
+
+def _load_waypoints(
+    inline_path: str | None,
+    from_json_path: str | None = None,
+) -> tuple[list[tuple[float, float, float]], str]:
+    """Resolve the active waypoint list and report the source.
+
+    Fallback chain:
+        --waypoints (inline_path) > --waypoints-from-json (from_json_path)
+        > DEFAULT_WAYPOINTS
+
+    Returns ``(waypoints, source_label)`` so the caller can log which source
+    actually supplied the list.
+    """
+    if inline_path:
+        data = json.loads(Path(inline_path).read_text())
+        label = f"--waypoints {inline_path}"
+        return _parse_waypoints_json(data, label), label
+    if from_json_path:
+        data = json.loads(Path(from_json_path).read_text())
+        label = f"--waypoints-from-json {from_json_path}"
+        return _parse_waypoints_json(data, label), label
+    return list(DEFAULT_WAYPOINTS), "DEFAULT_WAYPOINTS"
 
 
 def _setup_logging(level: str, run_dir: Path) -> None:
@@ -1040,7 +1166,10 @@ async def run(args: argparse.Namespace) -> tuple[int, RunWriter | None, "Mapping
     # waypoints JSON raises JSONDecodeError / FileNotFoundError / ValueError;
     # doing this early means we fail fast without leaking the UWB rclpy spin
     # thread, Realsense pipeline, or MAVSDK connection.
-    waypoints = _load_waypoints(args.waypoints)
+    waypoints, waypoints_source = _load_waypoints(
+        args.waypoints, getattr(args, "waypoints_from_json", None)
+    )
+    logger.info("waypoints source: %s", waypoints_source)
     logger.info("waypoints: %s", waypoints)
 
     uwb = _build_uwb(args)
@@ -1170,9 +1299,28 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--mavsdk-address",
         default="serial:///dev/ttyS6:921600",
-        help="MAVSDK system address",
+        help="MAVSDK system address (single). Used when --mavsdk-addresses "
+             "is not supplied. Preserves original blocking-connect semantics.",
+    )
+    p.add_argument(
+        "--mavsdk-addresses",
+        default=None,
+        help="Comma-separated list of MAVSDK system addresses to try in order "
+             "with a %.1fs per-address connect timeout. Wins over "
+             "--mavsdk-address when both are present. Logs each attempt and "
+             "'connected via <addr>' on success. Example: "
+             "'serial:///dev/ttyS6:921600,serial:///dev/ttyACM0:115200,"
+             "udp://:14540'. See DAY1_MAVSDK_TRY_ORDER for the canonical "
+             "Day-1 list." % MAVSDK_CONNECT_TIMEOUT_S,
     )
     p.add_argument("--waypoints", default=None, help="JSON file: list of [n_m, e_m, alt_m]")
+    p.add_argument(
+        "--waypoints-from-json",
+        default=None,
+        help="JSON file: list of [n_m, e_m, alt_m]. Used only when --waypoints "
+             "is not supplied; ignored otherwise. Fallback chain: --waypoints "
+             "> --waypoints-from-json > DEFAULT_WAYPOINTS.",
+    )
     p.add_argument(
         "--gimbal-pitch",
         type=float,
