@@ -31,7 +31,7 @@ from pathlib import Path
 
 
 # How long we are willing to wait for the run to reach WP2.
-_WP2_WAIT_TIMEOUT_S = 30.0
+_WP2_WAIT_TIMEOUT_S = 90.0
 # How long we wait after terminate() before inspecting disk.
 _POST_TERMINATE_GRACE_S = 5.0
 

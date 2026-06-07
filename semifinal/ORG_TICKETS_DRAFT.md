@@ -105,7 +105,13 @@ See the **Filing Recommendation** at the bottom for the suggested firing order a
 > **Challenge:** University Finals — Drone Autonomy
 > **Context:** Planning waypoints / safe envelopes against the UWB position feed exposed by `UWBParserThread.get_tag_position(tag_id)` (org release 2026-06-06 11:28).
 >
-> We can read tag positions fine, but we have no information about the coordinate frame they're returned in. Specifically, we don't know: (1) how many anchors are deployed and where they sit in arena coordinates, (2) the arena's usable X-Y dimensi
+> We can read tag positions fine, but we have no information about the coordinate frame they're returned in. Specifically, we don't know: (1) how many anchors are deployed and where they sit in arena coordinates, (2) the arena's usable X-Y dimensions in metres, (3) where the UWB origin (0, 0) is located relative to the arena (corner? centre? takeoff pad?), (4) the axis convention of the published position (ENU, NED, or arena-local), and (5) whether there are known dead zones or degraded-accuracy regions we should design around.
+>
+> ***Ask:** could the org share the arena UWB anchor layout and dimensions ahead of time, or confirm that we are expected to discover this on-site? If it's the latter, would the org be willing to include a simple ASCII or PNG layout sketch in the briefing slides so teams can pre-plan waypoint extents without trial-and-error during setup?*
+>
+> Why we're asking: without the frame definition and arena bounds, any waypoint mission we write now is effectively a guess, and we'd rather not burn setup-day flight time calibrating coordinates that the org already knows.
+>
+> — ArtificiallyUnintelligent (University)
 
 ---
 

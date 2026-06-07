@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Optional
 
 from .mapping import ArucoDetector, ArucoSighting, OccupancyGrid, camera_to_world
 from .realsense import (
@@ -336,8 +336,12 @@ class MappingController:
         self.sightings: list[ArucoSighting] = []
         # Cache: aruco_id -> validity, decided at FIRST sighting. Ensures
         # STATUS.txt and landing_pads.json never disagree even if the rule
-        # behaviour changes (e.g., env var flipped mid-run).
-        self._validity_cache: dict[int, bool] = {}
+        # behaviour changes (e.g., env var flipped mid-run). Value is None
+        # when the active rule (e.g. 'lookup' with an unknown id) cannot
+        # classify the marker — callers treat None and False the same when
+        # rendering, but we preserve the distinction here so downstream code
+        # can tell "unknown" apart from "explicitly invalid".
+        self._validity_cache: dict[int, Optional[bool]] = {}
         self._sighting_seq = 0
         self._stop_event = asyncio.Event()
         self._telem_task: asyncio.Task | None = None
@@ -348,13 +352,19 @@ class MappingController:
         self._is_mock_drone = isinstance(drone, MockMavsdk)
 
     # ----- validity helper -----
-    def _validity_for(self, aruco_id: int) -> bool:
-        """Return cached validity, populating on first sighting."""
-        cached = self._validity_cache.get(int(aruco_id))
-        if cached is not None:
-            return cached
-        decided = bool(decide_landing_validity(int(aruco_id)))
-        self._validity_cache[int(aruco_id)] = decided
+    def _validity_for(self, aruco_id: int) -> Optional[bool]:
+        """Return cached validity, populating on first sighting.
+
+        Returns True/False when the active rule can classify the id, or
+        None when the rule (currently only ``lookup``) doesn't know the id.
+        Do NOT wrap in bool() — that would silently collapse the
+        "unknown" outcome into "invalid" and hide lookup-table gaps.
+        """
+        aid = int(aruco_id)
+        if aid in self._validity_cache:
+            return self._validity_cache[aid]
+        decided = decide_landing_validity(aid)
+        self._validity_cache[aid] = decided
         return decided
 
     # ----- telemetry pump -----
@@ -1126,7 +1136,14 @@ def _load_waypoints(
     return list(DEFAULT_WAYPOINTS), "DEFAULT_WAYPOINTS"
 
 
-def _setup_logging(level: str, run_dir: Path) -> None:
+def _setup_logging(level: str, run_dir: Path) -> logging.FileHandler:
+    """Configure root logger and attach a FileHandler at ``run_dir/log.txt``.
+
+    Returns the attached FileHandler so the caller can close + remove it in a
+    finally block. Without that, Windows keeps the file open and any later
+    attempt to tear down the run dir (e.g. tempfile.TemporaryDirectory cleanup
+    in smoke tests) fails with PermissionError [WinError 32].
+    """
     lvl = getattr(logging, level.upper(), logging.INFO)
     root = logging.getLogger()
     root.setLevel(lvl)
@@ -1139,6 +1156,7 @@ def _setup_logging(level: str, run_dir: Path) -> None:
     fh = logging.FileHandler(run_dir / "log.txt")
     fh.setFormatter(fmt)
     root.addHandler(fh)
+    return fh
 
 
 # ============================================================
@@ -1154,138 +1172,155 @@ async def run(args: argparse.Namespace) -> tuple[int, RunWriter | None, "Mapping
     base = Path(args.runs_dir).resolve()
     run_dir = base / f"run_{run_ts}"
     run_dir.mkdir(parents=True, exist_ok=True)
-    _setup_logging(args.log_level, run_dir)
-    logger.info("run dir: %s", run_dir)
-    logger.info("args: %s", vars(args))
-    logger.info("ArUco dictionary: %s", getattr(args, "aruco_dict", "6X6_250"))
-    logger.info("validity rule: %s", describe_rule())
-
-    run_writer = RunWriter(run_dir, run_ts)
-
-    # Load waypoints BEFORE acquiring any hardware. A malformed/empty
-    # waypoints JSON raises JSONDecodeError / FileNotFoundError / ValueError;
-    # doing this early means we fail fast without leaking the UWB rclpy spin
-    # thread, Realsense pipeline, or MAVSDK connection.
-    waypoints, waypoints_source = _load_waypoints(
-        args.waypoints, getattr(args, "waypoints_from_json", None)
-    )
-    logger.info("waypoints source: %s", waypoints_source)
-    logger.info("waypoints: %s", waypoints)
-
-    uwb = _build_uwb(args)
-    realsense = _build_realsense(args)
-
+    log_handler = _setup_logging(args.log_level, run_dir)
+    # Wrap the entire run body so the FileHandler is always closed +
+    # removed, even on early returns or unhandled exceptions. Leaving it
+    # open is fine on POSIX but Windows pins the file and any later
+    # rmtree() of run_dir (notably tempfile.TemporaryDirectory in the
+    # smoke tests) raises PermissionError [WinError 32].
     try:
-        uwb.start()
-    except Exception as exc:
-        logger.error("uwb start failed: %s", exc)
-        return 2, run_writer, None
-    try:
-        realsense.start()
-    except Exception as exc:
-        logger.error("realsense start failed: %s", exc)
-        uwb.stop()
-        return 2, run_writer, None
+        logger.info("run dir: %s", run_dir)
+        logger.info("args: %s", vars(args))
+        logger.info("ArUco dictionary: %s", getattr(args, "aruco_dict", "6X6_250"))
+        logger.info("validity rule: %s", describe_rule())
 
-    try:
-        drone, velocity_cls = await _build_drone(args)
-    except Exception as exc:
-        logger.error("drone connect failed: %s", exc)
-        uwb.stop()
-        realsense.stop()
-        return 2, run_writer, None
+        run_writer = RunWriter(run_dir, run_ts)
 
-    controller = MappingController(args, uwb, realsense, drone, run_writer, velocity_cls)
-
-    # Ctrl-C handling
-    loop = asyncio.get_running_loop()
-    stop_requested = asyncio.Event()
-
-    def _on_signal() -> None:
-        logger.warning("signal received, requesting stop")
-        controller.state.stop_requested = True
-        try:
-            loop.call_soon_threadsafe(stop_requested.set)
-        except RuntimeError:
-            stop_requested.set()
-        controller._stop_event.set()
-
-    # Unix: prefer add_signal_handler. Windows: fall back to signal.signal()
-    # for SIGINT so Ctrl-C still routes through our stop path. Note that
-    # signal.signal callbacks run in the main thread but we keep the work
-    # tiny (just set an asyncio Event via call_soon_threadsafe).
-    signal_installed = False
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, _on_signal)
-            signal_installed = True
-        except (NotImplementedError, RuntimeError):
-            pass
-    if not signal_installed and threading.current_thread() is threading.main_thread():
-        def _sig_fallback(_signum, _frame):  # type: ignore[no-untyped-def]
-            _on_signal()
-        try:
-            signal.signal(signal.SIGINT, _sig_fallback)
-        except (ValueError, OSError):
-            logger.debug("signal.signal(SIGINT) fallback failed", exc_info=True)
-
-    aborted = False
-    try:
-        mission_task = asyncio.create_task(controller.run_mission(waypoints))
-        stop_task = asyncio.create_task(stop_requested.wait())
-        done, pending = await asyncio.wait(
-            {mission_task, stop_task}, return_when=asyncio.FIRST_COMPLETED
+        # Load waypoints BEFORE acquiring any hardware. A malformed/empty
+        # waypoints JSON raises JSONDecodeError / FileNotFoundError / ValueError;
+        # doing this early means we fail fast without leaking the UWB rclpy spin
+        # thread, Realsense pipeline, or MAVSDK connection.
+        waypoints, waypoints_source = _load_waypoints(
+            args.waypoints, getattr(args, "waypoints_from_json", None)
         )
-        if stop_task in done and not mission_task.done():
-            logger.warning("user-requested abort — emergency landing")
-            aborted = True
-            controller.state.aborted = True
-            controller.state.abort_reason = "user_interrupt"
-            mission_task.cancel()
+        logger.info("waypoints source: %s", waypoints_source)
+        logger.info("waypoints: %s", waypoints)
+
+        uwb = _build_uwb(args)
+        realsense = _build_realsense(args)
+
+        try:
+            uwb.start()
+        except Exception as exc:
+            logger.error("uwb start failed: %s", exc)
+            return 2, run_writer, None
+        try:
+            realsense.start()
+        except Exception as exc:
+            logger.error("realsense start failed: %s", exc)
+            uwb.stop()
+            return 2, run_writer, None
+
+        try:
+            drone, velocity_cls = await _build_drone(args)
+        except Exception as exc:
+            logger.error("drone connect failed: %s", exc)
+            uwb.stop()
+            realsense.stop()
+            return 2, run_writer, None
+
+        controller = MappingController(args, uwb, realsense, drone, run_writer, velocity_cls)
+
+        # Ctrl-C handling
+        loop = asyncio.get_running_loop()
+        stop_requested = asyncio.Event()
+
+        def _on_signal() -> None:
+            logger.warning("signal received, requesting stop")
+            controller.state.stop_requested = True
             try:
-                await mission_task
-            except (asyncio.CancelledError, Exception):
+                loop.call_soon_threadsafe(stop_requested.set)
+            except RuntimeError:
+                stop_requested.set()
+            controller._stop_event.set()
+
+        # Unix: prefer add_signal_handler. Windows: fall back to signal.signal()
+        # for SIGINT so Ctrl-C still routes through our stop path. Note that
+        # signal.signal callbacks run in the main thread but we keep the work
+        # tiny (just set an asyncio Event via call_soon_threadsafe).
+        signal_installed = False
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, _on_signal)
+                signal_installed = True
+            except (NotImplementedError, RuntimeError):
                 pass
+        if not signal_installed and threading.current_thread() is threading.main_thread():
+            def _sig_fallback(_signum, _frame):  # type: ignore[no-untyped-def]
+                _on_signal()
             try:
-                await controller.emergency_land()
-            except Exception as exc:
-                logger.error("emergency land failed: %s", exc)
-        else:
-            stop_task.cancel()
-            try:
-                await mission_task
-            except Exception as exc:
-                logger.exception("mission failed: %s", exc)
+                signal.signal(signal.SIGINT, _sig_fallback)
+            except (ValueError, OSError):
+                logger.debug("signal.signal(SIGINT) fallback failed", exc_info=True)
+
+        aborted = False
+        try:
+            mission_task = asyncio.create_task(controller.run_mission(waypoints))
+            stop_task = asyncio.create_task(stop_requested.wait())
+            done, pending = await asyncio.wait(
+                {mission_task, stop_task}, return_when=asyncio.FIRST_COMPLETED
+            )
+            if stop_task in done and not mission_task.done():
+                logger.warning("user-requested abort — emergency landing")
                 aborted = True
+                controller.state.aborted = True
+                controller.state.abort_reason = "user_interrupt"
+                mission_task.cancel()
+                try:
+                    await mission_task
+                except (asyncio.CancelledError, Exception):
+                    pass
                 try:
                     await controller.emergency_land()
-                except Exception:
-                    pass
-    finally:
-        total_s = (
-            time.monotonic() - controller.state.started_at
-            if controller.state.started_at > 0
-            else 0.0
-        )
-        try:
-            run_writer.finalise(
-                controller.grid,
-                total_s,
-                aborted or controller.state.aborted,
+                except Exception as exc:
+                    logger.error("emergency land failed: %s", exc)
+            else:
+                stop_task.cancel()
+                try:
+                    await mission_task
+                except Exception as exc:
+                    logger.exception("mission failed: %s", exc)
+                    aborted = True
+                    try:
+                        await controller.emergency_land()
+                    except Exception:
+                        pass
+        finally:
+            total_s = (
+                time.monotonic() - controller.state.started_at
+                if controller.state.started_at > 0
+                else 0.0
             )
-        except Exception as exc:
-            logger.error("finalise failed: %s", exc)
-        try:
-            realsense.stop()
-        except Exception:
-            pass
-        try:
-            uwb.stop()
-        except Exception:
-            pass
+            try:
+                run_writer.finalise(
+                    controller.grid,
+                    total_s,
+                    aborted or controller.state.aborted,
+                )
+            except Exception as exc:
+                logger.error("finalise failed: %s", exc)
+            try:
+                realsense.stop()
+            except Exception:
+                pass
+            try:
+                uwb.stop()
+            except Exception:
+                pass
 
-    exit_code = 1 if (aborted or controller.state.aborted) else 0
-    return exit_code, run_writer, controller
+        exit_code = 1 if (aborted or controller.state.aborted) else 0
+        return exit_code, run_writer, controller
+    finally:
+        # Release the FileHandler so Windows lets go of log.txt. Catch all
+        # errors so a logging-teardown failure never masks the real result.
+        try:
+            log_handler.close()
+        except Exception:
+            pass
+        try:
+            logging.getLogger().removeHandler(log_handler)
+        except Exception:
+            pass
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
