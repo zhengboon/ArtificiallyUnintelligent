@@ -1,0 +1,5 @@
+{
+  "valid_ids": [3, 7, 12, 19, 24],
+  "invalid_ids": [],
+  "note": "Example whitelist - Day-1 operator REPLACES this list with org's actual valid set. Empty invalid_ids means anything not in valid_ids is unknown (not classified)."
+}

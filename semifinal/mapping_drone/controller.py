@@ -105,6 +105,12 @@ DAY1_MAVSDK_TRY_ORDER = [
 # the operator's patience budget (~25 s worst case).
 MAVSDK_CONNECT_TIMEOUT_S = 5.0
 
+# Trip the safety-abort path after this many CONSECUTIVE set_velocity_ned()
+# failures. A handful of transient raises (mock or real PX4 backpressure) is
+# fine and shouldn't kill a clean run; a sustained streak almost always means
+# offboard has dropped and continuing to push setpoints is unsafe.
+CONSECUTIVE_VELOCITY_FAIL_ABORT_THRESHOLD = 5
+
 
 # ============================================================
 # Mock MAVSDK
@@ -313,6 +319,10 @@ class FlightState:
     abort_reason: str = ""
     stop_requested: bool = False
     position_history: list[tuple[float, float, float, float]] = field(default_factory=list)
+    # Counter incremented on every consecutive set_velocity_ned() raise; reset
+    # to zero on the next successful call. When it hits
+    # CONSECUTIVE_VELOCITY_FAIL_ABORT_THRESHOLD we trip the safety-abort path.
+    consecutive_velocity_failures: int = 0
 
 
 # ============================================================
@@ -550,7 +560,29 @@ class MappingController:
                 self.VelocityNedYaw(vn, ve, vd, yaw_deg)
             )
         except Exception as exc:
-            logger.warning("set_velocity_ned failed: %s", exc)
+            self.state.consecutive_velocity_failures += 1
+            logger.warning(
+                "set_velocity_ned failed (%d/%d consecutive): %s",
+                self.state.consecutive_velocity_failures,
+                CONSECUTIVE_VELOCITY_FAIL_ABORT_THRESHOLD,
+                exc,
+            )
+            if (
+                self.state.consecutive_velocity_failures
+                >= CONSECUTIVE_VELOCITY_FAIL_ABORT_THRESHOLD
+                and not self.state.aborted
+            ):
+                self.state.aborted = True
+                self.state.abort_reason = (
+                    f"set_velocity_ned repeated failures "
+                    f"(N={CONSECUTIVE_VELOCITY_FAIL_ABORT_THRESHOLD})"
+                )
+                logger.error(
+                    "tripping safety-abort: %s", self.state.abort_reason
+                )
+            return
+        # success path — clear the streak
+        self.state.consecutive_velocity_failures = 0
 
     async def _offboard_prewarm(self) -> None:
         logger.info("offboard pre-warm (20x zero velocity)")
@@ -1166,6 +1198,84 @@ def _setup_logging(level: str, run_dir: Path) -> logging.FileHandler:
 
 
 # ============================================================
+# Dry-run health probe
+# ============================================================
+async def _dry_run(args: argparse.Namespace) -> int:
+    """Bring up MAVSDK + UWB + Realsense, log per-subsystem health, tear down.
+
+    Honours --mock-* flags so a bench laptop with no hardware can still smoke
+    the wiring via ``--dry-run --mock-all``. Never arms, never moves the drone.
+    Returns 0 if all three subsystems came up cleanly, 2 if any failed.
+    """
+    _configure_stream_logging(args.log_level)
+    failures: list[str] = []
+
+    # MAVSDK. We don't keep the System() handle — MAVSDK exposes no explicit
+    # close on the object we use, so successfully reaching this point is the
+    # health signal we care about.
+    try:
+        await _build_drone(args)
+        logger.info("DRY-RUN: MAVSDK OK")
+    except Exception as exc:
+        logger.error("DRY-RUN: MAVSDK FAILED: %s", exc)
+        failures.append("mavsdk")
+
+    # UWB
+    uwb: UwbAdapter | None = None
+    try:
+        uwb = _build_uwb(args)
+        uwb.start()
+        logger.info("DRY-RUN: UWB OK")
+    except Exception as exc:
+        logger.error("DRY-RUN: UWB FAILED: %s", exc)
+        failures.append("uwb")
+        uwb = None
+
+    # Realsense
+    realsense: RealsenseAdapter | None = None
+    try:
+        realsense = _build_realsense(args)
+        realsense.start()
+        logger.info("DRY-RUN: Realsense OK")
+    except Exception as exc:
+        logger.error("DRY-RUN: Realsense FAILED: %s", exc)
+        failures.append("realsense")
+        realsense = None
+
+    # Teardown (best-effort). MAVSDK has no explicit close on the System
+    # object we use; UWB + Realsense expose stop().
+    if realsense is not None:
+        try:
+            realsense.stop()
+        except Exception:
+            logger.debug("DRY-RUN: realsense.stop() raised", exc_info=True)
+    if uwb is not None:
+        try:
+            uwb.stop()
+        except Exception:
+            logger.debug("DRY-RUN: uwb.stop() raised", exc_info=True)
+
+    if failures:
+        logger.error("DRY-RUN: incomplete — failures: %s", ",".join(failures))
+        return 2
+    logger.info("DRY-RUN: all subsystems OK")
+    return 0
+
+
+def _configure_stream_logging(level: str) -> None:
+    """Stream-only logging for the dry-run path (no run_<ts>/log.txt)."""
+    lvl = getattr(logging, level.upper(), logging.INFO)
+    root = logging.getLogger()
+    root.setLevel(lvl)
+    # Avoid stacking handlers if dry-run is invoked repeatedly in-process.
+    if not any(isinstance(h, logging.StreamHandler) for h in root.handlers):
+        fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setFormatter(fmt)
+        root.addHandler(sh)
+
+
+# ============================================================
 # Main entry points
 # ============================================================
 async def run(args: argparse.Namespace) -> tuple[int, RunWriter | None, "MappingController | None"]:
@@ -1295,6 +1405,14 @@ async def run(args: argparse.Namespace) -> tuple[int, RunWriter | None, "Mapping
                 except Exception as exc:
                     logger.exception("mission failed: %s", exc)
                     aborted = True
+                    # Record a meaningful reason if the mission task raised
+                    # before any deeper abort path got a chance to set one.
+                    if not controller.state.abort_reason:
+                        controller.state.abort_reason = (
+                            f"mission task exception: {exc!r}"
+                        )
+                    if not controller.state.aborted:
+                        controller.state.aborted = True
                     try:
                         await controller.emergency_land()
                     except Exception:
@@ -1310,6 +1428,7 @@ async def run(args: argparse.Namespace) -> tuple[int, RunWriter | None, "Mapping
                     controller.grid,
                     total_s,
                     aborted or controller.state.aborted,
+                    abort_reason=controller.state.abort_reason or None,
                 )
             except Exception as exc:
                 logger.error("finalise failed: %s", exc)
@@ -1389,6 +1508,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
              "operators running from the repo root can override with --runs-dir)",
     )
     p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Bring up MAVSDK, UWB, and Realsense, log per-subsystem health, "
+             "then tear down without arming. Respects --mock-* flags. Exit 0 "
+             "if all 3 subsystems came up, 2 if any failed.",
+    )
     args = p.parse_args(argv)
     if not (args.real or args.mock_all or args.mock_uwb or args.mock_mavsdk or args.mock_realsense):
         args.real = True
@@ -1397,6 +1523,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
+    # --dry-run short-circuits the normal mission entirely: bring up the three
+    # subsystems, log health, tear down, exit. Honours --mock-* so it works on
+    # a bench laptop with no hardware. Must run BEFORE the normal asyncio.run
+    # below so we don't drag in RunWriter / mission setup we'll never use.
+    if getattr(args, "dry_run", False):
+        try:
+            return asyncio.run(_dry_run(args))
+        except KeyboardInterrupt:
+            return 130
     # We wrap asyncio.run() so a KeyboardInterrupt that escapes the inner
     # signal-handling path still gives us a chance to call run_writer.finalise()
     # and leave a coherent run_<ts>/ artifact directory behind.
@@ -1423,6 +1558,7 @@ def main() -> int:
         try:
             total_s = 0.0
             aborted_flag = True
+            abort_reason: str | None = "outer exception (no inner reason recorded)"
             grid: Any = None
             if controller is not None:
                 if controller.state.started_at > 0:
@@ -1430,10 +1566,17 @@ def main() -> int:
                 aborted_flag = bool(
                     controller.state.aborted or controller.state.stop_requested
                 )
+                # Prefer the controller's recorded reason when it exists;
+                # fall back to stop_requested -> user_interrupt so the
+                # KeyboardInterrupt-at-top-level path still names itself.
+                if controller.state.abort_reason:
+                    abort_reason = controller.state.abort_reason
+                elif controller.state.stop_requested:
+                    abort_reason = "user_interrupt"
                 grid = controller.grid
             if grid is None:
                 grid = OccupancyGrid(resolution_m=0.05, size_m=20.0)
-            writer.finalise(grid, total_s, aborted_flag)
+            writer.finalise(grid, total_s, aborted_flag, abort_reason=abort_reason)
         except Exception:
             logger.exception("best-effort finalise failed")
 

@@ -29,10 +29,36 @@ Empty placeholder. At the venue we measure the actual arena and either:
 
 Loaded via `--waypoints-from-json configs/waypoints_unknown.json`.
 
+### `arena_3x3.json`, `arena_4x4.json`, `arena_6x6.json`, `arena_8x8.json`
+Pre-staged 4-corner survey patterns for common arena sizes. Same schema as
+`waypoints_2x2_default.json` (list-of-[x, y, z], metres). 3x3/4x4/6x6 fly
+at altitude 1.5 m; 8x8 flies at 2.5 m so each Realsense frame covers more
+ground (fewer waypoints needed to span the larger arena).
+
+Day-1: once the org publishes arena dimensions, pass the closest match via
+`--waypoints-from-json configs/arena_NxN.json`. If none match exactly,
+copy the nearest one to `waypoints_unknown.json` and edit in place.
+
 ### `valid_ids_unknown.json`
 Lookup file consumed by the `validity.py` rule #6 ("lookup"). Populate on
 Day-1 once the organisers publish the official valid/invalid ArUco ID
 set. Until then both lists are empty and the rule effectively no-ops.
+
+### `valid_ids_even.json`, `valid_ids_odd.json`, `valid_ids_below50.json`, `valid_ids_whitelist_example.json`
+Pre-staged lookup templates covering the three rule shapes we expect from
+the org plus one whitelist example:
+
+- `valid_ids_even.json`: even ArUco ID = VALID, odd = INVALID. IDs 0-50
+  enumerated; extend manually if org uses higher IDs.
+- `valid_ids_odd.json`: opposite of even.
+- `valid_ids_below50.json`: ID < 50 = VALID, ID >= 50 = INVALID. Mirrors
+  the existing `id_below_50` stub rule in `validity.py`.
+- `valid_ids_whitelist_example.json`: small explicit set (3, 7, 12, 19,
+  24) with empty `invalid_ids`. On Day-1 the operator REPLACES the list
+  with the org's actual valid set. Empty `invalid_ids` means anything not
+  listed is treated as unknown (not classified).
+
+Loaded via `MAPPING_DRONE_VALIDITY_LOOKUP=/path/to/<file>.json`.
 
 Schema:
 ```

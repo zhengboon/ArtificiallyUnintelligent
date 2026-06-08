@@ -142,7 +142,9 @@ class RealsenseNode:
         if not self._started:
             return None
         try:
-            frames = self._pipeline.wait_for_frames(timeout_ms=1000)
+            # 2s timeout — the very first frame after start() can take >1s
+            # as autoexposure + alignment settle.
+            frames = self._pipeline.wait_for_frames(timeout_ms=2000)
         except Exception as exc:
             log.warning("Realsense wait_for_frames failed: %s", exc)
             return None

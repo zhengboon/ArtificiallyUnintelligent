@@ -288,8 +288,19 @@ class RunWriter:
     # ------------------------------------------------------------------
     # Finalisation
     # ------------------------------------------------------------------
-    def finalise(self, occupancy_grid: Any, total_flight_s: float, aborted: bool) -> None:
-        """Write final top_down.{png,npy}, landing_pads.json, run_summary.json."""
+    def finalise(
+        self,
+        occupancy_grid: Any,
+        total_flight_s: float,
+        aborted: bool,
+        abort_reason: str | None = None,
+    ) -> None:
+        """Write final top_down.{png,npy}, landing_pads.json, run_summary.json.
+
+        ``abort_reason`` is recorded verbatim when aborted=True; when aborted
+        is False or the caller doesn't know the reason the field is written as
+        null so judge tooling never has to distinguish missing-vs-empty.
+        """
         with self._lock:
             top_down_png = self.run_dir / "top_down.png"
             top_down_npy = self.run_dir / "top_down.npy"
@@ -305,12 +316,21 @@ class RunWriter:
 
             self._write_pads_locked()
 
+            # Normalise: empty-string reasons become null; non-aborted runs
+            # also clear any stray reason so the field is unambiguous.
+            reason_out: str | None
+            if aborted and abort_reason:
+                reason_out = str(abort_reason)
+            else:
+                reason_out = None
+
             summary = {
                 "run_ts": self.run_ts,
                 "created_at_utc": self._created_at,
                 "finalised_at_utc": datetime.now(timezone.utc).isoformat(),
                 "total_flight_s": float(total_flight_s),
                 "aborted": bool(aborted),
+                "abort_reason": reason_out,
                 "num_sightings": len(self._sightings),
                 "num_unique_pads": len(self._pads),
                 "artifacts": {
