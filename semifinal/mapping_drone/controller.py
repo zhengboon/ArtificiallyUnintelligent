@@ -24,7 +24,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Optional
 
-from .mapping import ArucoDetector, ArucoSighting, OccupancyGrid, camera_to_world
+from .mapping import (
+    ArucoDetector,
+    ArucoSighting,
+    OccupancyGrid,
+    camera_to_world,
+    _normalize_dict_name,
+)
 from .realsense import (
     MockRealsenseNode,
     RealsenseAdapter,
@@ -1181,7 +1187,15 @@ async def run(args: argparse.Namespace) -> tuple[int, RunWriter | None, "Mapping
     try:
         logger.info("run dir: %s", run_dir)
         logger.info("args: %s", vars(args))
-        logger.info("ArUco dictionary: %s", getattr(args, "aruco_dict", "6X6_250"))
+        _raw_dict = getattr(args, "aruco_dict", "6X6_250")
+        try:
+            _norm_dict = _normalize_dict_name(_raw_dict)
+        except Exception:
+            _norm_dict = _raw_dict
+        if _norm_dict == _raw_dict:
+            logger.info("ArUco dictionary: %s", _norm_dict)
+        else:
+            logger.info("ArUco dictionary: %s (normalized from %r)", _norm_dict, _raw_dict)
         logger.info("validity rule: %s", describe_rule())
 
         run_writer = RunWriter(run_dir, run_ts)
