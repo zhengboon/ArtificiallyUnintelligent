@@ -3,6 +3,30 @@
 Provides a real pyrealsense2 implementation plus a mock that synthesises
 frames with a real DICT_6X6_250 ArUco marker drawn into the colour image,
 so end-to-end tests can run without a camera attached.
+
+TODO (P0, D430/D450 no-RGB risk — see semifinal/D430_RGB_RISK.md):
+    Org confirmed on 2026-06-08 12:18 that the mapping drone uses an Intel
+    RealSense D430 or D450 module. Both are depth-only (stereo IR + IR
+    projector). NEITHER HAS AN RGB SENSOR. RealsenseNode below enables
+    rs.stream.color in every PROFILE_CANDIDATES entry; on a D430/D450
+    pipeline.start() will raise for every candidate.
+
+    Day-1 morning patch (~1-2h with hardware in hand): add a
+    `use_ir_for_aruco: bool = False` ctor arg, gated on a new
+    `--use-ir-for-aruco` CLI flag. When True:
+      * _build_config() enables rs.stream.infrared index 1 (Y8) instead
+        of rs.stream.color.
+      * start() aligns to rs.stream.infrared and grabs the depth sensor
+        handle so we can toggle rs.option.emitter_enabled.
+      * grab() turns the emitter OFF (so the projector dot pattern
+        doesn't degrade ArUco), aligns, pulls infrared_frame(1) + depth,
+        and synthesises a 3-channel BGR from the IR grayscale so
+        ArucoDetector and the rest of the pipeline keep working
+        without any change to mapping.py.
+
+    Full patch sketch (including the controller.py flag wiring) is in
+    semifinal/D430_RGB_RISK.md. Mock path is unaffected — only the real
+    RealsenseNode needs to learn IR mode.
 """
 from __future__ import annotations
 

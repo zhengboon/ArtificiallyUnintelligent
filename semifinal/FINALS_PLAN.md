@@ -8,7 +8,7 @@
 **Bring:** personal laptop, mouse, charger; note-taking tools; thumbdrive (or HDD + USB cables) for code transfer
 
 **Today:** 2026-06-06 Sat (T-4 days)
-**Plan version:** v2.2 (rolling updates after org + team drops 2026-06-06 PM → 2026-06-07 AM)
+**Plan version:** v2.3 (rolling updates after org drops 2026-06-07 + 2026-06-08)
 
 **MAJOR UPDATES vs v1.x:**
 - Two challenges revealed in slides — Challenge 1 (Reconnaissance, University-only — **CONFIRMED we are University, so this IS ours**) + Challenge 2 (Deployment & Ambush, everyone)
@@ -42,6 +42,14 @@
 **🆕 v2.2 changes (org drops 2026-06-06 PM, captured 2026-06-07 AM):**
 - **ArUco beside Hula landing pads too** (org 2026-06-06 PM); markers are **20cm x 20cm**; **exact dictionary will be announced Day-1** — controller `--aruco-dict` flag must accept any standard dict. Same ArUco-aided landing aid pattern now applies to BOTH Challenge 1 (mapping drone landing-pad classification) AND Challenge 2A (Hula landings); Hula side uses `cv2.aruco` directly rather than the pyhulax landing-marker auto-land helper. Marker physical size (20cm) sets the detection-range budget — mapping drone altitude should be tuned so markers stay in reliable detection range. Audit of `mapping.py:ArucoDetector` confirms `--aruco-dict` currently accepts: `4X4_50`, `4X4_100`, `4X4_250`, `5X5_250`, `6X6_50`, `6X6_100`, `6X6_250`, `6X6_1000`, `7X7_250` (uppercase short-form only, exact match). **Gap:** missing `4X4_1000`, `5X5_{50,100,1000}`, `7X7_{50,100,1000}`, all 4 APRILTAG variants, no case-insensitive matching, no `DICT_` long-form. Code edit required before Day-1 to cover any dict the org might announce.
 - **Org ticket etiquette:** close stale support tickets and open fresh ones for new questions so the queue stays prioritised. STINKIES' 2026-06-06 14:13 "what codes should we come prepared with on 10 June?" is still unanswered.
+
+**🆕 v2.3 changes (2026-06-09 T-1 from 2026-06-07/08 org drops):**
+- **Minimum flight height = 3.5 m** (org 2026-06-08 12:18). All pre-staged arena templates (1.5 m / 2.5 m) sit below the floor. Bump every waypoint template to **4.0 m** for margin against the 3.5 m floor and re-verify on a mock dry-run before any scored slot.
+- **Mapping drone cameras = Intel Realsense D430 + D450 mixed across runs** (org 2026-06-08 12:18). Both modules are depth-only stereo IR + IR projector — **no RGB sensor confirmed in either**. `ArucoDetector` currently consumes a color frame. Mitigation: `--use-ir-for-aruco` flag (added/planned) detects ArUco on one IR camera with the IR emitter toggled off for the ArUco frame, alternating with depth frames so we don't lose mapping.
+- **Camera facing down** (org 2026-06-08 12:19) confirms `--gimbal-pitch -90` default. No change.
+- **Resolution configurable** (org 2026-06-08 12:19) confirms `RealsenseNode.PROFILE_CANDIDATES` fallback chain is correct. No change.
+- **Launch direction is free; takeoff point is fixed** (org 2026-06-08 12:17). Pre-yaw the drone to the optimal first-scan direction before arming. Captured in `runbook.md` Day-1 morning + `DAY1_RUNBOOK.md` pre-flight.
+- **6 still-open questions from other teams** logged in `learning_materials_and_others.md` under *Still-open in other teams' tickets* — candidates for our Day-1 morning ticket batch (camera-pitch commandable, convoy motion model, fly-over-boxes allowance, top-down depth map format, camera resolution/FOV/tag-pixel-count, depth-map format re-ask).
 
 > We got pushed straight from qualifier → finals, skipping the semi-final tier. Reason unknown, doesn't change scope. Same two-drone architecture: Hula swarm + mapping drone.
 >
@@ -230,6 +238,8 @@ Z: ready for Challenge 1 at venue [T-1]
 | ArUco landing-pad validity rule undisclosed | Medium | Code reads + reports all marker IDs regardless. When org reveals the rule (Day 1), add the classifier in <30 min. |
 | A's laptop intermittently failing — Day-1 reliability risk | High (A reported 2026-06-07 00:13, "been repeating quite often") | A USBs work nightly; primary code lives on Z + K laptops too. A's role (judge-talker + arena scout + ArUco helper) does not require A's laptop to be the canonical dev box. If A's laptop dies at venue, A operates off Z's or K's machine. |
 | Day-1 ArUco dict mismatch — org announces a dict our controller doesn't accept | **MITIGATED** | Controller now accepts all 20 standard dicts (16 ArUco + 4 AprilTag) via case-insensitive `--aruco-dict` per `mapping.py` fix 2026-06-07. Long-form `DICT_` prefix + whitespace also normalised. Smoke-tested: bad name raises ValueError listing all 20 supported names. |
+| D430/D450 expose no RGB stream — `ArucoDetector` currently consumes color frame | **High** (org 2026-06-08 confirmed both modules are depth-only stereo IR) | `--use-ir-for-aruco` flag (added/planned) detects ArUco on one IR camera with the IR emitter toggled off for the ArUco frame, alternating with depth frames. Day-1 morning smoke: `python -c` one-liner queries available `rs` streams; if RGB present, run as normal; if only IR + depth, pass `--use-ir-for-aruco` to the controller. |
+| All arena waypoint templates sit below the 3.5 m minimum altitude floor | **High** (org 2026-06-08 12:18 set the 3.5 m floor; existing templates are 1.5 m / 2.5 m) | Bump every waypoint template to 4.0 m (3.5 m floor + 0.5 m margin). Re-verify with a mock dry-run before any scored slot. Owner: Z. |
 | Code crashes mid-run | Medium | `try/finally land + disarm` everywhere. Watchdog 60s. Battery failsafe enabled. |
 | Org's drones differ from what we trained for | Low | We've reviewed all org reference code; adaptation should be small. |
 | ~~Pre-University~~ | N/A | We are University (confirmed 2026-06-05). |

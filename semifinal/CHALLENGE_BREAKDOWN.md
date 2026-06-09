@@ -17,7 +17,7 @@ Military-themed reconnaissance + ambush mission.
 
 **✅ Confirmed 2026-06-05: we are University category.** Both Challenge 1 AND Challenge 2 are ours. Challenge 1 mapping is a core deliverable, not optional.
 
-### 🆕 Updates from 2026-06-05 evening + 2026-06-06 AM + 2026-06-06 PM + 2026-06-07
+### 🆕 Updates from 2026-06-05 evening + 2026-06-06 AM + 2026-06-06 PM + 2026-06-07 + 2026-06-08
 
 - **All 3 team members should attend both days** (org: *"It is best that all members of team can be there on both days as there are plenty to do"*).
 - **Map layout WILL NOT be provided** (org 2026-06-06 11:40). We discover dimensions + obstacle positions at venue — Challenge 1 mapping is the only way we'll know the arena.
@@ -27,6 +27,11 @@ Military-themed reconnaissance + ambush mission.
 - **ArUco markers 20cm × 20cm, exact dictionary TBD Day-1** (org 2026-06-06 21:32). Physical size confirmed; dictionary will be announced at venue and could be any of 16 ArUco sizes or 4 AprilTag variants. Our code must accept a runtime dict override.
 - **Org ticket etiquette:** close stale support tickets, open fresh ones for new questions so the queue stays prioritised (org 2026-06-06 21:47).
 - **A officially killed YOLO training** (team chat 2026-06-06 22:13). Detection of ground robots is now 100% ArUco via `cv2.aruco`. A reassigned to Hula camera helper + arena scout.
+- **Minimum flight height = 3.5 m** (org 2026-06-08 12:18, in reply to ROBO05_Daniel 2026-06-07 8:04 pm). All pre-staged arena templates (1.5 m / 2.5 m) are below the floor — bump to 4.0 m for margin.
+- **Mapping drone cameras = Intel Realsense D430 AND D450** (org 2026-06-08 12:18). Both are depth-only stereo IR modules + IR projector; neither has an RGB sensor. P0 risk to current `ArucoDetector` (color-frame consumer). Mitigation in flight: `--use-ir-for-aruco` flag with emitter-toggle.
+- **Camera mounted facing down** (org 2026-06-08 12:19) — `--gimbal-pitch -90` default confirmed.
+- **Camera resolution configurable** (org 2026-06-08 12:19) — `RealsenseNode.PROFILE_CANDIDATES` fallback chain confirmed correct.
+- **Launch direction is free, takeoff point is fixed** (org 2026-06-08 12:17, in reply to FlyingExplorers 2026-06-07 8:56 pm). Pre-yaw the drone toward the optimal first-scan direction before arming.
 
 ---
 
@@ -34,6 +39,7 @@ Military-themed reconnaissance + ambush mission.
 
 ### Hardware
 - **1 Mapping Drone** with Intel Realsense stereo camera
+- **Camera:** D430 + D450 mixed across runs (depth-only stereo IR modules; verify RGB stream availability at venue).
 - Connected to our C2 Terminal via **5.88 GHz** for control + footage
 
 ### Arena
@@ -223,4 +229,7 @@ The RoboMasters carry **ArUco markers**. Detection uses `cv2.aruco` (we already 
 13. 🆕 **What's the UWB origin?** Where is (0, 0) in the arena? Likely calibrated against a known landmark at venue.
 14. 🆕 **Should we pre-prep code, or build only Day 1?** Org didn't answer — STINKIES asked 5/6 10:35pm, re-asked 6/6 14:13 ("what codes should we come prepared with on 10 June?"), still no response by 6/7 AM. Default: bring everything pre-built (we are).
 15. 🆕 **Exact ArUco dictionary to be announced Day-1** (org 2026-06-06 21:32: *"The exact dictionary will be announced on the day"*). Could be any of: `DICT_4X4_{50,100,250,1000}`, `DICT_5X5_{50,100,250,1000}`, `DICT_6X6_{50,100,250,1000}`, `DICT_7X7_{50,100,250,1000}`, or AprilTag variants `DICT_APRILTAG_{16h5,25h9,36h10,36h11}`. Our `mapping.py:ArucoDetector` and `controller.py --aruco-dict` flag currently default to `DICT_6X6_250` and accept a subset of short-form names; widen this lookup before venue so any announced dict is accepted (today's `_ARUCO_DICTS` covers ~9 of the 20 possible options — see audit notes).
-16. 🆕 **Do Challenges 1 and 2 run in parallel (both drone types active at once) or sequentially (Challenge 1 fully complete → Challenge 2)?** — Z asked team chat 2026-06-06, no answer in chat. File fresh org ticket per 2026-06-06 21:47 etiquette.
+16. 🆕 **Do Challenges 1 and 2 run in parallel (both drone types active at once) or sequentially (Challenge 1 fully complete → Challenge 2)?** — Z asked team chat 2026-06-06, no answer in chat. **Still open as of 2026-06-08** — no answer from org yet. File fresh org ticket per 2026-06-06 21:47 etiquette.
+17. 🆕 **Can camera pitch be commanded?** Calibruh_KangKiatYang asked 2026-06-08 1:59 pm — *"Can the camera pitch change with commands or is it physically fixed downwards forever?"* — still unanswered. Affects whether we lock to -90 or can sweep.
+18. 🆕 **D430/D450 RGB stream availability** — org confirmed 2026-06-08 12:18 the mapping drone uses D430 + D450 (depth-only stereo IR, no RGB sensor in either module). Need confirmation whether the venue integration bolts on a separate RGB camera, or whether we must run ArUco on IR (emitter-toggle path, `--use-ir-for-aruco`).
+19. 🆕 **Top-down depth map format** — FlyingExplorers asked 2026-06-07 6:03 pm whether the deliverable needs to be a stereo output map like the slide, or whether a matplotlib graph (a la `top_down.py`) is acceptable. Re-asked 2026-06-08 3:19 pm. Still unanswered.
