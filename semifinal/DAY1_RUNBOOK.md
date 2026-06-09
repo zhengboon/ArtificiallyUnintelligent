@@ -96,6 +96,31 @@ Do not skip steps. Each step gates the next.
 
 ---
 
+## Live remote debug
+
+When someone wants to watch the controller log in real time from a second machine on the same tailnet (e.g. Z from the C2 terminal while A is on the airframe), pass `--tailscale` to fan the log out to the desktop log_sink:
+
+```
+python -m mapping_drone --tailscale \
+  --mavsdk-addresses <fallback list> \
+  --waypoints-from-json configs/waypoints_<date>.json
+```
+
+- Each log line is POSTed in addition to stdout + `log.txt` on the drone. Pre-existing `tools/log_broadcaster/wrap.sh` pattern: the sink appends to `D:/hackerverse/laptop_logs/<tag>.log` on the desktop.
+- Default host is `100.79.202.101:9999` (desktop tailnet IP, sink already running). Override with `--tailscale-host <ip:port>` if the desktop has moved.
+- Default tag is `mapping-drone-<run_ts>` so each run is its own log file on the sink. Override with `--tailscale-tag <name>` to merge several attempts into one file.
+- Combine with `--verbose` to also include the per-frame / per-UWB-tick / per-velocity-command / per-WP arrival / state transition lines that are silent on the normal INFO floor:
+
+```
+python -m mapping_drone --verbose --tailscale \
+  --waypoints-from-json configs/waypoints_<date>.json
+```
+
+- Sink failures (sink down, tailnet flaky) are silently swallowed; a one-shot INFO line `tailscale log sink unreachable at ... — swallowing further POST errors silently` is emitted on the first failure so the operator knows the broadcast isn't landing. Controller never crashes on a broken sink.
+- The sink itself is `tools/log_broadcaster/log_sink.py` running on the desktop (port 9999, dir `D:/hackerverse/laptop_logs/`). If you don't see a file appear, check the sink is up: `curl http://100.79.202.101:9999/_health` — expect `ok`.
+
+---
+
 ## Run artifact retrieval
 
 - [ ] After each scored run: `latest=$(ls -td mapping_drone/runs/run_* | head -1); cp -r "$latest" /media/$USER/USB-LABEL/saved_runs_day1/`

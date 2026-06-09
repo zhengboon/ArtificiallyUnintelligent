@@ -79,6 +79,22 @@ Controller tries each with 5 s timeout, logs which connected. If all 5 fail: res
 
 ---
 
+## BROADCAST LOGS (for team debug)
+
+When debugging mid-flight from a second laptop on the same tailnet:
+
+```
+python -m mapping_drone --mock --verbose --tailscale \
+  --waypoints-from-json configs/waypoints_2x2_default.json
+```
+
+- `--verbose` promotes the hot-path lines (per-frame scan result, per-UWB tick, per-velocity command, per-WP arrival distance, every state transition) from DEBUG to INFO.
+- `--tailscale` ALSO POSTs every log line to the desktop `log_sink` (default `100.79.202.101:9999`, tag `mapping-drone-<run_ts>`). Sink file lands at `D:/hackerverse/laptop_logs/mapping-drone-<run_ts>.log` on the desktop.
+- Override host/tag if needed: `--tailscale-host 100.x.y.z:9999 --tailscale-tag custom-tag`.
+- Sink failures are silently swallowed — broadcast is best-effort, never crashes the controller.
+
+---
+
 ## BONUS COLLECTION (between slots)
 
 - **CUAS booth — 4% bonus.** Above & Beyond: Skies & Space zone, MBS L4. Snap a photo of the drone at the Counter UAS booth + screenshot of the zone-explored page on the Brainhack Frontier Exploration System. Do this Day 1 if at all possible; do not let it slip to Day 2.
