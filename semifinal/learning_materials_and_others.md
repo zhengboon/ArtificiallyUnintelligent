@@ -219,7 +219,7 @@ if ids is not None:
 | Detection model | **ArUco via OpenCV** (primary, per 6/6 5:00 am clarification); YOLO via `pyhulax.video.YOLODetector` (.pt) as backup/insurance | **ArUco via OpenCV** (primary for landing-validity confirmation); YOLO via RKNN on NPU as backup |
 | Connection | TCP/UDP over WiFi | **Serial** over `/dev/ttyS6:921600` |
 
-> Note: per the 6/6 5:00 am org clarification ("hula drone to detect aruco marker on ground robots"), YOLO is de-escalated to insurance/backup on both platforms; ArUco markers (default `DICT_6X6_250`, exact dictionary TBD Day-1) are the primary RoboMaster detection method.
+> Note: per the 6/6 5:00 am org clarification ("hula drone to detect aruco marker on ground robots"), YOLO is de-escalated to insurance/backup on both platforms; ArUco markers (dictionary TBD — announced Day-1 per org's 6/6 9:32 pm answer; the L2 sample code's `DICT_6X6_250` is illustrative only, NOT confirmed) are the primary RoboMaster detection method.
 
 ### IMPORTANT clarification from L5 (5/6/2026)
 The **RKNN conversion codes are on the org-provided machine**, not something we run on our own laptop. That machine runs a **Ubuntu 22.04 VM** (same constraint as qualifier). So:
@@ -363,7 +363,7 @@ This aligns with our docs cascade today: A's RoboMaster YOLO is no longer critic
   - Supported (uppercase short-form, exact match): `4X4_50`, `4X4_100`, `4X4_250`, `5X5_250`, `6X6_50`, `6X6_100`, `6X6_250`, `6X6_1000`, `7X7_250`.
   - **Not supported (will raise `ValueError`):** `4X4_1000`; `5X5_50`, `5X5_100`, `5X5_1000`; `7X7_50`, `7X7_100`, `7X7_1000`; all four AprilTag variants (`APRILTAG_16h5`, `APRILTAG_25h9`, `APRILTAG_36h10`, `APRILTAG_36h11`).
   - **Also not normalised:** lowercase short-form (`6x6_250`), long-form (`DICT_6X6_250`), and hyphenated/alias variants are all rejected. The lookup is a strict `dict_name not in _ARUCO_DICTS` check on uppercase keys.
-- **Action item before 10 June:** broaden `_ARUCO_DICTS` to cover all 16 ArUco sizes + 4 AprilTag variants, normalise case, and strip an optional `DICT_` prefix — otherwise there's a ~55% chance the announced dict is rejected outright at the venue. (Open as a fresh support ticket only if we need clarification on the announcement timing; the code fix is on us.)
+- **Action item before 10 June (audit status uncertain — re-verify against `mapping_drone/mapping.py` `_ARUCO_DICTS` before trusting this annotation):** broaden `_ARUCO_DICTS` to cover all 16 ArUco sizes + 4 AprilTag variants, normalise case, and strip an optional `DICT_` prefix — otherwise there's a ~55% chance the announced dict is rejected outright at the venue. The code fix is on us; cross-check the current `_ARUCO_DICTS` table rather than relying on the 2026-06-07 audit snapshot above.
 
 **Still open with org (re-asked but unanswered):**
 - STINKIES — *"what codes should we come prepared with on 10 June?"* (re-asked 6/6/2026 2:13 pm). Slides + L1–L5 imply heavy pre-prep; org has not given an explicit checklist.
@@ -402,7 +402,7 @@ This aligns with our docs cascade today: A's RoboMaster YOLO is no longer critic
 > you can launch facing your desired direction. but takeoff point is the same for all.
 
 **Confirms (and code/doc impact):**
-- **Minimum flight height = 3.5 m.** All pre-staged arena templates (`configs/waypoints_2x2_default.json`, `arena_3x3.json`, `arena_4x4.json`, `arena_6x6.json` @ 1.5 m, `arena_8x8.json` @ 2.5 m) are BELOW the floor. Bump to 4.0 m for margin against the 3.5 m floor.
+- **Minimum flight height = 3.5 m.** Pre-staged arena templates were originally @ 1.5 m / 2.5 m (BELOW the floor); they have since been bumped to 4.0 m and `controller.py` `DEFAULT_WAYPOINTS` is also now at 4.0 m for margin against the 3.5 m floor. (Cross-reference `configs/*.json` + `mapping_drone/controller.py:92-97` for current values.)
 - **Mapping drone cameras are D430 AND D450.** Both are depth-only stereo IR modules with an IR projector — **neither has an RGB sensor**. Our `ArucoDetector` in `mapping_drone/mapping.py` reads `cv2.cvtColor(color_frame, COLOR_BGR2GRAY)`. If the venue drone does not bolt on a separate RGB camera, there is no color stream to detect ArUco from. Fallback: detect ArUco on one IR camera and toggle the IR emitter off during ArUco frames (`device.first_depth_sensor().set_option(rs.option.emitter_enabled, 0.0)`) so the projector dots don't smear the marker — alternate emitter on/off frames to preserve depth. Plan: add `--use-ir-for-aruco` flag with emitter-toggle.
 - **Camera facing down** confirms `--gimbal-pitch -90` default is correct.
 - **Resolution configurable** confirms our `RealsenseNode` `PROFILE_CANDIDATES` fallback chain (640×480 → 848×480 → 1280×720 → 640×480@15) is the right approach.

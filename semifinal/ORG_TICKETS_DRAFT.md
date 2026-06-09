@@ -1,5 +1,7 @@
 # Org Tickets — First-Batch Drafts (Copy-Paste Ready)
 
+> **STATUS 2026-06-09 T-1: tickets path is dead** — ask the org marshal verbally at the venue Day-1 morning instead of filing into `#support-ticket`. This file is kept for the question text only (so we can read the prepared wording aloud or paraphrase it on the day). Do **not** treat the filing-batch plan below as live.
+
 These are the **file-first tickets** surfaced by the deep audit, plus new tickets added from 2026-06-07/08 Discord activity. Each section below contains a single ticket — ready to copy verbatim into the `#support-ticket` Discord channel.
 
 For each ticket:
@@ -43,13 +45,13 @@ The 5 originally-drafted file-first tickets (further down) remain valid and unfi
 > **Challenge:** Challenge 1 — Reconnaissance (University)
 > **Team:** ArtificiallyUnintelligent
 >
-> Following the 2026-06-08 confirmation that the camera is mounted facing down: is the camera pitch programmable from MAVSDK / pyhulax (i.e. can we issue a runtime command to change the pitch angle), or is the mount physically fixed downwards for the entire run?
+> Following the 2026-06-08 confirmation that the camera is mounted facing down: is the camera pitch programmable from MAVSDK (i.e. can we issue a runtime command to change the pitch angle), or is the mount physically fixed downwards for the entire run?
 >
 > Calibruh_KangKiatYang asked the same question on 2026-06-08 1:59pm — flagging that this answer is useful for multiple teams.
 >
-> ***Ask: is camera pitch software-controllable, or physically fixed at the downward orientation?***
+> ***Ask: is camera pitch software-controllable from MAVSDK, or physically fixed at the downward orientation?***
 >
-> *Why we're asking:* our mapping-drone controller currently issues `set_camera_angle(pitch_deg)` — if the mount is fixed, that call is a no-op and we'll disable it to avoid confusion. If programmable, we'll leave the default at -90° (straight down) per the 06-08 confirmation.
+> *Why we're asking:* our mapping-drone controller currently issues `set_camera_angle(pitch_deg)` via MAVSDK — if the mount is fixed, that call is a no-op and we'll disable it to avoid confusion. If programmable, we'll leave the default at -90° (straight down) per the 06-08 confirmation.
 >
 > Thanks,
 > — ArtificiallyUnintelligent (University)

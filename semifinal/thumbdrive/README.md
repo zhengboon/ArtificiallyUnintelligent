@@ -13,11 +13,10 @@ All 3 members must be present on BOTH days (10 + 11 June 2026, 9am-6pm) at Marin
 | `setup.sh` | this dir | One-command bootstrap on the C2 Terminal |
 | `controllers/mapping_drone/` | `../mapping_drone/` | Mapping drone code (Challenge 1). build.sh strips internal scratch docs (`FIX_SUMMARY.md`, `FIX_V3_SUMMARY.md`, `REVIEW_SUMMARY.md`) post-copy |
 | `controllers/swarm_controller.py` | **TBD — NOT YET BUILT** (`../swarm_controller.py`) | Hula swarm code (Challenge 2A + 2B). BLOCKER for finals Day 2. Deadline T-2 (Mon 8 Jun). Until then USB is incomplete. |
-| `controllers/uwb_api_hula_swarm/` | `../uwb_api_hula_swarm/` | Org's UWBParserThread (pyserial @ 921600) — UWB transport for Hula swarm on C2 Windows side. Needed by `swarm_controller.py` |
+| `uwb_api_hula_swarm/` | `../uwb_api_hula_swarm/` | Org's UWBParserThread (pyserial @ 921600) — UWB transport for Hula swarm on C2 Windows side. Needed by `swarm_controller.py`. Staged at USB top level (see `build.sh` line 18, 69), not under `controllers/`. |
 | `controllers/huladola.py` | `../huladola.py` | Current pyhulax exploration script (reference / starting point for `swarm_controller.py`) |
 | `controllers/dola.py` | `../dola.py` | Minimal pyhulax single-drone reference (kept alongside `huladola.py` for fallback / sanity-check) |
-| `models/best.pt` | `../../models/best.pt` | K's qualifier model (fallback only) |
-| `models/best.onnx` | A produces by T-2 (INSURANCE ONLY) | A's RoboMaster YOLOv11 export (yolo11n.pt base) → org VM converts to .rknn at venue. NOT primary: per org 2026-06-06, RoboMaster detection is ArUco-based (DICT_6X6_250); see `prototypes/aruco_*.py`. Fallback: if `best.onnx` not ready by T-2 evening, ship `best.pt` only and rely on ArUco. |
+| `models/best.pt` | `../../models/best.pt` | K's qualifier model — historical only. ArUco is the sole RoboMaster detector per org 2026-06-06; see `prototypes/aruco_*.py`. A killed YOLO training 2026-06-06 22:13 (`learning_material_5_yolo_rknn/README.md` lines 32-34). `best.onnx` is no longer being produced for finals. |
 | `docs/CHALLENGE_BREAKDOWN.md` | `../CHALLENGE_BREAKDOWN.md` | Authoritative rules from org slides |
 | `docs/FINALS_PLAN.md` | `../FINALS_PLAN.md` | Per-person day-by-day plan |
 | `docs/runbook.md` | `../runbook.md` | Day-of step-by-step (ALSO PRINT) |
@@ -26,8 +25,7 @@ All 3 members must be present on BOTH days (10 + 11 June 2026, 9am-6pm) at Marin
 | `prototypes/` | `../prototypes/` | Drone-free validation scripts (smoke tests for D435 / ArUco) |
 | `learning_material_3_uwb/kolomee.py` | `../learning_material_3_uwb/kolomee.py` | Org's canonical UWB+MAVSDK pattern (reference) |
 | `learning_material_4_realsense/*.py` | `../learning_material_4_realsense/*.py` | Org's Realsense + RKNN reference scripts |
-| `learning_material_5_yolo_rknn/` | `../learning_material_5_yolo_rknn/` | Org's YOLO→ONNX→RKNN conversion scripts |
-| `Train_YOLO_Models_new.ipynb` | `../Train_YOLO_Models_new.ipynb` | Colab notebook for retraining at venue if needed |
+| `learning_material_5_yolo_rknn/` | `../learning_material_5_yolo_rknn/` | Org's YOLO→ONNX→RKNN conversion scripts (reference only — we are not retraining at venue per `learning_material_5_yolo_rknn/README.md` lines 32-34) |
 
 ## Build commands (run on dev laptop, T-2 Mon evening)
 
@@ -44,7 +42,7 @@ Bring Photo ID + confirmation email. Smart casual, NO slippers/uncovered footwea
 
 The C2 Terminal has TWO sides that need different files:
 
-- **Windows host side** runs the Hula swarm (`pyhulax` + `UWBParserThread.py`). It needs `controllers/swarm_controller.py` (once built), `controllers/uwb_api_hula_swarm/`, `controllers/huladola.py`, `docs/pyhulax/`, and the pyhulax env.
+- **Windows host side** runs the Hula swarm (`pyhulax` + `UWBParserThread.py`). It needs `controllers/swarm_controller.py` (once built), `uwb_api_hula_swarm/` (USB top level, not under `controllers/`), `controllers/huladola.py`, `docs/pyhulax/`, and the pyhulax env.
 - **Ubuntu 22.04 VM** runs mapping-drone development (the mapping drone itself is reached via NoMachine). It needs `controllers/mapping_drone/`, `models/`, `prototypes/`, `learning_material_4_realsense/`, `learning_material_5_yolo_rknn/`, `Train_YOLO_Models_new.ipynb`.
 
 ```powershell
@@ -127,7 +125,7 @@ Do this BEFORE running `setup.sh` so we don't burn registration-window time on t
 
 ```bash
 # In the C2 Terminal Ubuntu VM:
-rm -rf ~/brainhack/runs/run_*       # old run artifacts
+rm -rf ~/brainhack/controllers/mapping_drone/runs/run_*   # old run artifacts (matches RunWriter output path in setup.sh line 109)
 rm -f /tmp/*.log                    # tmp logs
 pip cache purge                     # pip cache
 ```

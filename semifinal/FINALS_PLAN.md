@@ -1,7 +1,7 @@
 # BrainHack 2026 — Finals Plan
 
 **Finals dates:** Wed 10 June + Thu 11 June 2026
-**Hours each day:** 9:00am – 6:00pm (full 9-hour day, NOT a 40-min slot like qualifier)
+**Scored windows (slide 12):** Day 1 1430-1800 = Challenge 1 (3.5h, Uni only). Day 2 1330-1600 = Challenge 2 (2.5h). Single scored window per challenge — NOT a free-form 9-hour iteration day.
 **Venue:** Marina Bay Sands Expo and Convention Centre, Level 4
 **Registration:** counter opens 10 June 7:30am — bring **Photo ID + confirmation email**
 **Dress code:** Smart Casual. **Strictly no slippers or uncovered footwear.**
@@ -58,7 +58,7 @@
 - **Speed caps (slides 5,6):**
   - Mapping drone: **0.3 m/s max**. `controller.py` `MAX_VEL_XY` and waypoint cruise speed must be clamped — search for the constant before Day-1.
   - Hula: **0.5 m/s max, recommended height 1.1 m, STRICTLY NO FLYING OVER OBSTACLES.** Different altitude regime from the 3.5 m mapping-drone floor — two altitude profiles needed.
-- **Time budgets:** Each scored attempt is **max 8 min** (slide 5 mapping + slide 6 hula). Our `--max-flight-time-s` defaults to 240 s (4 min) — we have budget to extend up to ~470 s if mission warrants.
+- **Time budgets:** Each scored attempt is **max 8 min** (slide 5 mapping + slide 6 hula). Our `--max-flight-time-s` defaults to 420 s (7 min) — already sized 60 s under the 480 s org cap, no further extension needed.
 - **Scoring rubric (slide 9) for University (total 100%):**
   - S/N 1 (15%): C1 — # landing pads detected (image recognition) + # landing points verified (ArUco) + timing.
   - S/N 2 (15%): C1 — accuracy of distance from reference point using depth map. **Depth accuracy explicitly scored — P1 priority for Z.**
@@ -84,7 +84,7 @@
 - **Code touches required before Day-1:**
   1. `controller.py`: clamp `MAX_VEL_XY` (and any cruise-speed param) to 0.3 m/s.
   2. `swarm_controller.py`: add 0.5 m/s velocity cap + 1.1 m altitude default + obstacle-avoidance assertion (it's still a stub).
-  3. Both controllers: surface the per-attempt 8-min limit; current default 240 s can extend toward ~470 s if mission planning supports it.
+  3. Both controllers: surface the per-attempt 8-min limit; current default is already 420 s (sized 60 s under the 480 s org cap).
 
 **🆕 v2.3 changes (2026-06-09 T-1 from 2026-06-07/08 org drops):**
 - **Minimum flight height = 3.5 m** (org 2026-06-08 12:18). All pre-staged arena templates (1.5 m / 2.5 m) sit below the floor. Bump every waypoint template to **4.0 m** for margin against the 3.5 m floor and re-verify on a mock dry-run before any scored slot.
@@ -98,7 +98,7 @@
 >
 > **Important:** unlike qualifier we use our OWN laptops, not org-provided VMs. All our Python / pyhulax / pyrealsense2 installs must work on our hardware.
 >
-> **9-hour days suggest multiple runs / iteration time during the event** — closer to a workshop format than a fixed-slot competition. Strategy adapts: warm up, take a measured first run, iterate based on observed scoring, peak in afternoon runs.
+> ~~**9-hour days suggest multiple runs / iteration time during the event** — closer to a workshop format than a fixed-slot competition.~~ **Superseded by v3.0 (finals brief slide 12):** scored windows are fixed — C1 = 1430-1800 Day 1 (3.5h, ~14 teams sharing the slot), C2 = 1330-1600 Day 2 (2.5h, ~24 teams). Per-attempt cap 8 min. Treat testing windows (Day 1 1030-1330, Day 2 0900-1230) as the only iteration time; the scored windows are slot-call execution, not free-form runs.
 
 **Contact:** brainhackreg@dsta.gov.sg or brainhack@pico.com
 
@@ -272,7 +272,7 @@ Z: ready for Challenge 1 at venue [T-1]
 | ~~RoboMaster training data is hard to find~~ | **OBSOLETED 2026-06-06** | Detection is ArUco-based, not YOLO. YOLO model is insurance only. |
 | ArUco markers on RoboMasters are too small / occluded for Hula camera | Medium | Train YOLO backup (A's track) + tune Hula camera focal length / fly altitude. Verify Day 1 morning during arena scouting. |
 | Map layout unknown until venue | High (org confirmed not provided) | Challenge 1 mapping IS the recon — we discover dimensions + obstacles via the mapping drone before Challenge 2 starts. Make sure controller writes machine-readable obstacle/landing-pad data so Challenge 2 planner can consume it. |
-| RoboMasters not UWB-tagged → swarm has to search visually | Medium | Lawnmower pattern split across 3 Hulas, ~1.5m AGL, ArUco detection on each. Add Day 1 morning question to org. |
+| RoboMasters not UWB-tagged → swarm has to search visually | Medium | Lawnmower pattern split across 3 Hulas, ~1.1m AGL (org recommended Hula altitude, slide 6), ArUco detection on each. Add Day 1 morning question to org. |
 | `UWBParserThread` COM port not auto-detected on org C2 Terminal | Low | Auto-detect string is "USB" in port description; fallback = pass `serial_port="COM3"` explicitly. Test Day 1 morning. |
 | New `UWBParserThread` Hula-swarm API just released (2026-06-06) — K hasn't integrated into swarm controller yet (NOT YET BUILT — placeholder for `swarm_controller.py`) | High | Wire `UWBParserThread` into the swarm controller by **T-3 (Sun 7 June) end-of-day**. Use the canonical usage block from [`uwb_api_hula_swarm/README.md`](uwb_api_hula_swarm/README.md). Mock-test on Windows before venue. |
 | RKNN conversion fails on the org VM | Medium | We have all 4 conversion scripts now — known params (rk3588, fp16, mean/std). Worst case: fall back to ONNX runtime inference on the drone CPU (slower but works). |

@@ -1,6 +1,6 @@
 # Day-1 Pocket Card — Tape to C2 Terminal
 
-**SLOT #3 — be ready by ~1445** (C1 starts 1430, slot 3 ≈ 10-15 min in). Prep window 1330-1430 = NO MAPPING DRONE FLYING.
+**SLOT #3 — be ready by 1430** (prep-window cutoff). Drone slot expected ~1440-1455 depending on slot 1+2 timing. Prep window 1330-1430 = NO MAPPING DRONE FLYING.
 
 One page. Glance, type, fly. Reference is `DAY1_RUNBOOK.md`. Setup is `DAY1_SETUP_SEQUENCE.md`. Strategy is `SCORING_PLAYBOOK.md`.
 
@@ -8,7 +8,7 @@ One page. Glance, type, fly. Reference is `DAY1_RUNBOOK.md`. Setup is `DAY1_SETU
 
 ## CRITICAL CHECK (do FIRST, before any of the below)
 
-- **rs streams: RGB present?** `python -c "import pyrealsense2 as rs; ctx=rs.context(); d=ctx.query_devices()[0]; print([s.get_info(rs.camera_info.name) for s in d.query_sensors()])"`. If **NO** RGB (D430/D450 bare modules expose none — org 2026-06-08 12:18), add `--use-ir-for-aruco` to every controller command below.
+- **rs streams: RGB present?** `python -c "import pyrealsense2 as rs; ctx=rs.context(); d=ctx.query_devices()[0]; print([s.get_info(rs.camera_info.name) for s in d.query_sensors()])"`. If **NO** RGB (D430/D450 bare modules expose none — org 2026-06-08 12:18), escalate to org marshal immediately — IR-fallback flag is NOT yet wired in the controller. Do NOT try to add `--use-ir-for-aruco` (argparse will reject).
 
 ---
 
@@ -27,8 +27,8 @@ python -m mapping_drone.tests.smoke_realsense_stationary
 # 4. Full mock dry-run (no arm, writes runs/run_*/STATUS.txt + top_down.png)
 python -m mapping_drone --mock --waypoints-from-json configs/waypoints_2x2_default.json
 
-# 5. MAVSDK connect-only (real radio, 5 s wall, arms + disarms cleanly)
-python -m mapping_drone --max-flight-time-s 5
+# 5. MAVSDK connect smoke (real radio, ~30-45 s total — drone WILL arm, take off ~3 m, hover ~3 s, then land. Stand clear. Requires UWB live, else hangs in AWAITING_UWB.)
+python -m mapping_drone --mavsdk-addresses serial:///dev/ttyS6:921600,serial:///dev/ttyACM0:115200,serial:///dev/ttyUSB0:57600,udp://:14540,udp://:14550 --max-flight-time-s 5
 ```
 
 ---
@@ -38,13 +38,12 @@ python -m mapping_drone --max-flight-time-s 5
 ```
 python -m mapping_drone \
   --aruco-dict <DICT_FROM_BRIEFING> \
-  --waypoints-from-json configs/waypoints_<DATE>.json \
-  --max-flight-time-s 240
+  --waypoints-from-json configs/arena_<N>x<N>.json
 ```
 
 `<DICT_FROM_BRIEFING>` — accepts `DICT_6X6_250`, `6x6_250`, `apriltag_36h11`, case-insensitive.
 
-Altitude: `configs/arena_<SIZE>.json` now defaults to **4.0 m** (above the 3.5 m floor org set on 2026-06-08 12:18). Confirm `alt_m >= 4.0` in the JSON before launch.
+`--max-flight-time-s` default is **420 s** (60 s under the 480 s org cap) — no override needed. Pick the pre-staged `configs/arena_<N>x<N>.json` (3x3 / 4x4 / 6x6 / 8x8) closest to the announced arena size; all are pre-staged at **4.0 m** (above the 3.5 m floor org set on 2026-06-08 12:18). Confirm `alt_m >= 4.0` in the JSON before launch.
 
 ---
 
@@ -56,7 +55,7 @@ Altitude: `configs/arena_<SIZE>.json` now defaults to **4.0 m** (above the 3.5 m
 MAPPING_DRONE_VALIDITY=lookup \
 MAPPING_DRONE_VALIDITY_LOOKUP=configs/valid_ids_<DATE>.json \
   python -m mapping_drone --aruco-dict <DICT> \
-  --waypoints-from-json configs/waypoints_<DATE>.json --max-flight-time-s 240
+  --waypoints-from-json configs/arena_<N>x<N>.json
 ```
 
 Confirm `describe_rule()` in log mentions the lookup file path.

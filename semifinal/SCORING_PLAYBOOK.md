@@ -6,7 +6,7 @@ Companion to `runbook.md` and `DAY1_RUNBOOK.md`. Read once before Day-1, again b
 
 ## Confirmed rubric (slide 9 of finals brief 2026-06-09)
 
-University Total = 100% across 6 criteria. For S/N 1, 3 & 4 the priority order is the sequence shown (detected → verified → timing, etc).
+University Total = 101% as listed by org (15+15+30+30+4+7) — flagged with org as a possible 1% typo in slide 9; treat each weight as written until org corrects. For S/N 1, 3 & 4 the priority order is the sequence shown (detected → verified → timing, etc).
 
 - **S/N 1 (15%)** — Challenge 1: number of landing pads **detected** (image recognition) + number of landing points **verified** (ArUco marker) + **timing**. Priority order: detected, verified, timing.
 - **S/N 2 (15%)** — Challenge 1: **accuracy of distance** of obstacles + landing pads from the **reference point** (using depth map).
@@ -34,7 +34,7 @@ Pre-Uni split (for reference): 44% C2A + 44% C2B + 4% CUAS + 8% concept = 100% (
 
 - **Mapping drone max speed: 0.3 m/s** (slide 5). Currently `controller.py` `MAX_VEL_XY` may allow higher — clamp before scored run.
 - **Hula max speed: 0.5 m/s** (slide 6). Recommended altitude **1.1 m**. **Strictly no flying over obstacles** — score invalidated if violated.
-- **Per-attempt time: 8 min** for both C1 and C2 (slides 5, 6). Current `--max-flight-time-s` default is 240 s (4 min); we have budget to extend up to ~470 s if the run needs it.
+- **Per-attempt time: 8 min** for both C1 and C2 (slides 5, 6). Current `--max-flight-time-s` default is 420 s (7 min) — sized 60 s under the 480 s / 8-min org cap so the per-attempt timeout never elbows the org's clock.
 - **Per-session testing: 5 min** (slide 17). Hula cage holds 2 teams at once.
 - **Hula cage cooldown after each test: 20 min** — no re-queue allowed for 20 min after our session ends.
 - **Mapping drone testing**: per-day per-team total allowance (not per-session); unused carries over within the day; non-transferable between teams.
@@ -59,7 +59,7 @@ A safe-first run that completes banks at minimum the dimension-1 partial credit 
 
 ## Hard caps for safety
 
-- `--max-flight-time-s`: **240** default (4 WPs x ~10 s/wp + 200 s buffer). Lower for short scored slots; never raise above battery margin.
+- `--max-flight-time-s`: **420** default (sits ~60 s under the 480 s / 8-min org cap so the per-attempt timeout never elbows the org's clock — see `controller.py:1546-1549` comment). Lower for short scored slots; never raise above battery margin.
 - **Consecutive velocity failures**: 5. The controller aborts after 5 back-to-back `_send_velocity` warnings — this is the safety abort committed for this slot.
 - **Altitude floor**: **3.5 m minimum** (org 2026-06-08 12:18). All pre-staged templates default to **4.0 m** (3.5 m floor + 0.5 m margin). Do NOT use the older 1.5-2.0 m guidance — those altitudes are below the floor and the run will be rejected/unsafe.
 - **Battery cutoff**: per-drone failsafe. Ground when <20%. Do not arm a drone below 30% for a scored run.
@@ -69,12 +69,12 @@ A safe-first run that completes banks at minimum the dimension-1 partial credit 
 
 ## Failure mode triage
 
-- **ArUco 0 sightings**: check `--aruco-dict` matches org announcement (Ticket #2). Increase frames-per-waypoint if time allows. If still 0, mount/lighting is the suspect — re-do the marker-on-floor camera mount check from `DAY1_RUNBOOK.md`.
-- **UWB drift**: bring the sniffer back up (`python3 -m tools.uwb_sniffer`), confirm topic name + NED axes (Ticket #5). If pose jumps >1 m between adjacent frames, do not arm.
+- **ArUco 0 sightings**: check `--aruco-dict` matches org announcement (announced Day-1 morning per slide 5: valid/invalid IDs announced before assessment; dictionary itself per 2026-06-06 Discord drop is TBD on the day). Increase frames-per-waypoint if time allows. If still 0, mount/lighting is the suspect — re-do the marker-on-floor camera mount check from `DAY1_RUNBOOK.md`.
+- **UWB drift**: bring the sniffer back up (`python3 -m tools.uwb_sniffer`), confirm topic name + NED axes (see `tools/uwb_sniffer.py` — UWB topic name / NED axes are confirmed empirically, not filed as an org ticket). If pose jumps >1 m between adjacent frames, do not arm.
 - **Realsense disconnect mid-flight**: swap cable on landing; `PROFILE_CANDIDATES` in `realsense.py` handles graceful degrade across 640x480@30 / 848x480@30 / 1280x720@30 / 640x480@15.
 - **Hula offboard refuses**: battery <20% OR RC mode wrong. Cycle drone, verify RC mode, retry.
 - **Velocity setpoints failing repeatedly**: the controller will hit the 5-consecutive-failure abort. Land, inspect `log.txt` for the underlying MAVSDK exception, do not retry blind.
-- **RGB stream missing on drone** → use `--use-ir-for-aruco` (emitter toggle, may halve effective fps). Org confirmed 2026-06-08 12:18 the mapping drone uses D430 + D450, neither of which has an RGB sensor in the bare module. If the venue did not bolt on a separate RGB camera, the color-frame path in `ArucoDetector` returns empty — pivot to IR-with-emitter-toggle and accept the fps hit.
+- **RGB stream missing on drone** → use `--use-ir-for-aruco` once the `D430_RGB_RISK.md` patch is applied (Day-1 morning — flag not yet wired in code). Default behaviour (Strategy A in `D430_RGB_RISK.md`) keeps the IR emitter off every grab — no fps halving but depth on textureless surfaces degrades. If ArUco still misses, switch to alternating Strategy B (halves both depth and ArUco fps). Org confirmed 2026-06-08 12:18 the mapping drone uses D430 + D450, neither of which has an RGB sensor in the bare module. If the venue did not bolt on a separate RGB camera, the color-frame path in `ArucoDetector` returns empty — pivot to IR-with-emitter-toggle and accept the trade-off.
 
 ---
 

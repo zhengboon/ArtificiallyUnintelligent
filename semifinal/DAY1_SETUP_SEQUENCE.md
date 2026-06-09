@@ -14,7 +14,7 @@ Companion to `DAY1_RUNBOOK.md` (which covers execution + fallbacks). This file c
 
 ## 7:45-8:15 — Hardware setup
 
-- [ ] **D435 → C2 Terminal**: plug into a USB-3 port (blue insert). Verify USB 3.2 negotiation on the Windows host before touching the VM — use the one-liner in `DAY1_RUNBOOK.md` smoke order step 2 (or run `python -c "import pyrealsense2 as rs; print(rs.context().query_devices()[0].get_info(rs.camera_info.usb_type_descriptor))"` once code is staged).
+- [ ] **Mapping drone camera reachability**: confirm the mapping drone has booted and is reachable via NoMachine from the C2 Terminal — the drone's onboard D430/D450 (no RGB) will be queried during the 8:35-8:50 validation block. The USB-3 type-descriptor one-liner (see step 4 of the validation block below) runs inside the NoMachine session against the drone's pyrealsense2, not against the C2 Terminal. Our D435 stays in the bag (dev fallback only; venue uses D430/D450).
 - [ ] **Mapping drone radio link**: 5.88 GHz link to GCS. Org will likely walk us through pairing — K stays at the drone, follows org instructions, confirms link LED solid.
 - [ ] **Hula drones**: power on, join the venue 5 GHz WiFi SSID announced at briefing. K confirms each drone visible to the swarm controller before handing off.
 
@@ -50,8 +50,8 @@ Single command per check. If any fails, fix before proceeding.
   - Validity rule (which IDs count, which don't).
   - Arena dimensions + waypoint constraints.
 - [ ] Populate `configs/valid_ids_2026-06-10.json` from `valid_ids_unknown.json` template.
-- [ ] Populate `configs/waypoints_2026-06-10.json` from `waypoints_unknown.json` template (or copy `waypoints_2x2_default.json` if arena matches default 2×2 box).
-- [ ] Decide first Run Configuration: A (Safe) / B (Aggressive) / C (Recovery) per `runbook.md` section "Run configurations".
+- [ ] Populate `configs/waypoints_2026-06-10.json` by copying `waypoints_2x2_default.json` (or the nearest pre-staged `arena_NxN.json`) and editing in place. **Do NOT use `waypoints_unknown.json`** — it is intentionally `[]` (empty list) and the controller's `_parse_waypoints_json` will raise `ValueError: waypoints list is empty` if you launch with it.
+- [ ] Decide first Run Configuration: A (Safe) / B (Aggressive) / C (Recovery) per `runbook.md` section "Run configurations". The actual pre-staged waypoint files in `configs/` are `arena_3x3.json` / `arena_4x4.json` / `arena_6x6.json` / `arena_8x8.json` + `waypoints_2x2_default.json` (all at 4.0 m) — pick the closest match to the announced arena dimensions and pass it via `--waypoints-from-json`.
 
 ---
 

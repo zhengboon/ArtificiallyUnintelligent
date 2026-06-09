@@ -27,7 +27,7 @@ Companion to `runbook.md`. Do these BEFORE arming. One page. Print on paper.
 
 ## Where the controller actually runs (assumption — confirm at venue)
 
-**Dev path (what we tested):** D435 → USB → our personal laptop → `python -m mapping_drone --mock` for the mock leg, `--real` (default) when D435 was plugged in. This was validation only.
+**Dev path (what we tested):** D435 → USB → our personal laptop → `python -m mapping_drone --mock` for the mock leg, no flag (real mode is default) when D435 was plugged in. This was validation only. Note: D435 was our DEV camera; the venue drone carries D430/D450 with no RGB module.
 
 **Venue path (expected):** D430 / D450 mounted on the **mapping drone airframe**. The drone has its own onboard Ubuntu 22.04 + ROS2 + pyrealsense2 + RKNN NPU per finals brief. We connect from the **C2 Terminal Windows host → NoMachine into the drone's onboard SBC → run `python3 -m mapping_drone` on the drone**. Our laptop's USB is not in the chain.
 
@@ -36,7 +36,7 @@ Companion to `runbook.md`. Do these BEFORE arming. One page. Print on paper.
 - Whether the drone has spare USB ports for our backup Intel camera (it almost certainly does not — assume not).
 - Whether the drone's filesystem has space for our `runs/run_*/` artifacts or we need to `scp` them off after each run.
 
-**Implication:** the `--use-ir-for-aruco` decision (D430/D450 has no RGB) gets made on the drone, with the drone's own camera, not on our laptop. Our laptop testing did not exercise the IR-fallback path. Day-1 morning, first thing inside the NoMachine session, run the RGB-stream check against the drone's `rs.context()`. If only IR + depth → add `--use-ir-for-aruco`.
+**Implication:** the IR-fallback decision (D430/D450 has no RGB) gets made on the drone, with the drone's own camera, not on our laptop. Our laptop testing did not exercise the IR-fallback path. Day-1 morning, first thing inside the NoMachine session, run the RGB-stream check against the drone's `rs.context()`. If only IR + depth → the `--use-ir-for-aruco` flag is NOT YET WIRED in controller.py (see D430_RGB_RISK.md sketch). If RGB is missing on Day-1, escalate to the org marshal immediately and request a bolt-on RGB camera or the spare camera unit; do NOT attempt to launch with a CLI flag that argparse will reject.
 
 **Implication (backup camera):** Z's borrowed Intel camera is a dev fallback for laptop-side testing, NOT a swap-in for the drone. If the drone's onboard camera fails Day-1, that's an org-issued-hardware failure and we ask the marshal for the spare unit (sharing pool with Boyd Buddies). Don't try to plug our own USB camera into the drone.
 
@@ -46,7 +46,7 @@ Companion to `runbook.md`. Do these BEFORE arming. One page. Print on paper.
 
 - [ ] **UWB sniffer**: `python3 -m tools.uwb_sniffer` (or `python3 semifinal/tools/uwb_sniffer.py`). Confirm `uwb_tag` topic publishes; confirm NED axes match (n=pose.y, e=pose.x, alt=-pose.z). Override with `--topic <name>` if org renamed it.
 - [ ] **CLI flags intact**: `python3 -m mapping_drone --help` from `semifinal/`. Verify `--real`, `--mock` (alias `--mock-all`), `--waypoints-from-json`, `--aruco-dict`, `--mavsdk-address`, `--mavsdk-addresses`, `--gimbal-pitch`, `--max-flight-time-s` are all listed. **Real mode is the default — actual drone runs need NO flag**. If any missing → wrong checkout / stale USB copy.
-- [ ] **Marker-on-floor camera mount check**: place a known ArUco marker 1 m due north of drone GCS origin. Arm, hover at 1.5 m, watch `STATUS.txt` / log. Confirm world XY of detection lands within **20 cm** of (n=1.0, e=0.0). If off → gimbal mount rotated or Realsense extrinsics wrong; do NOT proceed to scored slot.
+- [ ] **Marker-on-floor camera mount check**: place a known ArUco marker 1 m due north of drone GCS origin. Arm, hover at 4.0 m (matches the scored-run altitude above the 3.5 m floor), watch `STATUS.txt` / log. Confirm world XY of detection lands within **20 cm** of (n=1.0, e=0.0). If off → gimbal mount rotated or Realsense extrinsics wrong; do NOT proceed to scored slot.
 
 ---
 
@@ -77,7 +77,7 @@ Companion to `runbook.md`. Do these BEFORE arming. One page. Print on paper.
 
 ## If waypoints differ from default
 
-- [ ] Default (4-corner 2×2 box @ 1.5 m) is pre-staged at `configs/waypoints_2x2_default.json`.
+- [ ] Default (4-corner 2×2 box @ 4.0 m, above the 3.5 m floor) is pre-staged at `configs/waypoints_2x2_default.json`.
 - [ ] After A's arena scout: copy current arena layout into `configs/waypoints_<date>.json` as `[[n_m, e_m, alt_m], ...]`.
 - [ ] Pass to controller: `--waypoints-from-json configs/waypoints_<date>.json`. Loader replaces the built-in `DEFAULT_WAYPOINTS` fallback.
 - [ ] Verify with a mock dry-run before the scored slot: `python3 -m mapping_drone.controller --mock --waypoints-from-json configs/waypoints_<date>.json`.
@@ -89,7 +89,7 @@ Companion to `runbook.md`. Do these BEFORE arming. One page. Print on paper.
 1. **UWB sniffer** — `python3 -m tools.uwb_sniffer` for 10 s. Confirm pose stream + NED axes.
 2. **RealSense pipeline test** — `python3 -m mapping_drone.tests.smoke_realsense_stationary`. Confirm a profile started (640x480@30 / 848x480@30 / 1280x720@30 / 640x480@15 — log says which).
 3. **MockMavsdk dry-run** — `python3 -m mapping_drone.controller --mock --waypoints-from-json configs/waypoints_2x2_default.json`. Confirm `runs/run_*/STATUS.txt` + `top_down.png` produced.
-4. **RealMavsdk connect-only** — `python3 -m mapping_drone.controller --mavsdk-addresses <list> --max-flight-time-s 5`. The controller will connect, attempt to arm + take off, then hit the 5 s wall and disarm cleanly. Goal: confirm MAVSDK negotiates one of the candidate addresses and the drone arms/disarms safely. (No dedicated arm-disarm-only flag — we use the existing `--max-flight-time-s` watchdog as a hard wall.)
+4. **RealMavsdk connect-only smoke** — `python3 -m mapping_drone.controller --mavsdk-addresses <list> --max-flight-time-s 5`. Realistic timing: process duration ≈ 30-45 s total (UWB await + health + arm + takeoff + 5 s mission wall + safe land + disarm). The drone WILL physically arm, take off, hover ~3 s, then land back — stand clear. The 5 s wall applies to the mission loop, not to wall-clock from process start. Requires UWB live, or the controller hangs in AWAITING_UWB. Goal: confirm MAVSDK negotiates one of the candidate addresses and the drone is controllable end-to-end. (No dedicated arm-disarm-only flag — we use the existing `--max-flight-time-s` watchdog as a hard wall on the mission phase.)
 5. **First short scored attempt** — Configuration A from `runbook.md`. Watch `STATUS.txt` live.
 
 Do not skip steps. Each step gates the next.
@@ -107,12 +107,12 @@ Do not skip steps. Each step gates the next.
 
 ---
 
-## Day-1 morning pre-flight specific to 2026-06-08 drops
+## Late-breaking pre-flight (from 2026-06-08 org Q&A drops)
 
 Three checks that come from the 2026-06-07 / 2026-06-08 org Q&A and are NOT covered by the older pre-flight list above. Do these in addition, not instead.
 
-- [ ] **Verify drone exposes an RGB color stream OR pivot to `--use-ir-for-aruco`.** Org confirmed 2026-06-08 12:18 the mapping drone uses Realsense D430 + D450 mixed across runs; neither bare module has an RGB sensor. Run `python -c "import pyrealsense2 as rs; ctx=rs.context(); d=ctx.query_devices()[0]; print([s.get_info(rs.camera_info.name) for s in d.query_sensors()])"`. If RGB present (venue added a bolt-on), proceed as normal. If only IR + depth, pass `--use-ir-for-aruco` so `ArucoDetector` consumes one IR camera with the IR emitter toggled off for ArUco frames.
-- [ ] **Confirm 4.0 m altitude in active waypoint JSON (above the 3.5 m floor).** Org set minimum flight height to 3.5 m (2026-06-08 12:18). Open `configs/waypoints_<DATE>.json` (or whichever `arena_<SIZE>.json` we picked) and confirm every waypoint's `alt_m` is >= 4.0. Pre-staged templates were 1.5 m / 2.5 m — re-issue if not yet updated.
+- [ ] **Verify drone exposes an RGB color stream (no IR-fallback flag wired yet).** Org confirmed 2026-06-08 12:18 the mapping drone uses Realsense D430 + D450 mixed across runs; neither bare module has an RGB sensor. Run `python -c "import pyrealsense2 as rs; ctx=rs.context(); d=ctx.query_devices()[0]; print([s.get_info(rs.camera_info.name) for s in d.query_sensors()])"`. If RGB present (venue added a bolt-on), proceed as normal. If only IR + depth: `--use-ir-for-aruco` is NOT YET IMPLEMENTED in controller.py (sketch only, see D430_RGB_RISK.md). Escalate to the org marshal immediately and request a venue-bolted RGB camera or the spare unit from the sharing pool. Do NOT attempt to pass the flag — argparse will reject it.
+- [ ] **Confirm 4.0 m altitude in active waypoint JSON (above the 3.5 m floor).** Org set minimum flight height to 3.5 m (2026-06-08 12:18). Pre-staged templates are all at 4.0 m (verified — arena_3x3/4x4/6x6/8x8.json + waypoints_2x2_default.json). If a hand-built `waypoints_<DATE>.json` exists, double-check each `alt_m` >= 4.0. controller.py DEFAULT_WAYPOINTS is also at 4.0 m, so omitting `--waypoints-from-json` is also safe altitude-wise.
 - [ ] **Pre-yaw at takeoff for the optimal first-scan direction.** Org confirmed 2026-06-08 12:17 launch direction is free (takeoff point fixed). Pick the heading that minimises first-leg flight time to the densest pad cluster A scouted, yaw the airframe to that heading before arming.
 
 ---

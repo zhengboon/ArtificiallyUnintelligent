@@ -62,7 +62,7 @@ Source: `Finals brief.pptx` shared by org on Telegram 2026-06-09 22:06 SGT. Extr
 | Mapping Drone | **0.3 m/s** | floor 3.5 m (org 2026-06-08); we default 4.0 m | top-down depth map + Aruco snapshots |
 | Hula | **0.5 m/s** | **recommended 1.1 m**; **STRICTLY NO FLYING OVER OBSTACLES** | scores invalidated on violation |
 
-Two distinct altitude regimes — mapping drone flies *high* (above obstacles), Hula flies *low* (around obstacles). `controller.py` `MAX_VEL_XY` and any Hula speed cap in `swarm_controller.py` stub must clamp to these. Current `--max-flight-time-s` default is 240 s; both challenges allow **up to 8 min (480 s)** per attempt — room to widen the budget.
+Two distinct altitude regimes — mapping drone flies *high* (above obstacles), Hula flies *low* (around obstacles). `controller.py` `MAX_VEL_XY` and any Hula speed cap in `swarm_controller.py` stub must clamp to these. Current `--max-flight-time-s` default is 420 s, sized 60 s under the org 480 s (8 min) per-attempt cap.
 
 ### Crash policy (slide 18, verbatim)
 
@@ -345,7 +345,7 @@ The RoboMasters carry **ArUco markers**. Detection uses `cv2.aruco` (we already 
 13. 🆕 **What's the UWB origin?** Where is (0, 0) in the arena? Likely calibrated against a known landmark at venue.
 14. 🆕 **Should we pre-prep code, or build only Day 1?** Org didn't answer — STINKIES asked 5/6 10:35pm, re-asked 6/6 14:13 ("what codes should we come prepared with on 10 June?"), still no response by 6/7 AM. Default: bring everything pre-built (we are).
 15. 🆕 **Exact ArUco dictionary to be announced Day-1** (org 2026-06-06 21:32: *"The exact dictionary will be announced on the day"*). Could be any of: `DICT_4X4_{50,100,250,1000}`, `DICT_5X5_{50,100,250,1000}`, `DICT_6X6_{50,100,250,1000}`, `DICT_7X7_{50,100,250,1000}`, or AprilTag variants `DICT_APRILTAG_{16h5,25h9,36h10,36h11}`. Our `mapping.py:ArucoDetector` and `controller.py --aruco-dict` flag currently default to `DICT_6X6_250` and accept a subset of short-form names; widen this lookup before venue so any announced dict is accepted (today's `_ARUCO_DICTS` covers ~9 of the 20 possible options — see audit notes).
-16. 🆕 **Do Challenges 1 and 2 run in parallel (both drone types active at once) or sequentially (Challenge 1 fully complete → Challenge 2)?** — Z asked team chat 2026-06-06, no answer in chat. **Still open as of 2026-06-08** — no answer from org yet. File fresh org ticket per 2026-06-06 21:47 etiquette.
+16. ✅ **Do Challenges 1 and 2 run in parallel or sequentially?** — **Resolved by finals brief slide 12**: C1 runs Day 1 (Wed) 1430–1800, C2 runs Day 2 (Thu) 1330–1600. Sequential across separate days; no parallel-within-slot.
 17. 🆕 **Can camera pitch be commanded?** Calibruh_KangKiatYang asked 2026-06-08 1:59 pm — *"Can the camera pitch change with commands or is it physically fixed downwards forever?"* — still unanswered. Affects whether we lock to -90 or can sweep.
 18. 🆕 **D430/D450 RGB stream availability** — org confirmed 2026-06-08 12:18 the mapping drone uses D430 + D450 (depth-only stereo IR, no RGB sensor in either module). Need confirmation whether the venue integration bolts on a separate RGB camera, or whether we must run ArUco on IR (emitter-toggle path, `--use-ir-for-aruco`).
 19. 🆕 **Top-down depth map format** — FlyingExplorers asked 2026-06-07 6:03 pm whether the deliverable needs to be a stereo output map like the slide, or whether a matplotlib graph (a la `top_down.py`) is acceptable. Re-asked 2026-06-08 3:19 pm. Still unanswered.

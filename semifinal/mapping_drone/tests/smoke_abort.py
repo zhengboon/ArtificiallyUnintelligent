@@ -43,15 +43,18 @@ from mapping_drone import controller as controller_mod
 class _AbortAtWp2Offboard(_MockOffboard):
     """Offboard impl that raises once the drone is approaching/in WP2.
 
-    WP2 is (2.0, 0.0, 1.5) in the default waypoint list. As soon as the mock
-    east_m position exceeds 1.5 m we raise — this fires mid-flight on the leg
-    from WP1 to WP2, ensuring at least the WP1 scan has already populated a
-    landing_pads.json entry.
+    WP2 is (2.0, 0.0, 4.0) in the default waypoint list — tuple order is
+    (north_m, east_m, alt_m), so the WP1->WP2 leg drives north_m from 0 to 2
+    while east_m stays at 0. As soon as the mock north_m position exceeds
+    1.5 m we raise — this fires mid-flight on the leg from WP1 to WP2,
+    ensuring at least the WP1 scan has already populated a landing_pads.json
+    entry. The trigger is geometric (north_m > 1.5 m) and unrelated to the
+    4.0 m altitude floor.
     """
 
     async def set_velocity_ned(self, vel) -> None:  # type: ignore[override]
         await super().set_velocity_ned(vel)
-        if self._d._pos.east_m > 1.5:
+        if self._d._pos.north_m > 1.5:
             raise RuntimeError("smoke_abort: synthetic failure at WP2")
 
 

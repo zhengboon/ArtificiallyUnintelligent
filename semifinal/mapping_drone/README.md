@@ -119,7 +119,7 @@ python -m mapping_drone.controller [flags]
 | `--waypoints PATH`    | JSON list of `[n_m, e_m, alt_m]`. Default = 4-pt demo square.                 |
 | `--gimbal-pitch DEG`  | Gimbal tilt; `-90` = straight down (DEFAULT, canonical down-facing mapping).  |
 | `--aruco-dict NAME`   | ArUco/AprilTag dictionary name (e.g. `6X6_250` [default], `4X4_50`, `APRILTAG_36h11`). Case-insensitive, optional `DICT_` prefix. See below. |
-| `--max-flight-time-s` | Hard cap before forced land. Default `240` s.                                 |
+| `--max-flight-time-s` | Hard cap before forced land. Default `420` s (60 s under the 480 s / 8-min ceiling from finals brief slide 5). |
 | `--mavsdk-address ADDR` | MAVSDK system address (single). Default `serial:///dev/ttyS6:921600`.       |
 | `--mavsdk-addresses A,B,C` | Comma-separated fallback list; tried in order with 5 s per-address connect timeout. Wins over `--mavsdk-address` when both present. See below. |
 | `--runs-dir DIR`      | Parent directory for `run_<ts>` output dirs. Default `mapping_drone/runs` (relative to CWD). |
