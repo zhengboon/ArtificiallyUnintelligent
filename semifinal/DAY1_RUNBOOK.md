@@ -25,6 +25,23 @@ Companion to `runbook.md`. Do these BEFORE arming. One page. Print on paper.
 
 ---
 
+## Where the controller actually runs (assumption — confirm at venue)
+
+**Dev path (what we tested):** D435 → USB → our personal laptop → `python -m mapping_drone --mock` for the mock leg, `--real` (default) when D435 was plugged in. This was validation only.
+
+**Venue path (expected):** D430 / D450 mounted on the **mapping drone airframe**. The drone has its own onboard Ubuntu 22.04 + ROS2 + pyrealsense2 + RKNN NPU per finals brief. We connect from the **C2 Terminal Windows host → NoMachine into the drone's onboard SBC → run `python3 -m mapping_drone` on the drone**. Our laptop's USB is not in the chain.
+
+**Unknowns until Day-1 arena setup:**
+- Whether the camera is exposed on the drone's `pyrealsense2.context().query_devices()` (likely yes — it's how the org's own getDepthAndDetect.py works) or only via a custom wrapper.
+- Whether the drone has spare USB ports for our backup Intel camera (it almost certainly does not — assume not).
+- Whether the drone's filesystem has space for our `runs/run_*/` artifacts or we need to `scp` them off after each run.
+
+**Implication:** the `--use-ir-for-aruco` decision (D430/D450 has no RGB) gets made on the drone, with the drone's own camera, not on our laptop. Our laptop testing did not exercise the IR-fallback path. Day-1 morning, first thing inside the NoMachine session, run the RGB-stream check against the drone's `rs.context()`. If only IR + depth → add `--use-ir-for-aruco`.
+
+**Implication (backup camera):** Z's borrowed Intel camera is a dev fallback for laptop-side testing, NOT a swap-in for the drone. If the drone's onboard camera fails Day-1, that's an org-issued-hardware failure and we ask the marshal for the spare unit (sharing pool with Boyd Buddies). Don't try to plug our own USB camera into the drone.
+
+---
+
 ## Pre-flight checks (do BEFORE arming)
 
 - [ ] **UWB sniffer**: `python3 -m tools.uwb_sniffer` (or `python3 semifinal/tools/uwb_sniffer.py`). Confirm `uwb_tag` topic publishes; confirm NED axes match (n=pose.y, e=pose.x, alt=-pose.z). Override with `--topic <name>` if org renamed it.
