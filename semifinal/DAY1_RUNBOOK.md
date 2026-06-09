@@ -4,6 +4,27 @@ Companion to `runbook.md`. Do these BEFORE arming. One page. Print on paper.
 
 ---
 
+## Real Day-1 schedule (from brief, slide 12)
+
+| Time | Block |
+|---|---|
+| **0730** | Registration counter opens |
+| **0930 – 1030** | Org briefing (validity rule + ArUco dict announced) |
+| **1030 – 1200** | Testing (mapping OR hula — Uni teams choose) |
+| **1200 – 1300** | Lunch (no testing) |
+| **1300 – 1330** | Testing |
+| **1330 – 1430** | Prep for Challenge 1 — **NO MAPPING DRONE FLYING** |
+| **1430 – 1800** | **Challenge 1 — SCORED** |
+| **~1800+** | Day ends |
+
+**Slot ordering (from brief slide 13):** Challenge 1 order is 1=4FINGERS → 2=AAA → **3=ARTIFICIALLYUNINTELLIGENT** → 4=BOYD BUDDIES → 5=CALIBRUH → ... Expect our call ~10-15 min after slot 1 starts at 14:30 (≈14:40-14:45). Pre-flight (this file) must be GREEN by ~14:30 latest; ideally by end of the 1300-1330 testing window.
+
+**Drone sharing (slide 22):** We share Hula 3,4 + Mapping 3,4 with BOYD BUDDIES (slot #4). Back-to-back. Drones come back to the cage with no buffer — handoff cleanly. Agree with their team mid-morning on whether they want to grab batteries during our run for a hot swap.
+
+**Day 2 reminder (Challenge 2, 1330-1600):** We are slot #3 with STD as convoy opponent. At slot #24 we operate 2 convoy RoboMasters against THE WIENERS. CUAS booth is a 4% bonus — collect Day 1 if possible.
+
+---
+
 ## Pre-flight checks (do BEFORE arming)
 
 - [ ] **UWB sniffer**: `python3 -m tools.uwb_sniffer` (or `python3 semifinal/tools/uwb_sniffer.py`). Confirm `uwb_tag` topic publishes; confirm NED axes match (n=pose.y, e=pose.x, alt=-pose.z). Override with `--topic <name>` if org renamed it.

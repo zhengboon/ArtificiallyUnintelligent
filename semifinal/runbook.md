@@ -39,6 +39,37 @@
 
 ---
 
+## Day-1 / Day-2 timeline (from org Finals brief, slide 12)
+
+**We are slot #3 in Challenge 1** (after 4FINGERS at #1, AAA at #2). Expect to be called ~10-15 min after slot 1 starts at 14:30.
+**We are slot #3 in Challenge 2; our convoy opponent is STD.**
+**At Challenge 2 slot #24 we operate 2 convoy RoboMasters against THE WIENERS.**
+**Drones (Hula 3,4 + Mapping 3,4) are shared with BOYD BUDDIES (slot #4) — handoff between back-to-back slots.**
+
+### Day 1 — Wed 10 June
+
+| Time | Block | Notes |
+|---|---|---|
+| **0730** | Registration counter opens | Lanyard + swag, show photo ID + confirmation email |
+| **0930 – 1030** | Org briefing | Validity rule + ArUco dict announced here. Capture both immediately. |
+| **1030 – 1200** | Testing (mapping OR hula — Uni teams choose) | Mapping = per-day per-team total allowance (carries over); Hula = 5 min per session, 20 min cooldown, max 2 teams in cage |
+| **1200 – 1300** | Lunch (no testing) | Standup + apply briefing findings to configs/code |
+| **1300 – 1330** | Testing | Last testing window before C1 prep |
+| **1330 – 1430** | Prep for Challenge 1 (Uni) — **NO MAPPING DRONE FLYING** | Configs locked, mock dry-run only, USB sanity check |
+| **1430 – 1800** | **Challenge 1 (Uni only) — SCORED** | We are slot #3 — expect call ~14:40–14:45 |
+| **~1800+** | Day 1 ends | Artifact copy to USB, vacate, debrief over dinner |
+
+### Day 2 — Thu 11 June
+
+| Time | Block | Notes |
+|---|---|---|
+| **0900 – 1230** | Testing | Apply Day-1 learnings; mapping drone allowance resets daily |
+| **1230 – 1330** | Lunch (no testing) | Final config sanity check before C2 |
+| **1330 – 1600** | **Challenge 2 — SCORED** | We are slot #3 with STD as convoy opponent; we operate 2 convoy RoboMasters at slot #24 against THE WIENERS |
+| **~1600+** | Day 2 ends | Final artifacts to USB, write retro in `progress.md` before leaving |
+
+---
+
 ## Wednesday morning (10 June, Day 1)
 
 - [ ] **06:00** wake by alarm. Light breakfast. Limit caffeine.
@@ -56,17 +87,19 @@
 
 ---
 
-## 09:00 — Event starts (Day 1)
+## 0930 — Event starts (Day 1)
 
-### Step 1 (T+0 – 30 min): Code load
+### Step 1 (0830 – 0930): Code load (before org briefing)
 - [ ] Plug in USB to C2 Terminal. Copy `controllers/` to a working dir.
 - [ ] On Windows side: if `swarm_controller.py` was finished overnight, run it to confirm clean import + lifecycle. **(NOT YET BUILT — placeholder.)** Otherwise: `huladola.py` is a reference example only — has no CLI mock mode. Fallback: smoke-test by importing the module to confirm Python env works, e.g. `python3 -c "import importlib.util, sys; sys.path.insert(0, 'semifinal'); import huladola"`.
 - [ ] On Ubuntu VM: `python3 -m mapping_drone.controller --mock-all` should run a fake mission end-to-end (≈45 s) and write `runs/run_*/STATUS.txt` + `top_down.png`.
 - [ ] If both pass, code is loaded. If either fails, see "If X breaks" cheatsheet at the bottom.
 
-### Step 2 (T+30 min – 60 min): Org briefing + drone slot allocation
+### Step 2 (0930 – 1030): Org briefing
 - [ ] Listen for org's full briefing on slot structure, scoring, and arena tour.
-- [ ] Note our drone testing slots (they will be announced).
+- [ ] Confirm we are slot #3 in Challenge 1 (after AAA) and slot #3 in Challenge 2 vs STD. Confirm we also drive 2 convoy RoboMasters at slot #24 vs THE WIENERS.
+- [ ] Confirm Hula 3,4 + Mapping 3,4 shared with BOYD BUDDIES (slot #4) — exchange numbers, agree on handoff cadence.
+- [ ] Capture the FCFS Discord queue links for mapping drone cage + hula drone cage as soon as org posts them.
 - [ ] **Ask org-on-site (A walks to the org desk in person AND files fresh Discord tickets — per org's 2026-06-06 21:47 etiquette, close any stale tickets first then open new ones, one question per ticket):**
   - (a) Exact ArUco / AprilTag dictionary in use today (it is one of 20 possibilities: ArUco 4X4/5X5/6X6/7X7 × {50,100,250,1000}, or AprilTag 16h5/25h9/36h10/36h11). STINKIES already asked 2026-06-06 14:13 and got no answer — we re-ask Day-1 morning.
   - (b) Are Challenge 1 and Challenge 2 (2A + 2B) run **in parallel** in one slot, or **sequentially** (C1 first, then C2)? Z asked in team chat and there is no answer yet — confirm with org directly.
@@ -77,7 +110,14 @@
 - [ ] **Map layout is NOT provided** (org clarified 2026-06-06 11:40). During the org's arena tour, A walks the perimeter, sketches obstacle positions, paces out approximate dimensions (L × W), and photographs the floor/markings.
 - [ ] A reports estimated arena bounds + obstacle list to K before Step 3; K updates `semifinal/configs/arena_waypoints_safe.json` (and `_aggressive.json`) so waypoints fit the real arena. Re-run a mock mission to confirm waypoints parse. **(configs/ dir NOT YET BUILT — see Night-Before task.)**
 
-### Step 3 (T+60 min – first slot): Pre-slot prep
+### Step 3 (1030 – 1200 + 1300 – 1330): Testing windows
+- [ ] **1030–1200:** Uni teams choose between mapping cage or hula cage. Mapping = per-day total allowance (carries over within day), so we burn it strategically across morning + early afternoon. Hula = 5 min per session, 20 min cooldown after each, max 2 teams in cage.
+- [ ] Join FCFS Discord queue link (no prior booking; head to waiting area when 3rd in line). DO NOT violate testing regulations — penalty is **1 hour no-testing**.
+- [ ] Coordinate sharing with BOYD BUDDIES on Hula 3,4 + Mapping 3,4 — they get same drones; sequence which team grabs the cage first.
+- [ ] **1200–1300 lunch — NO testing.** Standup: lessons learned, apply briefing's validity rule + announced ArUco dict to configs.
+- [ ] **1300–1330:** Final testing window. Pick whichever cage we're weakest in (likely mapping if RGB/IR pivot is still shaky).
+
+### Step 4 (1330 – 1430): Prep for Challenge 1 — NO MAPPING DRONE FLYING
 - [ ] **Confirm RGB stream availability on the drone** — `python -c "import pyrealsense2 as rs; ctx=rs.context(); d=ctx.query_devices()[0]; print([s.get_info(rs.camera_info.name) for s in d.query_sensors()])"`. Org confirmed 2026-06-08 12:18 the mapping drone uses Realsense **D430 + D450 mixed across runs**, neither of which has an RGB sensor in the bare module. If RGB present (a bolt-on was added), proceed as normal. If only IR + depth, add `--use-ir-for-aruco` to the controller command — this routes ArUco detection through one IR camera with the IR emitter toggled off for the ArUco frame.
 - [ ] **Pre-yaw the drone facing your chosen scan direction before arming.** Org confirmed 2026-06-08 12:17 that launch direction is free (takeoff point fixed). Pick the heading that minimises first-leg flight time to the densest pad cluster A scouted, then yaw the airframe to that heading before arm.
 - [ ] Pre-flight smoke test, again, with the validity rule applied.
@@ -86,7 +126,7 @@
 - [ ] Lock down which run config to use for the first attempt (see Run configurations below).
 - [ ] Print or screenshot the planned mission waypoints (in case the laptop slows / crashes mid-run).
 
-### Step 4: First scored slot — Challenge 1 (Reconnaissance)
+### Step 5 (1430 – 1800): Challenge 1 — SCORED (we are slot #3, expect call ~14:40–14:45)
 - [ ] From the C2 Terminal (Windows side), open a NoMachine/SSH session into the **mapping drone** (separate onboard Ubuntu 22.04 + ROS2 + RKNN NPU device — NOT the C2 Terminal's local VM).
 - [ ] `scp` (or USB-copy) the `mapping_drone/` controllers from the C2 Terminal onto the drone.
 - [ ] Connect to the mapping drone and run the controller **on the drone** over that session (`python3 -m mapping_drone.controller --real --waypoints semifinal/configs/arena_waypoints_safe.json`).
@@ -97,34 +137,13 @@
 - [ ] **Show judge** the outputs: top-down map (arena scale), per-pad classification table, marker images.
 - [ ] Note any judge feedback for the afternoon run.
 
-### Step 5: First scored slot — Challenge 2A (3-Hula landings)
-- [ ] Pick 3 valid landing pads from Challenge 1 output (`landing_pads.json`).
-- [ ] Manually edit `semifinal/swarm_controller.py` config OR feed pad coordinates via CLI flag.
-- [ ] Run `swarm_controller.py --task 2a --pads pad1,pad2,pad3`.
-- [ ] Watch all 3 Hulas take off, navigate, land. Pads marked green / red post-land.
-- [ ] Show judge: landed-on-correct-pad evidence.
+### Step 6 (1430 – 1800): Iterate within Challenge 1 window (post-slot-3)
+- [ ] If our slot-3 attempt finished cleanly, slot 4+ teams run while we observe — note their patterns + timing.
+- [ ] Mapping drone testing allowance may have remaining budget — confirm with marshal whether re-queue is allowed for refinement runs (allowance is per-day per-team).
+- [ ] DO NOT push code changes that affect Day 2 (C2) state during this window. C1 is fully scored at 1800.
+- [ ] **CUAS booth — 4% bonus:** if any team member has bandwidth between assessment slots, walk to the Above & Beyond: Skies & Space zone, photograph the drone at the Counter UAS booth, screenshot the zone-explored page. Easy 4 points.
 
-### Step 6: First scored slot — Challenge 2B (RoboMaster hunt)
-- [ ] Org launches the 5 RoboMaster ground robots.
-- [ ] Run `swarm_controller.py --task 2b --search-pattern lawnmower-3way`.
-- [ ] Watch Hulas split arena, fly, detect RoboMasters via **ArUco markers on the robots (dict TBD Day-1; default DICT_6X6_250 — confirm with org-on-site, see Step 2)**, snapshot. **YOLO track is killed** (A confirmed 2026-06-06 22:13, no longer training) — ArUco is the sole detection path. If ArUco misses entirely, fall back to manual judge-walked notes from A.
-- [ ] Each Hula returns + lands. Snapshots saved under `runs/run_*/snapshots/`.
-- [ ] Show judge: snapshot images with bbox overlays + count of unique robots detected.
-
-### Step 7: Lunch (12:00 – 13:00) — debrief
-- [ ] Quick standup. What worked? What sucked? What to change for afternoon?
-- [ ] **If mapping was bad:** retrain altitude / gimbal pitch. Tweak in `controller.py` constants.
-- [ ] **If detection rate was low:** check the announced ArUco dict was actually applied (`--aruco-dict <name>` matches the smoke-test output); lower altitude / re-verify `--gimbal-pitch -90`; A reviews snapshot bbox overlays to flag whether markers are out-of-FOV vs out-of-range. (No model retrain — YOLO track killed 2026-06-06.)
-- [ ] **If timing was slow:** review waypoint plan, raise altitude for faster scan.
-- [ ] Sync code changes to USB. Push to repo if connected.
-
-### Step 8 (13:00 – 17:30): Afternoon scored slots
-- [ ] Apply morning lessons. Repeat Steps 4 / 5 / 6.
-- [ ] Aim for higher score / faster mission.
-- [ ] If first attempt produced acceptable score: choose to either rerun (risky) or bank.
-- [ ] Save EVERY run's outputs to USB. Don't overwrite.
-
-### Step 9 (17:30 – 18:00): Pack up + artifacts
+### Step 7 (~1800): Day 1 wrap — artifacts
 - [ ] Copy latest run dir to USB: `latest=$(ls -td mapping_drone/runs/run_* | head -1); cp -r "$latest" /media/$USER/USB-LABEL/saved_runs_day1/`
 - [ ] Confirm artifact integrity: `python3 -c "import json,glob,os; d=sorted(glob.glob('mapping_drone/runs/run_*'))[-1]; j=json.load(open(os.path.join(d,'landing_pads.json'))); print('pads:', j.get('count', len(j.get('pads', []))))"`
 - [ ] After Day-1 Challenge 1, record the `run_<TS>` directory name in `STATUS.txt` and write it on the paper runbook hardcopy (needed for `--pads_file` in later steps; no `run_latest` symlink exists).
@@ -152,11 +171,17 @@ Apply Day 1 lessons. Same wake-up routine. No new registration (lanyard from Day
 > No big code changes overnight — only the Day-1 evening short list (validity rule, waypoint tweaks, confidence threshold). If you broke something at 02:00, revert before 08:00.
 
 - [ ] All 3 members present (org: "best that all members of team can be there on both days").
-- [ ] **08:00** at venue. Pre-flight smoke (Step 3).
-- [ ] **09:00** event starts. Apply overnight changes.
-- [ ] Same Steps 4 / 5 / 6 / 7 / 8 / 9 as Day 1.
-- [ ] If Day 1 was clean → push for bonus. If Day 1 had issues → fix and re-run the safe configuration first.
-- [ ] **End of Day 2:** results announced. Whatever happens, write the retro in `progress.md` before leaving.
+- [ ] **08:00** at venue. Pre-flight smoke (Step 3 mechanics, no scored slot yet).
+- [ ] **0900 – 1230 testing window.** Mapping drone allowance resets daily; Hula 5 min/session + 20 min cooldown still applies. Coordinate cage handoff with BOYD BUDDIES (Hula 3,4 shared). Focus testing on Challenge 2A landing accuracy + Challenge 2B ArUco-on-RoboMaster detection range.
+- [ ] **1230 – 1330 lunch — NO testing.** Final config check. Pick 3 of 5 landing coords from the Discord drop (org-provided per slide 6).
+- [ ] **1330 – 1600 Challenge 2 — SCORED.**
+  - We are **slot #3** with **STD as convoy opponent**. Expect call ~10-15 min after slot 1 starts (i.e. ~13:40-13:45).
+  - **Challenge 2A — 3-Hula landings**: pick 3 valid pads from org-published Discord coords, edit `swarm_controller.py` config or feed via CLI. Run `swarm_controller.py --task 2a --pads pad1,pad2,pad3`. Hula speed cap **0.5 m/s**, height **1.1 m**, **strictly no flying over obstacles** (slide 6). Max 8 min per attempt.
+  - **Challenge 2B — RoboMaster hunt**: org launches 5 RoboMasters (2 driven by other-team participants, 3 autonomous). Run `swarm_controller.py --task 2b --search-pattern lawnmower-3way`. ArUco is sole detection path (YOLO killed 2026-06-06). Snapshot images + bbox overlays saved under `runs/run_*/snapshots/`. Max 8 min per attempt.
+  - Show judge: landed-on-pad evidence + snapshot images with bbox overlays + unique-robot count.
+- [ ] **At slot #24 (later in the 1330-1600 window): we drive 2 convoy RoboMasters against THE WIENERS.** This is the convoy-opponent duty (slide 14 cross-table). K + A take a RoboMaster each on org-supplied controllers; Z stays on artifact-watching. Brief each other on driving pattern before slot 24 starts.
+- [ ] **CUAS booth — 4% bonus:** if not already collected Day 1, finish before 1600. Photo of drone at Counter UAS booth (Above & Beyond: Skies & Space zone, MBS L4) + screenshot of zone-explored page.
+- [ ] **~1600 end:** results announced. Whatever happens, write the retro in `progress.md` before leaving.
 
 ---
 
