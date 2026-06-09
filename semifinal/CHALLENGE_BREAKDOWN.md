@@ -17,7 +17,123 @@ Military-themed reconnaissance + ambush mission.
 
 **✅ Confirmed 2026-06-05: we are University category.** Both Challenge 1 AND Challenge 2 are ours. Challenge 1 mapping is a core deliverable, not optional.
 
-### 🆕 Updates from 2026-06-05 evening + 2026-06-06 AM + 2026-06-06 PM + 2026-06-07 + 2026-06-08
+---
+
+## 🎯 Authoritative facts from finals brief 2026-06-09 (supersedes earlier guesses)
+
+Source: `Finals brief.pptx` shared by org on Telegram 2026-06-09 22:06 SGT. Extracted verbatim into [`finals_brief_extracted.md`](finals_brief_extracted.md). **This section supersedes everything below it where they conflict.** Read the extracted file for any field-by-field detail.
+
+### Schedule (slide 12, verbatim)
+
+**Day 1 — Wed 10 Jun (University track)**
+
+| Time | Activity |
+|---|---|
+| 0930 - 1030 | Briefing |
+| 1030 - 1200 | Testing (Hula or Mapping Drone — University teams choose) |
+| 1200 - 1300 | Lunch (no testing) |
+| 1300 - 1330 | Testing |
+| 1330 - 1430 | Prep for Challenge 1 — **no flying of the Mapping Drone in this window** |
+| 1430 - 1800 | Challenge 1 (scored) |
+
+**Day 2 — Thu 11 Jun**
+
+| Time | Activity |
+|---|---|
+| 0900 - 1230 | Testing |
+| 1230 - 1330 | Lunch (no testing) |
+| 1330 - 1600 | Challenge 2 (scored) |
+
+### Our assessment slots (slides 13, 14)
+
+- **Challenge 1:** ARTIFICIALLYUNINTELLIGENT = slot **#3** (after 4FINGERS → AAA → us → BOYD BUDDIES → …).
+- **Challenge 2:** ARTIFICIALLYUNINTELLIGENT = slot **#3**, convoy opponent = **STD** (we control STD's 2 RoboMasters during STD's run — wait, see below).
+- **Challenge 2 — we must operate 2 convoy RoboMasters at slot #24 vs THE WIENERS.** During THE WIENERS' run (slot 24), 2 of the 5 ground robots are driven by us. Plan a 3-person split: someone stays at our table to run the convoy while the others reset/pack.
+
+### Drone sharing (slide 22)
+
+- ARTIFICIALLYUNINTELLIGENT shares **Hula 3,4** and **Mapping 3,4** with **BOYD BUDDIES** (slot #4, immediately after us in Challenge 1).
+- Means we hand the physical aircraft to BOYD BUDDIES the moment we finish C1, and reciprocally retrieve them before our slot starts. Pre-agree a handoff protocol with their captain on Day 1.
+
+### Speed + altitude regimes (slides 5, 6)
+
+| Drone | Max speed | Altitude | Other |
+|---|---|---|---|
+| Mapping Drone | **0.3 m/s** | floor 3.5 m (org 2026-06-08); we default 4.0 m | top-down depth map + Aruco snapshots |
+| Hula | **0.5 m/s** | **recommended 1.1 m**; **STRICTLY NO FLYING OVER OBSTACLES** | scores invalidated on violation |
+
+Two distinct altitude regimes — mapping drone flies *high* (above obstacles), Hula flies *low* (around obstacles). `controller.py` `MAX_VEL_XY` and any Hula speed cap in `swarm_controller.py` stub must clamp to these. Current `--max-flight-time-s` default is 240 s; both challenges allow **up to 8 min (480 s)** per attempt — room to widen the budget.
+
+### Crash policy (slide 18, verbatim)
+
+> *"Teams will not be given re-assessment attempts should the drone crash due to any reasons."*
+
+Safe-first behaviour is mandatory. No retries. Conservative speeds, conservative altitudes, conservative tilts.
+
+### Validity rule (slide 5)
+
+> *"Before the assessment starts, the valid and invalid Aruco Marker IDs will be announced."*
+
+Org confirms valid/invalid IDs are published **at the venue** before assessment. Our existing lookup-rule code path (`--valid-ids` / `--invalid-ids` CLI on `controller.py`) is the right shape — just wire it up Day-1 from whatever announcement format they use.
+
+### C2A landing coordinates come from Discord (slide 6)
+
+> *"Refer to Discord for the coordinates of valid landing points. Using the provided coordinates, the team will select 3 out of 5."*
+
+**Org provides the C2A landing coordinates directly via Discord.** Our Challenge 1 mapping output does **NOT** feed C2A as a judge-required handoff. `HANDOFF_C1_TO_C2.md` remains useful for our own situational awareness (e.g. cross-checking obstacle positions for the no-fly-over-obstacles rule), but is not an artifact judges will look at.
+
+### Logistics at our table (slides 20-22)
+
+- 1 mapping drone (shared with BOYD BUDDIES)
+- 1 Hula drone (shared with BOYD BUDDIES)
+- 1 sample landing pad — physical practice pad
+- 1 sample Aruco pad — physical practice marker
+- 1 laptop + charger + mouse (the C2 Terminal)
+
+### Assessment vs test cage layout (slide 5)
+
+> *"The landing pads for the assessment will have a different configuration compared to the test set-up."*
+
+Test-cage results do NOT transfer 1:1. Cage time is for tuning detection + flight envelope, not for memorising pad positions.
+
+### Bonus components (slide 9)
+
+- **S/N 5 — Counter UAS booth: 4%.** Photo of drone at the CUAS booth + screenshot of zone-explored page on Brainhack Frontier Exploration System (slide 10). Booth lives in the *Above & Beyond: Skies & Space* zone, MBS L4.
+- **S/N 6 — Overall concept explanation: 7%.** Sell the architecture to the judges.
+
+---
+
+## 🎯 Scoring rubric (slide 9)
+
+University track totals 100% across 6 rows. Pre-University skips C1 (44 / 44 / 4 / 8).
+
+| S/N | Challenge | Criterion | Uni | Pre-Uni |
+|---|---|---|---|---|
+| 1 | Challenge 1 | Number of landing pads detected (image recognition) + Number of landing points verified (Aruco marker) + Timing | **15%** | NA |
+| 2 | Challenge 1 | Accuracy of distance of obstacles / landing pads from reference point (using depth map) | **15%** | NA |
+| 3 | Challenge 2 | Number of landings within hoop + Timing | **30%** | 44% |
+| 4 | Challenge 2 (cont'd) | Number of Aruco detections + Timing | **30%** | 44% |
+| 5 | Bonus | Completion of Counter UAS tech showcase | **4%** | 4% |
+| 6 | Bonus | Overall concept explanation | **7%** | 8% |
+
+For S/N 1, 3 & 4, *priority is in sequence (1, 2, 3)* — i.e. detection count first, verification second, timing third (per slide 9).
+
+### ⚠️ Callout — S/N 2 (15%): depth-map accuracy from a reference point
+
+We have **not been optimising for this**. The judges will measure how accurately our depth map reports the distance of obstacles and landing pads relative to a reference point in the arena. This is a quantitative accuracy score, not just "did you produce a map".
+
+Implications:
+- The top-down depth map needs metric calibration, not just a visualisation. World-frame coordinates (UWB-fused) with known origin, not raw camera-frame pixel depths.
+- Reference point is likely an arena landmark (UWB origin, or a marked corner). Confirm Day-1 during briefing.
+- Currently `mapping.py` produces a top-down plot via matplotlib. Audit whether the numeric distances in the underlying array are calibrated (UWB pose × camera intrinsics × depth) or just camera-relative. **15% of total score rides on this — sizeable.**
+
+---
+
+### 🗂️ Historical — pre-brief updates (superseded 2026-06-09 by finals brief above)
+
+The sections below were written from the earlier Discord slide deck and team-chat reports. Treat as historical context where they don't conflict with the authoritative section above; defer to the brief where they do.
+
+### Updates from 2026-06-05 evening + 2026-06-06 AM + 2026-06-06 PM + 2026-06-07 + 2026-06-08
 
 - **All 3 team members should attend both days** (org: *"It is best that all members of team can be there on both days as there are plenty to do"*).
 - **Map layout WILL NOT be provided** (org 2026-06-06 11:40). We discover dimensions + obstacle positions at venue — Challenge 1 mapping is the only way we'll know the arena.

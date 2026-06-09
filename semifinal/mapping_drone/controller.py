@@ -47,7 +47,12 @@ logger = logging.getLogger("mapping_drone.controller")
 # Velocity controller gains (carry-over from kolomee.py)
 KP_XY = 0.1
 KP_Z = 0.1
-MAX_VEL_XY = 0.5
+# Org rule (finals brief slide 5): mapping drone max horizontal speed is
+# 0.3 m/s. We hard-cap the runtime value below this and refuse to honour any
+# CLI override that exceeds it. kolomee.py's original 0.5 was the per-vehicle
+# safe ceiling, not the assessment cap.
+MAX_VEL_XY_HARD_CAP = 0.3
+MAX_VEL_XY = MAX_VEL_XY_HARD_CAP
 MAX_VEL_Z = 0.3
 MAX_HOVER_XY = 0.15
 HOVER_DEADBAND = 0.03
@@ -62,7 +67,11 @@ UWB_LOSS_GRACE_S = 1.0
 UWB_LOSS_LAND_S = 5.0
 UWB_NEVER_FIX_GRACE_S = 8.0  # extra grace after takeoff for first ever UWB fix
 STUCK_GRACE_S = 10.0
-STUCK_WINDOW_S = 20.0
+# Worst-case fly_to leg at the 0.3 m/s org cap (slide 5) over 2 m is ~6.7 s,
+# plus per-waypoint scan dwell (~15 s). Window must be wider than scan dwell +
+# one fly_to so a fresh fly_to is not pre-loaded with the previous scan's hover
+# samples. 30 s gives margin without making real stalls invisible.
+STUCK_WINDOW_S = 30.0
 STUCK_MIN_MOVE_M = 0.3
 BATTERY_LAND_PCT = 15.0
 HEALTH_TIMEOUT_S = 15.0
@@ -345,6 +354,23 @@ class MappingController:
         self.run_writer = run_writer
         self.VelocityNedYaw = velocity_cls
 
+        # Resolve effective horizontal-speed cap. The org caps the mapping drone
+        # at 0.3 m/s (finals brief slide 5); we hard-clamp anything above that
+        # and log at INFO so the run log carries the cap on the record. Anything
+        # at or below the cap is honoured as-is (operators may want a slower
+        # value for low-clearance test flights).
+        requested = float(getattr(args, "max_vel_xy", MAX_VEL_XY_HARD_CAP))
+        if requested > MAX_VEL_XY_HARD_CAP:
+            logger.info(
+                "max_vel_xy=%.2f m/s exceeds org cap %.2f m/s — clamping to %.2f m/s",
+                requested, MAX_VEL_XY_HARD_CAP, MAX_VEL_XY_HARD_CAP,
+            )
+            self.max_vel_xy = MAX_VEL_XY_HARD_CAP
+        else:
+            self.max_vel_xy = requested
+        logger.info("horizontal speed cap: %.2f m/s (org max %.2f m/s)",
+                    self.max_vel_xy, MAX_VEL_XY_HARD_CAP)
+
         self.state = FlightState()
         aruco_dict = getattr(args, "aruco_dict", "6X6_250")
         self.detector = ArucoDetector(dict_name=aruco_dict)
@@ -535,9 +561,12 @@ class MappingController:
 
         # position-stuck only after takeoff + grace, NOT from started_at
         # (which would fire while we are still on the ground waiting for arm).
+        # Also skip during SCAN_WP_* states: those phases hover by design,
+        # and counting them would flag legitimate scans as stuck.
         if (
             self.state.airborne_at > 0
             and now - self.state.airborne_at > STUCK_GRACE_S
+            and not self.state.state.startswith("SCAN_WP_")
         ):
             window_start = now - STUCK_WINDOW_S
             window = [
@@ -661,8 +690,8 @@ class MappingController:
                 # drifting.
                 await self.hover_for(HOVER_SETTLE_S)
                 return True
-            vn = max(-MAX_VEL_XY, min(MAX_VEL_XY, err_n * KP_XY * 5.0))
-            ve = max(-MAX_VEL_XY, min(MAX_VEL_XY, err_e * KP_XY * 5.0))
+            vn = max(-self.max_vel_xy, min(self.max_vel_xy, err_n * KP_XY * 5.0))
+            ve = max(-self.max_vel_xy, min(self.max_vel_xy, err_e * KP_XY * 5.0))
             vd = max(-MAX_VEL_Z, min(MAX_VEL_Z, err_d * KP_Z * 5.0))
             await self._send_velocity(vn, ve, vd)
             await asyncio.sleep(dt)
@@ -1500,7 +1529,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="6X6_250",
         help="ArUco dictionary name (e.g. 6X6_250, 4X4_50)",
     )
-    p.add_argument("--max-flight-time-s", type=int, default=240)
+    p.add_argument(
+        "--max-vel-xy",
+        type=float,
+        default=MAX_VEL_XY_HARD_CAP,
+        help="horizontal-speed cap in m/s. Org rule (finals brief slide 5) is "
+             "0.3 m/s for the mapping drone — values above %.2f m/s are "
+             "hard-clamped at runtime and logged at INFO." % MAX_VEL_XY_HARD_CAP,
+    )
+    # Org rule (finals brief slide 5): max 8 min (480 s) per Challenge 1
+    # attempt. Default sits 60 s under that ceiling so the per-attempt timeout
+    # never elbows the org's own clock.
+    p.add_argument("--max-flight-time-s", type=int, default=420)
     p.add_argument(
         "--runs-dir",
         default="mapping_drone/runs",

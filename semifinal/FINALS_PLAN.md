@@ -7,8 +7,8 @@
 **Dress code:** Smart Casual. **Strictly no slippers or uncovered footwear.**
 **Bring:** personal laptop, mouse, charger; note-taking tools; thumbdrive (or HDD + USB cables) for code transfer
 
-**Today:** 2026-06-06 Sat (T-4 days)
-**Plan version:** v2.3 (rolling updates after org drops 2026-06-07 + 2026-06-08)
+**Today:** 2026-06-09 Tue (T-1 day)
+**Plan version:** v3.0 (major reset based on official Finals brief pptx — superseded earlier Discord slides)
 
 **MAJOR UPDATES vs v1.x:**
 - Two challenges revealed in slides — Challenge 1 (Reconnaissance, University-only — **CONFIRMED we are University, so this IS ours**) + Challenge 2 (Deployment & Ambush, everyone)
@@ -42,6 +42,49 @@
 **🆕 v2.2 changes (org drops 2026-06-06 PM, captured 2026-06-07 AM):**
 - **ArUco beside Hula landing pads too** (org 2026-06-06 PM); markers are **20cm x 20cm**; **exact dictionary will be announced Day-1** — controller `--aruco-dict` flag must accept any standard dict. Same ArUco-aided landing aid pattern now applies to BOTH Challenge 1 (mapping drone landing-pad classification) AND Challenge 2A (Hula landings); Hula side uses `cv2.aruco` directly rather than the pyhulax landing-marker auto-land helper. Marker physical size (20cm) sets the detection-range budget — mapping drone altitude should be tuned so markers stay in reliable detection range. Audit of `mapping.py:ArucoDetector` confirms `--aruco-dict` currently accepts: `4X4_50`, `4X4_100`, `4X4_250`, `5X5_250`, `6X6_50`, `6X6_100`, `6X6_250`, `6X6_1000`, `7X7_250` (uppercase short-form only, exact match). **Gap:** missing `4X4_1000`, `5X5_{50,100,1000}`, `7X7_{50,100,1000}`, all 4 APRILTAG variants, no case-insensitive matching, no `DICT_` long-form. Code edit required before Day-1 to cover any dict the org might announce.
 - **Org ticket etiquette:** close stale support tickets and open fresh ones for new questions so the queue stays prioritised. STINKIES' 2026-06-06 14:13 "what codes should we come prepared with on 10 June?" is still unanswered.
+
+**🆕 v3.0 changes (2026-06-09 T-1, from the official Finals brief pptx received Telegram 22:06 SGT — supersedes all earlier Discord-derived schedule/scoring assumptions):**
+
+- **Authoritative source:** `semifinal/finals_brief_extracted.md` (extracted from the org pptx). Read for any field-by-field detail; everything below is the distilled call-to-action.
+- **Locked schedule (slide 12):**
+  - Day 1 (Wed 10 Jun) Uni: 0930-1030 briefing → 1030-1200 testing → 1200-1300 lunch → 1300-1330 testing → 1330-1430 prep for C1 **(NO MAPPING DRONE FLYING)** → 1430-1800 **Challenge 1 (SCORED, Uni only)** → ~1800 end.
+  - Day 2 (Thu 11 Jun): 0900-1230 testing → 1230-1330 lunch → 1330-1600 **Challenge 2 (SCORED)** → ~1600 end.
+  - The "9-hr workshop-style day" framing from v2.x is **wrong**. C1 has a single 3.5-hour scored window; C2 has a single 2.5-hour scored window. We don't get unlimited iteration.
+- **Order of assessment (slides 13-14):**
+  - **Challenge 1:** ARTIFICIALLYUNINTELLIGENT = **slot #3** (after 4FINGERS at #1, AAA at #2). Expect call ~10-15 min after slot 1 starts at 14:30 → ~14:40-14:45.
+  - **Challenge 2:** ARTIFICIALLYUNINTELLIGENT = **slot #3, convoy opponent STD**. Same expected delay from 13:30 → ~13:40-13:45.
+  - **Challenge 2 slot #24: we drive 2 convoy RoboMasters against THE WIENERS.** This is a cross-team duty — K + A take an org-supplied RoboMaster controller each; Z stays on artifacts.
+- **Drone sharing (slide 22):** We get **Hula 3,4 + Mapping 3,4**, shared with **BOYD BUDDIES (slot #4)**. Back-to-back handoff. Coordinate with BOYD BUDDIES Day-1 morning — agree on hot-battery swap pattern + who returns drones to cage marshal.
+- **Speed caps (slides 5,6):**
+  - Mapping drone: **0.3 m/s max**. `controller.py` `MAX_VEL_XY` and waypoint cruise speed must be clamped — search for the constant before Day-1.
+  - Hula: **0.5 m/s max, recommended height 1.1 m, STRICTLY NO FLYING OVER OBSTACLES.** Different altitude regime from the 3.5 m mapping-drone floor — two altitude profiles needed.
+- **Time budgets:** Each scored attempt is **max 8 min** (slide 5 mapping + slide 6 hula). Our `--max-flight-time-s` defaults to 240 s (4 min) — we have budget to extend up to ~470 s if mission warrants.
+- **Scoring rubric (slide 9) for University (total 100%):**
+  - S/N 1 (15%): C1 — # landing pads detected (image recognition) + # landing points verified (ArUco) + timing.
+  - S/N 2 (15%): C1 — accuracy of distance from reference point using depth map. **Depth accuracy explicitly scored — P1 priority for Z.**
+  - S/N 3 (30%): C2 — # landings within hoop + timing.
+  - S/N 4 (30%): C2 cont'd — # ArUco detections + timing.
+  - S/N 5 (4%): bonus — Counter UAS tech showcase completion.
+  - S/N 6 (7%): bonus — overall concept explanation.
+  - (Pre-Uni split is 44% C2A + 44% C2B + 4% + 8%, no C1.)
+- **Validity rule (slide 5):** "Before the assessment starts, the valid and invalid ArUco Marker IDs will be announced." Org publishes at venue — our `lookup` validity rule path is correct.
+- **Challenge 2A landing coords (slide 6):** Org provides 5 valid coords via Discord; we pick 3. **Our C1 output does NOT feed C2A** (judges don't require it). `HANDOFF_C1_TO_C2.md` is internal awareness only.
+- **Artifact outputs:**
+  - C1: top-down depth map + ArUco marker images (with annotation).
+  - C2B: "print the outputs from the ArUco marker on the ground robot" — likely means produce annotated snapshots, not literal paper. Verify Day-1.
+- **Crash policy (slide 18):** **No re-assessment if drone crashes.** SAFE-FIRST is mandatory. This kills Config B (aggressive) as a first-attempt option; Config A only until C1 is banked.
+- **Testing regulations (slides 16-18):**
+  - FCFS Discord queue, no prior booking. 5 min/session in either cage.
+  - Hula: 2 teams in cage at once, 20-min cooldown after each test.
+  - Mapping drone: per-day per-team **total** allowance (carries over within day, NOT per-session).
+  - **1 hour no-testing penalty** for any rule violation.
+- **Logistics per team (slides 20-22):** 1 mapping drone + 1 Hula drone (both shared with BOYD BUDDIES), 1 sample landing pad, 1 sample ArUco pad, 1 laptop + charger + mouse. No personal-laptop dependency for the scored mission.
+- **Layout warning (slide 5):** "The landing pads for the assessment will have a different configuration compared to the test set-up." Test runs do not transfer 1-1.
+- **CUAS booth bonus (slide 10):** Photo of drone at Counter UAS booth + screenshot of zone-explored page. Booth = Above & Beyond: Skies & Space zone, MBS L4. **4% — easy points, collect Day 1.**
+- **Code touches required before Day-1:**
+  1. `controller.py`: clamp `MAX_VEL_XY` (and any cruise-speed param) to 0.3 m/s.
+  2. `swarm_controller.py`: add 0.5 m/s velocity cap + 1.1 m altitude default + obstacle-avoidance assertion (it's still a stub).
+  3. Both controllers: surface the per-attempt 8-min limit; current default 240 s can extend toward ~470 s if mission planning supports it.
 
 **🆕 v2.3 changes (2026-06-09 T-1 from 2026-06-07/08 org drops):**
 - **Minimum flight height = 3.5 m** (org 2026-06-08 12:18). All pre-staged arena templates (1.5 m / 2.5 m) sit below the floor. Bump every waypoint template to **4.0 m** for margin against the 3.5 m floor and re-verify on a mock dry-run before any scored slot.
@@ -149,12 +192,14 @@
 | **6:30** | Final bag check: **personal laptop + mouse + charger** (mandatory), Photo ID, confirmation email (print + on phone), USB×2 with code + models, phones, paper runbook, pen, notebook, water, snack. Spare cables (USB-A, USB-C, HDMI), power strip if you have one. |
 | **6:45** | Leave for MBS. Train + walk = ~30-45 min from most parts of SG. |
 | **7:30** | **Registration counter opens** — Marina Bay Sands Expo and Convention Centre, **Level 4**. Collect lanyard + swag. Show photo ID + confirmation email. |
-| **7:45–8:45** | On-site setup window. Find a spot, plug in, boot laptops, verify WiFi, sanity-check that `pyhulax` + `pyrealsense2` import. K runs the 3 prototype scripts as a smoke. Z reviews the runbook one more time. **Before first scored slot, query org-on-site for the exact ArUco dictionary** (announced Day-1 per 2026-06-06 PM) and pass via `--aruco-dict` on both the mapping drone controller and the Hula swarm controller. |
-| **9:00** | **Event starts.** Watch for org's specific instructions on slot structure (multiple runs in a 9hr day vs one long mission TBD). |
-| **9:00 – 12:00** | Morning block: first scored run, learn from it, iterate. Banking the safe run first is the priority. |
-| **12:00 – 13:00** | Lunch / debrief. Have one of us write what we observed (target visibility, arena scale, what other teams' approaches look like). |
-| **13:00 – 17:30** | Afternoon block: better-tuned runs. Push for higher score. |
-| **17:30 – 18:00** | Final artifact copy to USB. Confirm with judges, thank them, leave. |
+| **7:45–9:00** | On-site setup window. Find a spot, plug in, boot laptops, verify WiFi, sanity-check that `pyhulax` + `pyrealsense2` import. K runs the 3 prototype scripts as a smoke. Z reviews the runbook one more time. Find BOYD BUDDIES (slot #4) and agree on Hula/Mapping 3,4 handoff cadence. |
+| **0930 – 1030** | **Org briefing.** Capture validity rule + ArUco dict announced here. Pass to `--aruco-dict` and the lookup-rule JSON file before any scored slot. |
+| **1030 – 1200** | **Testing window** — Uni teams choose mapping cage or hula cage. FCFS via Discord. Mapping = per-day total allowance (carries over); Hula = 5 min/session + 20 min cooldown, 2 teams in cage max. |
+| **1200 – 1300** | Lunch (no testing). Standup: apply briefing findings to configs. |
+| **1300 – 1330** | Last testing window before C1 prep. Pick weakest path. |
+| **1330 – 1430** | **Prep for Challenge 1 — NO MAPPING DRONE FLYING.** Mock dry-run only, USB sanity, configs locked. |
+| **1430 – 1800** | **Challenge 1 (Uni only) — SCORED.** We are **slot #3** — expect call ~14:40-14:45. Max 8 min/attempt. Crash = no re-assessment. Use Configuration A (safe). |
+| **~1800** | Day 1 ends. Final artifact copy to USB. Confirm with judges, thank them, leave. **CUAS booth bonus** — collect today if not already (4% easy points, Above & Beyond zone). |
 | **Evening** | Dinner debrief. Update `progress.md` with what worked / failed. Decide overnight code changes (small + safe only). |
 
 **Roles (lock at Mon evening sync):**
@@ -169,8 +214,10 @@
 | **6:00am** | Wake. Same routine. Re-check overnight changes loaded onto USB + laptop. |
 | **8:00** | Arrive at venue. No new registration needed (lanyards from Day 1). |
 | **8:30 – 9:00** | Setup. Verify everything still works after laptop sleep/restart. |
-| **9:00 – 18:00** | Same shape as Day 1. Apply Day 1 lessons. If Day 1 was clean, push harder on bonus / extra targets. If Day 1 had issues, fix and re-run the safe configuration first. |
-| **End of Day 2** | Final results announced (usually). Whatever happens, write the retro in `progress.md` before leaving. |
+| **0900 – 1230** | **Testing window.** Mapping drone allowance resets daily; Hula 5 min + 20 min cooldown still applies. Coordinate Hula 3,4 + Mapping 3,4 cage handoff with BOYD BUDDIES. Focus on C2A landing accuracy + C2B ArUco-on-RoboMaster detection range. |
+| **1230 – 1330** | Lunch (no testing). Pick 3 of 5 landing coords from the org's Discord drop. Final config check. |
+| **1330 – 1600** | **Challenge 2 — SCORED.** We are **slot #3** with **STD as convoy opponent**. Expect call ~13:40-13:45. C2A: 3-Hula landings (0.5 m/s, 1.1 m, no fly-over). C2B: RoboMaster hunt via ArUco. Each attempt max 8 min. Crash = no re-assessment. **At slot #24 we drive 2 convoy RoboMasters against THE WIENERS** — K + A take a controller each, Z stays on artifacts. |
+| **~1600** | Day 2 ends. Final results announced. Write the retro in `progress.md` before leaving. **CUAS booth bonus** — must be collected by now if not done Day 1. |
 
 ---
 

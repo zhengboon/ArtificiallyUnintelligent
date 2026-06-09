@@ -17,6 +17,8 @@
 > **2026-06-06 21:47 PM (captured 2026-06-07 AM):** Org ticket etiquette — close old support tickets and open fresh ones for new questions so the queue stays prioritised. Any still-open question we have should be filed as a NEW ticket.
 > **2026-06-06 PM (team chat):** ArUco beside Hula pads + 20cm + dictionary TBD Day-1 (org drops captured above). Team consequences: §3.4 audit shows current `mapping_drone/mapping.py:_ARUCO_DICTS` rejects ~55% of possible Day-1 announcements — pre-venue expansion to all 20 dicts is the top blocker.
 > **2026-06-07 AM (team chat):** A killed the YOLO track (6/6 22:13 "Nope not using yolo" — TF/ImageAI/OpenCV may be explored but exploratory only). K is on Hula swarm SEARCH ALGORITHM tonight (6/6 21:36). Z secured a backup Intel depth camera from a friend (close-to-D435, not exact) for redundancy. A's laptop is unreliable (7/6 00:13 — "It's been repeating quite often"); Day-1 reliability risk for anything that must run off A's laptop.
+>
+> **2026-06-09 — AUTHORITATIVE SOURCE for finals rules + schedule + scoring: [`finals_brief_extracted.md`](finals_brief_extracted.md)** (extracted from org pptx, T-1 evening). Earlier slides + Discord drops are subsumed by this brief.
 
 ## Finals logistics (org confirmations 2026-06-05 / 2026-06-06)
 - **Event:** FINALS (we skipped semi-final tier — confirmed 2026-06-03), University category (2026-06-05).

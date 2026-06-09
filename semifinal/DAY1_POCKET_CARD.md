@@ -1,5 +1,7 @@
 # Day-1 Pocket Card — Tape to C2 Terminal
 
+**SLOT #3 — be ready by ~1445** (C1 starts 1430, slot 3 ≈ 10-15 min in). Prep window 1330-1430 = NO MAPPING DRONE FLYING.
+
 One page. Glance, type, fly. Reference is `DAY1_RUNBOOK.md`. Setup is `DAY1_SETUP_SEQUENCE.md`. Strategy is `SCORING_PLAYBOOK.md`.
 
 ---
@@ -75,6 +77,12 @@ Controller tries each with 5 s timeout, logs which connected. If all 5 fail: res
 ## EMERGENCY ABORT
 
 `Ctrl-C`  — SIGINT triggers emergency_land + disarm. Do not Ctrl-Z. Do not yank the radio.
+
+---
+
+## BONUS COLLECTION (between slots)
+
+- **CUAS booth — 4% bonus.** Above & Beyond: Skies & Space zone, MBS L4. Snap a photo of the drone at the Counter UAS booth + screenshot of the zone-explored page on the Brainhack Frontier Exploration System. Do this Day 1 if at all possible; do not let it slip to Day 2.
 
 ---
 
