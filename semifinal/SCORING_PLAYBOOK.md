@@ -39,7 +39,7 @@ Assume the rubric weights are roughly equal across the 3 dimensions per challeng
 
 ## Run strategy: safe-then-aggressive
 
-- **Run 1 = SAFE.** Bank a confirmed score. Conservative altitude (1.5-2.0 m), conservative speed (0.3-0.5 m/s), short waypoint list. Pick the closest pre-staged template at venue: `configs/arena_3x3.json`, `arena_4x4.json`, `arena_6x6.json`, or `arena_8x8.json` (the 8x8 template uses 2.5 m altitude for area coverage). Fallback if none match: `waypoints_2x2_default.json`. Goal: have something to submit.
+- **Run 1 = SAFE.** Bank a confirmed score. Conservative altitude — **4.0 m default** (above the 3.5 m floor org set on 2026-06-08 12:18; the older 1.5-2.0 m guidance is dead), conservative speed (0.3-0.5 m/s), short waypoint list. Pick the closest pre-staged template at venue: `configs/arena_3x3.json`, `arena_4x4.json`, `arena_6x6.json`, or `arena_8x8.json` (all bumped to 4.0 m for the 3.5 m floor). Fallback if none match: `waypoints_2x2_default.json` (also 4.0 m). Goal: have something to submit.
 - **Run 2+ = AGGRESSIVE.** Tune based on run-1 deductions:
   - Higher altitude only if detection still works (verify with a mock dry-run on the captured top-down).
   - Faster speed only if UWB tracking stays clean (no spikes in sniffer log).
@@ -52,6 +52,7 @@ Assume the rubric weights are roughly equal across the 3 dimensions per challeng
 
 - `--max-flight-time-s`: **240** default (4 WPs x ~10 s/wp + 200 s buffer). Lower for short scored slots; never raise above battery margin.
 - **Consecutive velocity failures**: 5. The controller aborts after 5 back-to-back `_send_velocity` warnings — this is the safety abort committed for this slot.
+- **Altitude floor**: **3.5 m minimum** (org 2026-06-08 12:18). All pre-staged templates default to **4.0 m** (3.5 m floor + 0.5 m margin). Do NOT use the older 1.5-2.0 m guidance — those altitudes are below the floor and the run will be rejected/unsafe.
 - **Battery cutoff**: per-drone failsafe. Ground when <20%. Do not arm a drone below 30% for a scored run.
 - **Geofence**: rely on Hula's own — we do not enforce in code. Confirm with org during setup that geofence is active for our slot.
 
@@ -64,6 +65,7 @@ Assume the rubric weights are roughly equal across the 3 dimensions per challeng
 - **Realsense disconnect mid-flight**: swap cable on landing; `PROFILE_CANDIDATES` in `realsense.py` handles graceful degrade across 640x480@30 / 848x480@30 / 1280x720@30 / 640x480@15.
 - **Hula offboard refuses**: battery <20% OR RC mode wrong. Cycle drone, verify RC mode, retry.
 - **Velocity setpoints failing repeatedly**: the controller will hit the 5-consecutive-failure abort. Land, inspect `log.txt` for the underlying MAVSDK exception, do not retry blind.
+- **RGB stream missing on drone** → use `--use-ir-for-aruco` (emitter toggle, may halve effective fps). Org confirmed 2026-06-08 12:18 the mapping drone uses D430 + D450, neither of which has an RGB sensor in the bare module. If the venue did not bolt on a separate RGB camera, the color-frame path in `ArucoDetector` returns empty — pivot to IR-with-emitter-toggle and accept the fps hit.
 
 ---
 

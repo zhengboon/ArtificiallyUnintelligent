@@ -303,6 +303,20 @@ the USB-C cable (must be USB 3.x — the supplied cables are colour-coded).
 `realsense-viewer` from `librealsense` confirms the device is alive. For
 dev without hardware use `--mock-realsense`.
 
+**RealSense `pipeline.start()` fails on every PROFILE_CANDIDATES entry,
+all with "stream not supported" or similar around `rs.stream.color`.**
+The drone is almost certainly a **D430 or D450** instead of a D435. Both
+of those modules are depth-only (stereo IR + IR projector) and have NO
+RGB sensor — every entry in `PROFILE_CANDIDATES` enables `rs.stream.color`,
+so they all raise. Apply the `--use-ir-for-aruco` patch (sketch in
+`semifinal/D430_RGB_RISK.md` and as a TODO block at the top of
+`realsense.py`): stream `rs.stream.infrared` index 1 instead, turn the
+emitter off so the projector dot pattern doesn't degrade ArUco, and
+synthesise a 3-channel BGR from the IR grayscale so `ArucoDetector`
+needs no edit. Day-1 morning fix, ~1-2h with hardware in hand. Org
+confirmed the module family in BH2026ROBOVERSE Discord on
+2026-06-08 12:18.
+
 **MAVSDK serial port.**  Default is `serial:///dev/ttyS6:921600`. If you
 see `MAVSDK: connection failed` check `dmesg | tail` for the actual ttyS
 port and pass it via `--mavsdk-address` (e.g.

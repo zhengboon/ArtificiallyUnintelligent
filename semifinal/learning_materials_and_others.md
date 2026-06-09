@@ -370,6 +370,55 @@ This aligns with our docs cascade today: A's RoboMaster YOLO is no longer critic
 
 ---
 
+## 🔥 Q&A — 2026-06-07 + 2026-06-08 (minimum altitude + D430/D450 no-RGB + camera facing + resolution + launch direction)
+
+> **ROBO05_Daniel** — 7/6/2026 8:04 pm
+> *(re: minimum flight height + camera resolution/FOV/tag pixel count — edited 8:26 pm)*
+
+> **BH2026ROBOVERSE** OP — 8/6/2026 12:18 pm
+>
+> minimum flight height is 3.5m.
+
+> **ROBO05_KyrosChenJunyu / Mili** — 7/6/2026 8:53 pm
+> *(re: which Realsense model is mounted on the mapping drone)*
+
+> **BH2026ROBOVERSE** OP — 8/6/2026 12:18 pm
+>
+> Intel Realsense D430 and D450.
+
+> **BH2026ROBOVERSE** OP — 8/6/2026 12:19 pm
+>
+> Camera mounted facing down.
+
+> **BH2026ROBOVERSE** OP — 8/6/2026 12:19 pm
+>
+> Resolution is configurable.
+
+> **FlyingExplorers** — 7/6/2026 8:56 pm
+> *(re: is launch direction fixed, or can we pre-yaw)*
+
+> **BH2026ROBOVERSE** OP — 8/6/2026 12:17 pm
+>
+> you can launch facing your desired direction. but takeoff point is the same for all.
+
+**Confirms (and code/doc impact):**
+- **Minimum flight height = 3.5 m.** All pre-staged arena templates (`configs/waypoints_2x2_default.json`, `arena_3x3.json`, `arena_4x4.json`, `arena_6x6.json` @ 1.5 m, `arena_8x8.json` @ 2.5 m) are BELOW the floor. Bump to 4.0 m for margin against the 3.5 m floor.
+- **Mapping drone cameras are D430 AND D450.** Both are depth-only stereo IR modules with an IR projector — **neither has an RGB sensor**. Our `ArucoDetector` in `mapping_drone/mapping.py` reads `cv2.cvtColor(color_frame, COLOR_BGR2GRAY)`. If the venue drone does not bolt on a separate RGB camera, there is no color stream to detect ArUco from. Fallback: detect ArUco on one IR camera and toggle the IR emitter off during ArUco frames (`device.first_depth_sensor().set_option(rs.option.emitter_enabled, 0.0)`) so the projector dots don't smear the marker — alternate emitter on/off frames to preserve depth. Plan: add `--use-ir-for-aruco` flag with emitter-toggle.
+- **Camera facing down** confirms `--gimbal-pitch -90` default is correct.
+- **Resolution configurable** confirms our `RealsenseNode` `PROFILE_CANDIDATES` fallback chain (640×480 → 848×480 → 1280×720 → 640×480@15) is the right approach.
+- **Launch direction free, takeoff point fixed**: pre-yaw the drone facing the optimal first-scan direction before arming. Captured in `DAY1_RUNBOOK.md` / setup sequence.
+
+### Still-open in other teams' tickets (candidates for our Day-1 morning batch)
+
+- **Calibruh_KangKiatYang** 2026-06-08 1:59 pm — *"Can the camera pitch change with commands or is it physically fixed downwards forever?"* UNANSWERED.
+- **yangweiindustries_LimYangWei** 2026-06-08 3:29 pm — *"how the convoys move? are they moving completely randomly at every step, or do they only make a random decision when they reach an intersection?"* UNANSWERED.
+- **ROBO11_DarwinHoShengXian** 2026-06-08 11:03 pm — *"for challenge 2, are the drones allowed to fly over the boxes throughout?"* UNANSWERED.
+- **FlyingExplorers** 2026-06-07 6:03 pm — *"top-down depth map — needs to be stereo output map like the slide, or can be matplotlib graph like top_down.py?"* UNANSWERED.
+- **ROBO05_Daniel** 2026-06-07 8:04 pm + edited 8:26 pm — *"resolution and FOV of the cameras and tag pixel count?"* UNANSWERED (only minimum altitude + camera model answered).
+- **FlyingExplorers** 2026-06-08 3:19 pm — *"any update on this?"* (re: 7/6 6:03 pm depth-map question). STILL UNANSWERED.
+
+---
+
 ## Source channels (for future scrapes)
 
 | Channel | What lives there |

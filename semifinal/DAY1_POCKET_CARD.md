@@ -4,6 +4,12 @@ One page. Glance, type, fly. Reference is `DAY1_RUNBOOK.md`. Setup is `DAY1_SETU
 
 ---
 
+## CRITICAL CHECK (do FIRST, before any of the below)
+
+- **rs streams: RGB present?** `python -c "import pyrealsense2 as rs; ctx=rs.context(); d=ctx.query_devices()[0]; print([s.get_info(rs.camera_info.name) for s in d.query_sensors()])"`. If **NO** RGB (D430/D450 bare modules expose none — org 2026-06-08 12:18), add `--use-ir-for-aruco` to every controller command below.
+
+---
+
 ## BEFORE FIRST RUN  (in order — each step gates the next)
 
 ```
@@ -35,6 +41,8 @@ python -m mapping_drone --real \
 ```
 
 `<DICT_FROM_BRIEFING>` — accepts `DICT_6X6_250`, `6x6_250`, `apriltag_36h11`, case-insensitive.
+
+Altitude: `configs/arena_<SIZE>.json` now defaults to **4.0 m** (above the 3.5 m floor org set on 2026-06-08 12:18). Confirm `alt_m >= 4.0` in the JSON before launch.
 
 ---
 

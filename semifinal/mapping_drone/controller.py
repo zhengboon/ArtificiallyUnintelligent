@@ -81,10 +81,10 @@ WAYPOINT_PAUSE_S = 2.0
 # (PX4 lands in place); add an explicit (0,0) waypoint to the JSON file when a
 # physical return is required.
 DEFAULT_WAYPOINTS = [
-    (0.0, 0.0, 1.5),
-    (2.0, 0.0, 1.5),
-    (2.0, 2.0, 1.5),
-    (0.0, 2.0, 1.5),
+    (0.0, 0.0, 4.0),
+    (2.0, 0.0, 4.0),
+    (2.0, 2.0, 4.0),
+    (0.0, 2.0, 4.0),
 ]
 
 # Day-1 MAVSDK address fallback order. Tried in sequence when the operator

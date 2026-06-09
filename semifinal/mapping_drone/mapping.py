@@ -135,7 +135,19 @@ class ArucoDetector:
     def detect_in_frame(
         self, frame
     ) -> list[tuple[int, tuple[int, int], tuple[int, int, int, int]]]:
-        """Returns list of (aruco_id, pixel_center, bbox_xyxy)."""
+        """Returns list of (aruco_id, pixel_center, bbox_xyxy).
+
+        TODO (P0, D430/D450 no-RGB risk — see semifinal/D430_RGB_RISK.md):
+            This reads frame.color_bgr. If the drone ships a D430 or D450
+            (org confirmed 2026-06-08 12:18 — those modules have NO RGB
+            sensor) there is no colour stream to read. The Day-1 patch
+            keeps THIS function unchanged: realsense.RealsenseNode is
+            patched to synthesise a 3-channel BGR from the IR_LEFT
+            grayscale stream when --use-ir-for-aruco is set, so the
+            cvtColor below stays a no-op on a triplicated grayscale
+            image. No edit needed here. Full patch sketch in
+            semifinal/D430_RGB_RISK.md.
+        """
         if frame is None or frame.color_bgr is None:
             return []
         gray = cv2.cvtColor(frame.color_bgr, cv2.COLOR_BGR2GRAY)

@@ -7,6 +7,10 @@ re-deploying code.
 
 ## Files
 
+> **Altitude note (2026-06-08):** All templates now use 4.0m altitude after
+> org confirmed 3.5m minimum flight height on 2026-06-08 12:18. 4.0m gives
+> a 0.5m safety margin.
+
 ### `waypoints_2x2_default.json`
 The current hard-coded 2x2 survey pattern used by `mapping_drone.controller`
 when no `--waypoints-from-json` flag is passed. This file MIRRORS the
@@ -31,9 +35,9 @@ Loaded via `--waypoints-from-json configs/waypoints_unknown.json`.
 
 ### `arena_3x3.json`, `arena_4x4.json`, `arena_6x6.json`, `arena_8x8.json`
 Pre-staged 4-corner survey patterns for common arena sizes. Same schema as
-`waypoints_2x2_default.json` (list-of-[x, y, z], metres). 3x3/4x4/6x6 fly
-at altitude 1.5 m; 8x8 flies at 2.5 m so each Realsense frame covers more
-ground (fewer waypoints needed to span the larger arena).
+`waypoints_2x2_default.json` (list-of-[x, y, z], metres). All four templates
+fly at 4.0 m to clear the 3.5 m minimum flight height the org confirmed on
+2026-06-08.
 
 Day-1: once the org publishes arena dimensions, pass the closest match via
 `--waypoints-from-json configs/arena_NxN.json`. If none match exactly,

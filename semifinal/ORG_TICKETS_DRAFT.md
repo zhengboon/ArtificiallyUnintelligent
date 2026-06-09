@@ -1,6 +1,6 @@
 # Org Tickets — First-Batch Drafts (Copy-Paste Ready)
 
-These are the **5 file-first tickets** surfaced by the deep audit. Each section below contains a single ticket — ready to copy verbatim into the `#support-ticket` Discord channel.
+These are the **file-first tickets** surfaced by the deep audit, plus new tickets added from 2026-06-07/08 Discord activity. Each section below contains a single ticket — ready to copy verbatim into the `#support-ticket` Discord channel.
 
 For each ticket:
 
@@ -8,7 +8,131 @@ For each ticket:
 - **Why we're asking:** one-sentence internal rationale (do NOT paste this into Discord — it's a reminder for whoever is filing).
 - **Body (quoted block):** copy the contents of the block verbatim as the Discord message.
 
-See the **Filing Recommendation** at the bottom for the suggested firing order and pacing — do **NOT** fire all 5 at once.
+See the **Filing Recommendation** at the bottom for the suggested firing order and pacing — do **NOT** fire everything at once.
+
+---
+
+## Updated 2026-06-09 — new tickets surfaced from 2026-06-07/08 Discord activity
+
+The 5 originally-drafted file-first tickets (further down) remain valid and unfired. The 6 tickets below were added after the 2026-06-08 org clarifications (D430/D450 cameras confirmed, 3.5m minimum altitude, camera facing down, configurable resolution, fixed launch point + free direction) and after sweeping the still-unanswered questions other teams asked on 06-07 and 06-08.
+
+---
+
+### Ticket 6 (P0): Do the mapping drones expose an RGB color stream, or only depth + IR?
+
+**To file in:** #support-ticket | **Why we're asking:** P0 — if the answer is no, we need a different code path on Day-1 (emitter-toggle IR ArUco instead of color ArUco).
+
+> **Challenge:** Challenge 1 — Reconnaissance (University)
+> **Team:** ArtificiallyUnintelligent
+>
+> Thanks for confirming on 2026-06-08 that the mapping drone uses Intel Realsense D430 and D450 modules. Both of those SKUs are depth-only by default (stereo IR + IR projector, no RGB sensor). Many drone integrators bolt on a separate RGB camera alongside the depth module — we wanted to confirm whether our team's mapping drone exposes a usable colour stream, since our current ArUco detector consumes a colour frame.
+>
+> ***Ask: does the mapping drone expose an RGB colour stream (e.g. via a bolted-on RGB sensor or a second camera), or only the D430/D450 depth + IR streams?***
+>
+> *Why we're asking:* if only IR + depth is exposed, we have an `--use-ir-for-aruco` fallback ready (toggle the IR emitter off on alternating frames so the dot pattern doesn't degrade marker detection) — but we want to know in advance so we don't burn setup-day flight time discovering this on-site.
+>
+> Thanks,
+> — ArtificiallyUnintelligent (University)
+
+---
+
+### Ticket 7 (P1): Is camera pitch programmable from MAVSDK / pyhulax, or is it physically fixed downwards?
+
+**To file in:** #support-ticket | **Why we're asking:** if the mount is fixed, our `set_camera_angle(pitch_deg)` call is a no-op and we should disable our gimbal commands to avoid confusion on the field.
+
+> **Challenge:** Challenge 1 — Reconnaissance (University)
+> **Team:** ArtificiallyUnintelligent
+>
+> Following the 2026-06-08 confirmation that the camera is mounted facing down: is the camera pitch programmable from MAVSDK / pyhulax (i.e. can we issue a runtime command to change the pitch angle), or is the mount physically fixed downwards for the entire run?
+>
+> Calibruh_KangKiatYang asked the same question on 2026-06-08 1:59pm — flagging that this answer is useful for multiple teams.
+>
+> ***Ask: is camera pitch software-controllable, or physically fixed at the downward orientation?***
+>
+> *Why we're asking:* our mapping-drone controller currently issues `set_camera_angle(pitch_deg)` — if the mount is fixed, that call is a no-op and we'll disable it to avoid confusion. If programmable, we'll leave the default at -90° (straight down) per the 06-08 confirmation.
+>
+> Thanks,
+> — ArtificiallyUnintelligent (University)
+
+---
+
+### Ticket 8 (P1): Challenge 2B — what is the convoy movement model?
+
+**To file in:** #support-ticket | **Why we're asking:** affects whether the Hula swarm should continuously patrol (intercept-style) or sweep waypoint hubs (intersection-style).
+
+> **Challenge:** Challenge 2B — Convoy hunt (University)
+> **Team:** ArtificiallyUnintelligent
+>
+> Could you clarify how the ground-robot convoys move during Challenge 2B? Specifically: do they pick a random direction on every step (continuous random walk), or do they only make a random decision when they reach an intersection (random-at-intersection)?
+>
+> yangweiindustries_LimYangWei raised this on 2026-06-08 3:29pm without a response yet.
+>
+> ***Ask: is convoy movement random-per-step or random-at-intersection?***
+>
+> *Why we're asking:* it changes our swarm search strategy. Continuous random walk favours a patrol-and-intercept approach; random-at-intersection lets us dedup detections by ArUco ID rather than by world-position clustering. We'd rather lock the right strategy in before finals day.
+>
+> Thanks,
+> — ArtificiallyUnintelligent (University)
+
+---
+
+### Ticket 9 (P1): Challenge 2B — are Hula drones allowed to fly over the convoy boxes?
+
+**To file in:** #support-ticket | **Why we're asking:** if disallowed, our path planner has to route around box footprints rather than running a lawnmower over the whole arena.
+
+> **Challenge:** Challenge 2 — Hula swarm (University)
+> **Team:** ArtificiallyUnintelligent
+>
+> For Challenge 2, are the Hula drones allowed to fly *over* the convoy boxes throughout the run, or must we keep the swarm's lateral footprint clear of the boxes at all altitudes?
+>
+> ROBO11_DarwinHoShengXian asked this on 2026-06-08 11:03pm without a response yet.
+>
+> ***Ask: are Hula drones permitted to overfly the boxes during Challenge 2?***
+>
+> *Why we're asking:* if overflight is allowed, a lawnmower pattern over the whole arena is the simplest search. If not, we need to plan paths that route around the box footprints — different code, different rehearsal.
+>
+> Thanks,
+> — ArtificiallyUnintelligent (University)
+
+---
+
+### Ticket 10 (P2): Challenge 1 top-down depth map — matplotlib-style graph acceptable, or must it be a stereo output map?
+
+**To file in:** #support-ticket | **Why we're asking:** affects which artifact we present to judges (our `top_down.png` is matplotlib-style from the occupancy grid).
+
+> **Challenge:** Challenge 1 — Reconnaissance (University)
+> **Team:** ArtificiallyUnintelligent
+>
+> For the Challenge 1 top-down depth map deliverable: does the judging panel expect a stereo-output map (i.e. a depth image rendered directly from the Realsense stereo pipeline, matching the briefing slide), or is a matplotlib-style top-down occupancy graph (e.g. `top_down.py`) also acceptable?
+>
+> FlyingExplorers raised this on 2026-06-07 6:03pm and again on 2026-06-08 3:19pm without a response yet.
+>
+> ***Ask: is a matplotlib top-down graph an acceptable Challenge 1 artifact, or must we present a stereo-output depth map?***
+>
+> *Why we're asking:* our current pipeline emits `top_down.png` from the occupancy grid (matplotlib-style). If judges want a stereo output specifically, we may need to switch the artifact we present — better to know now than discover on Day-1.
+>
+> Thanks,
+> — ArtificiallyUnintelligent (University)
+
+---
+
+### Ticket 11 (P2): Camera resolution, FOV, and expected tag pixel count?
+
+**To file in:** #support-ticket | **Why we're asking:** FOV lets us pre-compute the optimal flight altitude against the confirmed 20cm x 20cm markers and the 3.5m minimum-altitude floor.
+
+> **Challenge:** Challenge 1 — Reconnaissance (University)
+> **Team:** ArtificiallyUnintelligent
+>
+> Following the 06-08 confirmation that camera resolution is configurable: could you share the FOV (horizontal + vertical, degrees) of the D430 / D450 modules as mounted, and the rough tag pixel count we should expect for the 20cm x 20cm ArUco markers at the 3.5m minimum altitude?
+>
+> ROBO05_Daniel asked this on 2026-06-07 8:04pm (edited 8:26pm) without a response yet.
+>
+> ***Ask: FOV + expected tag pixel count at the 3.5m minimum altitude?***
+>
+> *Why we're asking:* FOV lets us pre-compute the optimal flight altitude for detection range, and the tag-pixel-count target lets us pick a resolution from the configurable set that keeps ArUco corners reliable.
+>
+> Thanks,
+> — ArtificiallyUnintelligent (University)
 
 ---
 
@@ -117,21 +241,30 @@ See the **Filing Recommendation** at the bottom for the suggested firing order a
 
 ## Filing Recommendation
 
-**Suggested firing order:**
+**Suggested firing order (combined, updated 2026-06-09):**
 
-1. **Rank 14 — pre-prep policy.** Fire first. If the answer is "no pre-built code", our whole strategy collapses and we need every hour of the remaining days to replan. Two prior teams have asked without response — adding our voice raises priority.
-2. **Rank 1 — VALID/INVALID rule.** Fire second. Correctness blocker for Challenge 1 scoring; the rule may already be drafted org-side and just needs releasing.
-3. **Rank 7 — parallel vs sequential.** Drives role allocation and rehearsal plan.
-4. **Rank 8 — scored-run policy.** Drives aggression, abort-path design, and crash budget.
-5. **Rank 5 — UWB layout.** Needed for waypoint planning but only blocks late-stage tuning.
+1. **Ticket 6 — D430/D450 RGB stream.** Fire first. Highest correctness blocker now: if no RGB is exposed, our Day-1 code path is different (emitter-toggle IR ArUco). The 06-08 confirmation that the modules are D430/D450 created this risk; we want the answer before we burn flight time on it.
+2. **Rank 1 — VALID/INVALID rule.** Still the highest Challenge 1 *scoring* impact — the rule may already be drafted org-side and just needs releasing.
+3. **Rank 14 — pre-prep policy.** Still open from 2026-06-05; if the answer is "no pre-built code", our whole strategy collapses. Adding our voice continues to raise the priority.
+4. **Ticket 7 — pitch programmable vs fixed.** Code-path decision (do we keep the gimbal command or rip it out?). Another team already asked on 06-08 without response.
+5. **Ticket 9 — overflying boxes.** Strategy decision — lawnmower vs route-around-footprint. Another team asked on 06-08 without response.
+6. **Rank 7 — parallel vs sequential.** Drives role allocation and rehearsal plan.
+7. **Rank 8 — scored-run policy.** Drives aggression, abort-path design, and crash budget.
+8. **Ticket 8 — convoy movement model.** Refines Challenge 2B strategy (patrol-intercept vs intersection-dedup). Useful but not blocking.
+9. **Rank 5 — UWB layout.** Needed for waypoint planning but only blocks late-stage tuning.
+10. **Ticket 10 — matplotlib vs stereo depth map.** Artifact format question; affects presentation, not pipeline correctness.
+11. **Ticket 11 — FOV + tag pixel count.** Nice-to-have for altitude tuning; the 3.5m floor + configurable resolution already pin most of our setup.
 
-**Pacing — do NOT fire all 5 at once.**
+**Pacing — do NOT fire everything at once.**
 
-- Fire **rank 14 + rank 1** as the first batch (the two highest-impact, both already prepared to be answered).
-- Wait a few hours. If org responds quickly to either, fire **rank 7 + rank 8** as the second batch.
-- Fire **rank 5** last, once at least one of the earlier batches has been answered, so we don't flood the channel and risk all five being deprioritised together.
+- **Batch 1 (fire now):** Ticket 6 + Rank 1. The two highest-impact correctness questions; both look like the org can answer them quickly from existing internal docs.
+- **Batch 2 (after Batch 1 sees any response, or after ~4 hours):** Rank 14 + Ticket 7 + Ticket 9. Three strategic decisions that all gate code-path or path-planning work.
+- **Batch 3 (Day-1 morning ticket batch, if still unanswered):** Rank 7 + Rank 8 + Ticket 8. Run-day strategy questions — sensible to ask in the morning ticket window if they remain open by then.
+- **Batch 4 (only if earlier batches are landing):** Rank 5 + Ticket 10 + Ticket 11. Lower-priority refinements; do not file these into a noisy unresponsive channel.
 
-If the first batch goes unanswered for >24 hours, escalate via DM to the organiser who posted the 2026-06-06 21:47 ticket-etiquette note (they are clearly active), or raise in person at any onsite briefing.
+If Batch 1 goes unanswered for >24 hours, escalate via DM to the organiser who posted the 2026-06-06 21:47 ticket-etiquette note (they are clearly active), or raise in person at any onsite briefing.
+
+**Etiquette reminder (per 2026-06-06 21:47 org post):** close stale tickets and open fresh ones rather than bumping. If any of our questions get partially answered, ack-and-close and re-open a tighter follow-up.
 
 ---
 

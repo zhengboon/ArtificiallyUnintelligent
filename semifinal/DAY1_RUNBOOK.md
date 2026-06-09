@@ -69,4 +69,14 @@ Do not skip steps. Each step gates the next.
 
 ---
 
+## Day-1 morning pre-flight specific to 2026-06-08 drops
+
+Three checks that come from the 2026-06-07 / 2026-06-08 org Q&A and are NOT covered by the older pre-flight list above. Do these in addition, not instead.
+
+- [ ] **Verify drone exposes an RGB color stream OR pivot to `--use-ir-for-aruco`.** Org confirmed 2026-06-08 12:18 the mapping drone uses Realsense D430 + D450 mixed across runs; neither bare module has an RGB sensor. Run `python -c "import pyrealsense2 as rs; ctx=rs.context(); d=ctx.query_devices()[0]; print([s.get_info(rs.camera_info.name) for s in d.query_sensors()])"`. If RGB present (venue added a bolt-on), proceed as normal. If only IR + depth, pass `--use-ir-for-aruco` so `ArucoDetector` consumes one IR camera with the IR emitter toggled off for ArUco frames.
+- [ ] **Confirm 4.0 m altitude in active waypoint JSON (above the 3.5 m floor).** Org set minimum flight height to 3.5 m (2026-06-08 12:18). Open `configs/waypoints_<DATE>.json` (or whichever `arena_<SIZE>.json` we picked) and confirm every waypoint's `alt_m` is >= 4.0. Pre-staged templates were 1.5 m / 2.5 m — re-issue if not yet updated.
+- [ ] **Pre-yaw at takeoff for the optimal first-scan direction.** Org confirmed 2026-06-08 12:17 launch direction is free (takeoff point fixed). Pick the heading that minimises first-leg flight time to the densest pad cluster A scouted, yaw the airframe to that heading before arming.
+
+---
+
 *Day-1 Runbook v1. Pairs with `runbook.md` Steps 1-3. If something here contradicts `runbook.md`, `runbook.md` wins for event flow; this file wins for fallback mechanics.*
