@@ -25,10 +25,10 @@ python tools/uwb_sniffer.py
 python -m mapping_drone.tests.smoke_realsense_stationary
 
 # 4. Full mock dry-run (no arm, writes runs/run_*/STATUS.txt + top_down.png)
-python -m mapping_drone --mock-all --waypoints-from-json configs/waypoints_2x2_default.json
+python -m mapping_drone --mock --waypoints-from-json configs/waypoints_2x2_default.json
 
 # 5. MAVSDK connect-only (real radio, 5 s wall, arms + disarms cleanly)
-python -m mapping_drone --real --max-flight-time-s 5
+python -m mapping_drone --max-flight-time-s 5
 ```
 
 ---
@@ -36,7 +36,7 @@ python -m mapping_drone --real --max-flight-time-s 5
 ## SCORED RUN
 
 ```
-python -m mapping_drone --real \
+python -m mapping_drone \
   --aruco-dict <DICT_FROM_BRIEFING> \
   --waypoints-from-json configs/waypoints_<DATE>.json \
   --max-flight-time-s 240
@@ -55,7 +55,7 @@ Altitude: `configs/arena_<SIZE>.json` now defaults to **4.0 m** (above the 3.5 m
 # 2. Launch with lookup rule:
 MAPPING_DRONE_VALIDITY=lookup \
 MAPPING_DRONE_VALIDITY_LOOKUP=configs/valid_ids_<DATE>.json \
-  python -m mapping_drone --real --aruco-dict <DICT> \
+  python -m mapping_drone --aruco-dict <DICT> \
   --waypoints-from-json configs/waypoints_<DATE>.json --max-flight-time-s 240
 ```
 
@@ -66,7 +66,7 @@ Confirm `describe_rule()` in log mentions the lookup file path.
 ## IF MAVSDK WON'T CONNECT
 
 ```
-python -m mapping_drone --real --mavsdk-addresses \
+python -m mapping_drone --mavsdk-addresses \
   serial:///dev/ttyS6:921600,serial:///dev/ttyACM0:115200,serial:///dev/ttyUSB0:57600,udp://:14540,udp://:14550
 ```
 
