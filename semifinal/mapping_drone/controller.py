@@ -60,7 +60,13 @@ N_THRESHOLD = 0.1
 E_THRESHOLD = 0.1
 D_THRESHOLD = 0.1
 LOOP_HZ = 10.0
-TAKEOFF_HEIGHT = 0.8
+# kolomee.py shipped 0.8 m, but the finals brief (slide 5, 2026-06-08) sets a
+# 3.5 m minimum flight height for the mapping drone. action.takeoff() at 0.8 m
+# followed by the offboard prewarm hover left the drone ~14 s under the floor
+# while climbing at the 0.3 m/s cap. Push the PX4 takeoff target above the
+# floor so the only sub-floor time is the few seconds it physically takes the
+# vehicle to climb to TAKEOFF_HEIGHT after arming.
+TAKEOFF_HEIGHT = 3.6
 
 # Safety thresholds
 UWB_LOSS_GRACE_S = 1.0
@@ -757,10 +763,19 @@ class MappingController:
 
     # ----- mapping & detection -----
     async def _scan_at_waypoint(self) -> None:
-        """Grab N frames, detect ArUco, integrate depth, register sightings."""
+        """Grab N frames, detect ArUco, integrate depth, register sightings.
+
+        Each frame's grab / detect / integrate is offloaded via
+        asyncio.to_thread because RealsenseNode.grab() blocks for up to 2 s on
+        pipeline.wait_for_frames and the OpenCV ArUco + numpy integrate calls
+        can spend tens of milliseconds on the venue depth resolution. Running
+        them inline would starve the position-stuck watchdog and STATUS pump
+        for up to FRAMES_PER_WAYPOINT * grab_timeout per waypoint on --real.
+        Mock paths still pay the to_thread hop but it is cheap.
+        """
         logger.info("scanning at waypoint (%d frames)", FRAMES_PER_WAYPOINT)
         for i in range(FRAMES_PER_WAYPOINT):
-            frame = self.realsense.grab()
+            frame = await asyncio.to_thread(self.realsense.grab)
             if frame is None:
                 await asyncio.sleep(0.1)
                 continue
@@ -771,10 +786,12 @@ class MappingController:
                 self.state.drone_yaw,
             )
             try:
-                self.grid.integrate(frame, pose, self.args.gimbal_pitch)
+                await asyncio.to_thread(
+                    self.grid.integrate, frame, pose, self.args.gimbal_pitch
+                )
             except Exception as exc:
                 logger.warning("grid integrate failed: %s", exc)
-            detections = self.detector.detect_in_frame(frame)
+            detections = await asyncio.to_thread(self.detector.detect_in_frame, frame)
             for aruco_id, pixel_center, bbox in detections:
                 self._register_sighting(frame, aruco_id, pixel_center, bbox)
             await asyncio.sleep(0.1)
@@ -1342,10 +1359,27 @@ async def run(args: argparse.Namespace) -> tuple[int, RunWriter | None, "Mapping
         # Load waypoints BEFORE acquiring any hardware. A malformed/empty
         # waypoints JSON raises JSONDecodeError / FileNotFoundError / ValueError;
         # doing this early means we fail fast without leaking the UWB rclpy spin
-        # thread, Realsense pipeline, or MAVSDK connection.
-        waypoints, waypoints_source = _load_waypoints(
-            args.waypoints, getattr(args, "waypoints_from_json", None)
-        )
+        # thread, Realsense pipeline, or MAVSDK connection. We catch the failure
+        # here (rather than letting it escape to _outer / _best_effort_finalise)
+        # so that the just-constructed run_writer always gets a finalise() call
+        # — otherwise result_box["writer"] stays None and the run_<ts>/ dir is
+        # left as orphan-with-STATUS-seed-only.
+        try:
+            waypoints, waypoints_source = _load_waypoints(
+                args.waypoints, getattr(args, "waypoints_from_json", None)
+            )
+        except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
+            logger.error("waypoints load failed: %s", exc)
+            try:
+                run_writer.finalise(
+                    OccupancyGrid(resolution_m=0.05, size_m=20.0),
+                    0.0,
+                    aborted=True,
+                    abort_reason=f"waypoints load failed: {exc!r}",
+                )
+            except Exception:
+                logger.exception("finalise after waypoints-load failure raised")
+            return 2, run_writer, None
         logger.info("waypoints source: %s", waypoints_source)
         logger.info("waypoints: %s", waypoints)
 

@@ -4,7 +4,7 @@
 **Finals: 2026-06-10 + 2026-06-11, 9am-6pm, Marina Bay Sands Expo & Convention Centre Level 4.** All 3 team members should attend both days (per org 2026-06-05 22:22). Registration 10 June 7:30am — bring Photo ID + confirmation email; smart casual, no slippers.
 **Scope shift:** Sim → real hardware. TWO drone platforms (Hula swarm + mapping drone).
 
-> **T-4 / T-5 to finals (10-11 June 2026, Marina Bay Sands Expo & Convention Centre, Level 4).** Prep plan: see [§17 below](#17-pre-physical-run-checklist-t-4).
+> **T-1 to finals (10-11 June 2026, Marina Bay Sands Expo & Convention Centre, Level 4).** Day-of plan: see [`DAY1_RUNBOOK.md`](DAY1_RUNBOOK.md) + [`DAY1_SETUP_SEQUENCE.md`](DAY1_SETUP_SEQUENCE.md). §17 below kept as historical checklist (most items completed; remaining T-1 items called out).
 > **Major update 2026-06-03:** Org released L3 (UWB), and L4 + L5 are now Pulled into-tree (`learning_material_4_realsense/` + `learning_material_5_yolo_rknn/`). Revealed a SECOND drone (the "mapping drone") with UWB + MAVSDK + Realsense + onboard NPU, distinct from the Hula swarm.
 
 > **2026-06-03:** Team bumped straight to FINALS (skipping semifinal tier). Finals are 2026-06-10/11, 9am-6pm both days at Marina Bay Sands Expo L4. All 3 members should attend both days (per org 2026-06-05 22:22).
@@ -14,7 +14,7 @@
 > **2026-06-06 11:40:** Map layout will NOT be provided — discover via Challenge 1.
 > **2026-06-06 21:32 PM (captured 2026-06-07 AM):** ArUco markers are **20cm x 20cm** physical size. **EXACT dictionary will be announced on the day** — code must accept a runtime dict choice (NOT pre-confirmed as DICT_6X6_250). Could be any of 16 ArUco sizes (4X4/5X5/6X6/7X7 × 50/100/250/1000) or 4 AprilTag variants (16h5, 25h9, 36h10, 36h11). See §6b #13 + §3.4.
 > **2026-06-06 21:34 PM (captured 2026-06-07 AM):** ArUco markers are placed near **Challenge 2 landing pads ALSO** (not just Challenge 1's landing pads). Same ArUco-aided landing pattern for BOTH challenges; Hula side uses `cv2.aruco` rather than the pyhulax landing-marker auto-land helper. Source: BH2026ROBOVERSE in reply to FlyingExplorers 2026-06-06 14:50.
-> **2026-06-06 21:47 PM (captured 2026-06-07 AM):** Org ticket etiquette — close old support tickets and open fresh ones for new questions so the queue stays prioritised. Any still-open question we have should be filed as a NEW ticket.
+> ~~**2026-06-06 21:47 PM (captured 2026-06-07 AM):** Org ticket etiquette — close old support tickets and open fresh ones for new questions so the queue stays prioritised. Any still-open question we have should be filed as a NEW ticket.~~ **STALE per user 2026-06-09:** ticket path is dead this close to Day-1 — ask org marshal verbally at the venue on Day-1 morning instead.
 > **2026-06-06 PM (team chat):** ArUco beside Hula pads + 20cm + dictionary TBD Day-1 (org drops captured above). Team consequences: §3.4 audit shows current `mapping_drone/mapping.py:_ARUCO_DICTS` rejects ~55% of possible Day-1 announcements — pre-venue expansion to all 20 dicts is the top blocker.
 > **2026-06-07 AM (team chat):** A killed the YOLO track (6/6 22:13 "Nope not using yolo" — TF/ImageAI/OpenCV may be explored but exploratory only). K is on Hula swarm SEARCH ALGORITHM tonight (6/6 21:36). Z secured a backup Intel depth camera from a friend (close-to-D435, not exact) for redundancy. A's laptop is unreliable (7/6 00:13 — "It's been repeating quite often"); Day-1 reliability risk for anything that must run off A's laptop.
 >
@@ -93,7 +93,7 @@ The finals involve **TWO distinct drone systems** working together:
 | Run-summary + STATUS.txt writer | qualifier `controller.py` | ✅ Reuse | ✅ Reuse |
 | Wall-follow FSM | `searchctl/wall_following.py` | ❌ Hula has `set_barrier_mode()` built-in | ❌ Mapping drone explores then navigates by waypoint (see note below) |
 
-> **Note (org 2026-06-06 11:40):** Map layout is **NOT provided** — Challenge 1 is to discover the arena layout. Default waypoints in `mapping_drone/controller.py` (`[(0,0,1.5),(2,0,1.5),(2,2,1.5),(0,2,1.5)]`) assume the arena is already known; we need an exploration pre-pass (e.g. frontier-based or expanding lawnmower seeded by UWB anchor positions) before locking in fixed waypoints. Wall-follow is still wrong for the mapping drone, but pure waypoint nav is also insufficient until exploration is done.
+> **Note (org 2026-06-06 11:40):** Map layout is **NOT provided** — Challenge 1 is to discover the arena layout. Default waypoints in `mapping_drone/controller.py` (`[(0,0,4.0),(2,0,4.0),(2,2,4.0),(0,2,4.0)]`, above the 3.5 m floor) assume the arena is already known; we need an exploration pre-pass (e.g. frontier-based or expanding lawnmower seeded by UWB anchor positions) before locking in fixed waypoints. Wall-follow is still wrong for the mapping drone, but pure waypoint nav is also insufficient until exploration is done.
 
 ---
 
@@ -325,7 +325,9 @@ Dictionary `DICT_6X6_250` is the org's example and the default used by `mapping_
 
 ---
 
-## 6. Open questions for the org (file as Discord support tickets)
+## 6. Open questions for the org (Day-1 morning verbal asks to org marshal)
+
+> **2026-06-09 status:** Discord ticket path is dead this close to Day-1 (user instruction). Treat each item below as a verbal Q&A item to raise with the org marshal in person on Day-1 morning. Do NOT file new tickets.
 
 ### 6a. Still open
 
@@ -346,7 +348,7 @@ Dictionary `DICT_6X6_250` is the org's example and the default used by `mapping_
 
 9. **What's the scoring rubric?** Per-marker points? Coverage points? Time bonus? Like qualifier?
 10. **WiFi setup at venue?** Shared SSID for all teams' drones? Per-team? Bandwidth concerns?
-11. **Do Challenges 1 and 2 run in parallel or sequentially?** — fresh org ticket. Affects whether the mapping drone can be running Challenge 1 (map discovery) while the Hula swarm runs Challenge 2 (landing on pads), or whether all compute/team focus is on one at a time. Z asked this in team chat 2026-06-06; no answer in chat — must be filed as a new support ticket per org etiquette.
+11. ~~**Do Challenges 1 and 2 run in parallel or sequentially?**~~ **RESOLVED by finals_brief_extracted.md slide 12:** C1 runs Day 1 (Wed 10 Jun 1430-1800, Uni only); C2 runs Day 2 (Thu 11 Jun 1330-1600). Sequential across days, no parallel-within-slot. We are slot #3 on Day 1 and operate the convoy at slot #24 on Day 2.
 
 ### 6b. Resolved / partially resolved
 
@@ -432,7 +434,7 @@ Dictionary `DICT_6X6_250` is the org's example and the default used by `mapping_
 ### Z (orchestration + Realsense + mapping drone code)
 - **Hula swarm orchestrator** — one thread per drone, shared state, per-drone FSM (skeleton in §10). NOT YET BUILT — `swarm_controller.py` placeholder, see §14 layout for target path.
 - **Mapping drone stack (post-v3 stable):** code lives at `mapping_drone/` — `controller.py` (MAVSDK waypoint runner, reads `pvn.position.down_m`, subscribes to `attitude_euler` for `drone_yaw`, pumps mock UWB when MockUWB+MockMAVSDK active), `mapping.py` (camera→world corrected: `x_b=cp*z_c+sp*y_c, y_b=x_c, z_b=sp*z_c-cp*y_c`), `run_writer.py` (`save_marker_image` accepts `bbox_xyxy`), `realsense.py`, `uwb.py` (ROS2 `uwb_tag` PoseStamped subscriber), `validity.py` (`decide_landing_validity(aruco_id)` with `MAPPING_DRONE_VALIDITY` env override).
-- Default waypoints: `[(0,0,1.5),(2,0,1.5),(2,2,1.5),(0,2,1.5)]`, `--gimbal-pitch=-90`, `runs_dir='mapping_drone/runs'` (relative — avoids double-path).
+- Default waypoints: `[(0,0,4.0),(2,0,4.0),(2,2,4.0),(0,2,4.0)]` (above the 3.5 m org floor), `--gimbal-pitch=-90`, `runs_dir='mapping_drone/runs'` (relative — avoids double-path).
 - Realsense pipeline + intrinsics + depth-aware ArUco (already prototyped in [`prototypes/aruco_realsense.py`](prototypes/aruco_realsense.py))
 - Run-summary / STATUS.txt writer (carry over from qualifier)
 - Emergency-land-all + Ctrl-C across BOTH platforms
@@ -640,34 +642,35 @@ semifinal/
 
 ---
 
-## 17. Pre-physical-run checklist (T-4)
+## 17. Pre-physical-run checklist (historical — T-1 status below)
 
-Physical run sessions: **2026-06-10** + **2026-06-11** (both days, all 3 members per org guidance 2026-06-05 22:22). Today is T-4. Goal: arrive with everything that doesn't need drone-in-hand already working, so the physical time is spent on hardware integration, not setup.
+Physical run sessions: **2026-06-10** + **2026-06-11** (both days, all 3 members per org guidance 2026-06-05 22:22). Today is **T-1 (2026-06-09)** — the day-of operational source of truth is now [`DAY1_RUNBOOK.md`](DAY1_RUNBOOK.md) + [`DAY1_SETUP_SEQUENCE.md`](DAY1_SETUP_SEQUENCE.md). The buckets below are kept as a historical preparation log; remaining T-1 items are called out at the bottom.
 
-### By T-4 (Sat 6 Jun) — OVERDUE / finish today (software that needs no drone)
-- [ ] Laptop on the team's WiFi/Tailscale + log_broadcaster reaching the desktop sink
-- [ ] `pip install "pyhulax[all]"` + `pyrealsense2` + `opencv-contrib-python` + `numpy` clean install on the laptop
-- [ ] Smoke import: `python3 -c "from pyhulax import DroneAPI; from pyhulax.video import YOLODetector; import pyrealsense2; import cv2; print('OK')"`
-- [ ] Realsense D435 hardware verified (the verify script in `semifinal/README.md` §3.3 — prints intrinsics + a sample depth value)
-- [ ] ArUco prototype script working: webcam → detect `DICT_6X6_250` → pixel→3D unproject using webcam calibration
-- [ ] K's `best.pt` confirmed loadable by `pyhulax.video.YOLODetector` (or convert to ONNX for `ONNXDetector`) — (insurance only — primary detection is ArUco). Base model: YOLOv11 (`yolo11n.pt`) per 2026-06-05 PM org clarification.
-- [ ] Print test ArUco markers (3-4 IDs at 10cm, 20cm sizes) — tape around a room
+### Historical: by T-4 (Sat 6 Jun) — software that needs no drone
+- [x] Laptop on the team's WiFi/Tailscale + log_broadcaster reaching the desktop sink
+- [x] `pip install "pyhulax[all]"` + `pyrealsense2` + `opencv-contrib-python` + `numpy` clean install on the laptop
+- [x] Smoke import: `python3 -c "from pyhulax import DroneAPI; from pyhulax.video import YOLODetector; import pyrealsense2; import cv2; print('OK')"`
+- [x] Realsense D435 hardware verified (the verify script in `semifinal/README.md` §3.3 — prints intrinsics + a sample depth value). NOTE: D435 was our DEV camera only; venue mapping drone ships with D430/D450 (no RGB by default).
+- [x] ArUco prototype script working: webcam → detect with default dict → pixel→3D unproject using webcam calibration. NOTE: exact dictionary is announced Day-1; code accepts any of 16 ArUco sizes + 4 AprilTag variants at runtime.
+- [x] K's `best.pt` confirmed loadable by `pyhulax.video.YOLODetector` (or convert to ONNX for `ONNXDetector`) — (insurance only — primary detection is ArUco). Base model: YOLOv11 (`yolo11n.pt`) per 2026-06-05 PM org clarification.
+- [x] Print test ArUco markers (3-4 IDs at 10cm, 20cm sizes) — tape around a room
 - [x] UWBParserThread.py landed at `uwb_api_hula_swarm/` (2026-06-06 org release)
 
-### By T-2 (Mon 8 Jun) — swarm orchestrator skeleton
-- [ ] `semifinal/swarm_controller.py` skeleton from [§10 code skeleton above](#10-skeleton-code-starting-point) compiles + runs against mock drones (NOTE: `swarm_controller.py` NOT YET BUILT — placeholder)
+### Historical: by T-2 (Mon 8 Jun) — swarm orchestrator skeleton
+- [ ] `semifinal/swarm_controller.py` skeleton from [§10 code skeleton above](#10-skeleton-code-starting-point) compiles + runs against mock drones (NOTE: `swarm_controller.py` is STILL a stub — see file header)
 - [ ] State machine per drone: idle → takeoff → cruise → detect_check → return → land
 - [ ] Shared target registry with dedup logic (unit-tested without drones) — dedup by ArUco ID (RoboMasters are moving)
-- [ ] Run summary writer (carry over from qualifier)
-- [ ] STATUS.txt live status across all drones
+- [x] Run summary writer (carry over from qualifier — `run_writer.py` in `mapping_drone/`)
+- [x] STATUS.txt live status (mapping_drone side)
 - [ ] Emergency-land-all on Ctrl-C / battery low — tested with mock drones throwing errors
 
-### By T-1 (Tue 9 Jun) — last-mile integration
-- [ ] NoMachine access to mapping drone verified from C2 Terminal
-- [ ] Both Windows + Ubuntu 22.04 VM sides of C2 Terminal smoke-tested
-- [ ] UWBParserThread.py verified @ 921600 baud on actual C2 hardware (COM port confirmed)
+### T-1 (Tue 9 Jun) — TODAY, last-mile integration
+- [ ] NoMachine access to mapping drone verified from C2 Terminal (Day-1 morning task)
+- [ ] Both Windows + Ubuntu 22.04 VM sides of C2 Terminal smoke-tested (Day-1 morning task)
+- [ ] UWBParserThread.py verified @ 921600 baud on actual C2 hardware (COM port confirmed) (Day-1 morning task)
 - [ ] Map-discovery (Challenge 1) plan rehearsed — "Map layout will not be provided" (org 2026-06-06 11:40)
-- [ ] Thumbdrive packed with code + offline docs (mark NOT YET BUILT items clearly)
+- [ ] Thumbdrive packed with code + offline docs (mark stub/NOT-YET-BUILT items clearly)
+- [ ] USB-stick packed; sleep early; smart-casual ready for 7:30am registration tomorrow
 
 ### On the day of (10/11 Jun)
 - [ ] Photo ID + confirmation email on hand (registration 10 Jun 7:30am at Marina Bay Sands Expo Level 4)
@@ -709,5 +712,5 @@ The whole point of arriving prepared is: by the time we have drones in hand, eve
 
 ---
 
-*Last updated: 2026-06-07 (T-3 to finals — Marina Bay Sands Expo & Convention Centre, Level 4).*
+*Last updated: 2026-06-09 (T-1 to finals — Marina Bay Sands Expo & Convention Centre, Level 4). Day-of source of truth is `DAY1_RUNBOOK.md` + `DAY1_SETUP_SEQUENCE.md`; this README is the background knowledge base.*
 *Update this file every time new info lands — it's the single source of truth for the team.*

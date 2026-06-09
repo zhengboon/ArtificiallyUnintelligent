@@ -14,7 +14,7 @@
 ## The night before (Tue 9 June, 21:00 SGT call)
 
 - [ ] **Write `semifinal/swarm_controller.py`** by porting `huladola.py` to the controller pattern (--mock, --task 2a/2b flags, pads_file/search-pattern args). Verify `python semifinal/swarm_controller.py --mock` prints clean import + lifecycle BEFORE 21:00 call. If we run out of time, fall back to invoking `huladola.py` directly and treat lines that reference `semifinal/swarm_controller.py` as pointing at `huladola.py`. **(NOT YET BUILT — placeholder)**
-- [ ] **Create `semifinal/configs/arena_waypoints_safe.json` and `arena_waypoints_aggressive.json`**. Safe = `[[0,0,1.5],[2,0,1.5],[2,2,1.5],[0,2,1.5]]` (matches controller's DEFAULT_WAYPOINTS). Aggressive = wider/higher e.g. `[[0,0,2.0],[3,0,2.0],[3,3,2.0],[0,3,2.0]]`. Verify both parse as `list[[n_m, e_m, alt_m]]`. **(NOT YET BUILT — placeholder)**
+- [ ] **Pre-staged arena waypoint templates already exist at 4.0 m** in `semifinal/configs/` — `arena_3x3.json` / `arena_4x4.json` / `arena_6x6.json` / `arena_8x8.json` plus `waypoints_2x2_default.json`. All are at z=4.0 m (above the 3.5 m org floor confirmed 2026-06-08). Controller's `DEFAULT_WAYPOINTS` is `[(0,0,4.0),(2,0,4.0),(2,2,4.0),(0,2,4.0)]`. No new files needed; pick the closest pre-staged arena_NxN.json on Day-1 once A scouts the arena dimensions. Verify each `alt_m >= 4.0` before scored runs.
 - [ ] Confirm USB×2 contents (run `ls semifinal/thumbdrive/` and verify all listed below):
   - `controllers/` (semifinal/mapping_drone/ + semifinal/swarm_controller.py **(TODO: file does not exist yet — see Night-Before task above)** + tests)
   - `models/best.pt` (K's qualifier model, in case of fallback)
@@ -100,15 +100,14 @@
 - [ ] Confirm we are slot #3 in Challenge 1 (after AAA) and slot #3 in Challenge 2 vs STD. Confirm we also drive 2 convoy RoboMasters at slot #24 vs THE WIENERS.
 - [ ] Confirm Hula 3,4 + Mapping 3,4 shared with BOYD BUDDIES (slot #4) — exchange numbers, agree on handoff cadence.
 - [ ] Capture the FCFS Discord queue links for mapping drone cage + hula drone cage as soon as org posts them.
-- [ ] **Ask org-on-site (A walks to the org desk in person AND files fresh Discord tickets — per org's 2026-06-06 21:47 etiquette, close any stale tickets first then open new ones, one question per ticket):**
+- [ ] **Ask org-on-site (A walks to the org desk in person):**
   - (a) Exact ArUco / AprilTag dictionary in use today (it is one of 20 possibilities: ArUco 4X4/5X5/6X6/7X7 × {50,100,250,1000}, or AprilTag 16h5/25h9/36h10/36h11). STINKIES already asked 2026-06-06 14:13 and got no answer — we re-ask Day-1 morning.
-  - (b) Are Challenge 1 and Challenge 2 (2A + 2B) run **in parallel** in one slot, or **sequentially** (C1 first, then C2)? Z asked in team chat and there is no answer yet — confirm with org directly.
+  - (Resolved separately by slide 12: C1 runs Day 1 1430-1800; C2 runs Day 2 1330-1600 — sequential across days, not parallel within a slot. No need to ask.)
   - As soon as (a) lands → pass it via `--aruco-dict <name>`. The code now accepts all 20 dicts (see mapping.py `_build_aruco_dict_table`), so no code change should be required even for an unexpected dict — but A/K double-checks the smoke test still passes with the announced name before the first scored slot.
-  - As soon as (b) lands → tell K + Z so we know whether to chain C1 → C2 outputs live, or budget for two separate run sessions.
 - [ ] Note the validity rule for ArUco markers (org said they'll publish it).
   - As soon as we know: **update `semifinal/mapping_drone/validity.py`** — single line in `decide_landing_validity()`. Test by re-running mock mission.
 - [ ] **Map layout is NOT provided** (org clarified 2026-06-06 11:40). During the org's arena tour, A walks the perimeter, sketches obstacle positions, paces out approximate dimensions (L × W), and photographs the floor/markings.
-- [ ] A reports estimated arena bounds + obstacle list to K before Step 3; K updates `semifinal/configs/arena_waypoints_safe.json` (and `_aggressive.json`) so waypoints fit the real arena. Re-run a mock mission to confirm waypoints parse. **(configs/ dir NOT YET BUILT — see Night-Before task.)**
+- [ ] A reports estimated arena bounds + obstacle list to K before Step 3; K picks the closest pre-staged `semifinal/configs/arena_<N>x<N>.json` (3x3 / 4x4 / 6x6 / 8x8) so waypoints fit the real arena. Re-run a mock mission to confirm waypoints parse.
 
 ### Step 3 (1030 – 1200 + 1300 – 1330): Testing windows
 - [ ] **1030–1200:** Uni teams choose between mapping cage or hula cage. Mapping = per-day total allowance (carries over within day), so we burn it strategically across morning + early afternoon. Hula = 5 min per session, 20 min cooldown after each, max 2 teams in cage.
@@ -129,7 +128,7 @@
 ### Step 5 (1430 – 1800): Challenge 1 — SCORED (we are slot #3, expect call ~14:40–14:45)
 - [ ] From the C2 Terminal (Windows side), open a NoMachine/SSH session into the **mapping drone** (separate onboard Ubuntu 22.04 + ROS2 + RKNN NPU device — NOT the C2 Terminal's local VM).
 - [ ] `scp` (or USB-copy) the `mapping_drone/` controllers from the C2 Terminal onto the drone.
-- [ ] Connect to the mapping drone and run the controller **on the drone** over that session (`python3 -m mapping_drone.controller --waypoints semifinal/configs/arena_waypoints_safe.json`).
+- [ ] Connect to the mapping drone and run the controller **on the drone** over that session (`python3 -m mapping_drone.controller --waypoints-from-json semifinal/configs/arena_4x4.json`).
 - [ ] Watch `STATUS.txt` live (in another shell: `watch -n 1 cat runs/run_*/STATUS.txt | tail -25`).
 - [ ] K (Keyboard) reads out mapping-drone battery % at takeoff and every 60 s; Z (Screen-watcher) calls "ABORT — RTL" if any drone drops <20% mid-mission.
 - [ ] Screen-watcher (Z) calls out every new sighting + validity classification.
@@ -179,7 +178,7 @@ Apply Day 1 lessons. Same wake-up routine. No new registration (lanyard from Day
   - **Challenge 2A — 3-Hula landings**: pick 3 valid pads from org-published Discord coords, edit `swarm_controller.py` config or feed via CLI. Run `swarm_controller.py --task 2a --pads pad1,pad2,pad3`. Hula speed cap **0.5 m/s**, height **1.1 m**, **strictly no flying over obstacles** (slide 6). Max 8 min per attempt.
   - **Challenge 2B — RoboMaster hunt**: org launches 5 RoboMasters (2 driven by other-team participants, 3 autonomous). Run `swarm_controller.py --task 2b --search-pattern lawnmower-3way`. ArUco is sole detection path (YOLO killed 2026-06-06). Snapshot images + bbox overlays saved under `runs/run_*/snapshots/`. Max 8 min per attempt.
   - Show judge: landed-on-pad evidence + snapshot images with bbox overlays + unique-robot count.
-- [ ] **At slot #24 (later in the 1330-1600 window): we drive 2 convoy RoboMasters against THE WIENERS.** This is the convoy-opponent duty (slide 14 cross-table). K + A take a RoboMaster each on org-supplied controllers; Z stays on artifact-watching. Brief each other on driving pattern before slot 24 starts.
+- [ ] **At slot #24 (later in the 1330-1600 window): we drive 2 convoy RoboMasters against THE WIENERS.** This is the convoy-opponent duty (slide 14 cross-table). A + Z take a RoboMaster each on org-supplied controllers (per CONVOY_OPPONENT_ROLE.md — Z is freer in the Day 2 afternoon since C1 finished Day 1, A is judge-talker/utility); K stays on artifact-watching. Brief each other on driving pattern before slot 24 starts.
 - [ ] **CUAS booth — 4% bonus:** if not already collected Day 1, finish before 1600. Photo of drone at Counter UAS booth (Above & Beyond: Skies & Space zone, MBS L4) + screenshot of zone-explored page.
 - [ ] **~1600 end:** results announced. Whatever happens, write the retro in `progress.md` before leaving.
 
@@ -199,15 +198,15 @@ Cross-coverage: each role has a deputy. If K is sick, Z takes keyboard; if Z is 
 
 ## Run configurations (pick ONE per slot)
 
-> **NOTE:** `semifinal/swarm_controller.py` and `semifinal/configs/` are **NOT YET BUILT** as of T-4 days — see Night-Before tasks. If those configs/files do not exist by run time:
-> - `--waypoints` can be **omitted**; controller falls back to built-in `DEFAULT_WAYPOINTS = [(0,0,1.5),(2,0,1.5),(2,2,1.5),(0,2,1.5)]`.
+> **NOTE:** `semifinal/swarm_controller.py` is **NOT YET BUILT** as of T-1 — see Night-Before tasks. `semifinal/configs/` IS pre-staged with arena_3x3.json / arena_4x4.json / arena_6x6.json / arena_8x8.json + waypoints_2x2_default.json (all at z=4.0 m, above the 3.5 m floor).
+> - `--waypoints-from-json` can be **omitted**; controller falls back to built-in `DEFAULT_WAYPOINTS = [(0,0,4.0),(2,0,4.0),(2,2,4.0),(0,2,4.0)]` (above the 3.5 m floor).
 > - For Hula swarm commands, substitute `semifinal/huladola.py` (the existing prototype) for `semifinal/swarm_controller.py`.
 > - Replace `run_<TS>` with the actual timestamped run dir from Challenge 1 startup log.
 
 ### Configuration A — Safe (default first attempt)
 ```bash
-# Challenge 1
-python3 -m mapping_drone.controller --waypoints semifinal/configs/arena_waypoints_safe.json --gimbal-pitch -90 --max-flight-time-s 240
+# Challenge 1 — controller's --max-flight-time-s defaults to 420 s (60 s under the 480 s org cap)
+python3 -m mapping_drone.controller --waypoints-from-json semifinal/configs/arena_4x4.json --gimbal-pitch -90
 
 # Challenge 2A
 python3 semifinal/swarm_controller.py --task 2a --pads_file mapping_drone/runs/run_<TS>/landing_pads.json --select_strategy first_three_valid  # fill <TS> from controller startup log
@@ -218,8 +217,8 @@ python3 semifinal/swarm_controller.py --task 2b --search-pattern lawnmower-3way 
 
 ### Configuration B — Aggressive (if Config A worked and we have time)
 ```bash
-# Higher cruise altitude + wider waypoint spacing → faster mapping but lower resolution
-python3 -m mapping_drone.controller --waypoints semifinal/configs/arena_waypoints_aggressive.json --gimbal-pitch -75 --max-flight-time-s 180
+# Wider waypoint spacing → faster mapping but lower resolution. Still uses the 420 s controller default.
+python3 -m mapping_drone.controller --waypoints-from-json semifinal/configs/arena_8x8.json --gimbal-pitch -75
 
 # More aggressive landing zone selection (closer pads). Replace ... with mapping_drone/runs/run_<TS>/landing_pads.json from Challenge 1.
 python3 semifinal/swarm_controller.py --task 2a --pads_file ... --select_strategy nearest_three
@@ -231,7 +230,7 @@ python3 semifinal/swarm_controller.py --task 2b --search-pattern lawnmower-3way 
 ### Configuration C — Recovery (something broke, just get a baseline)
 ```bash
 # Mock everything (no drone, no UWB, no Realsense) — safest baseline; just produces artifacts the judge can score on.
-python3 -m mapping_drone.controller --mock --waypoints semifinal/configs/arena_waypoints_safe.json
+python3 -m mapping_drone.controller --mock --waypoints-from-json semifinal/configs/arena_4x4.json
 
 # Single-drone fallback (only 1 of 3 Hulas working). Replace ... with mapping_drone/runs/run_<TS>/landing_pads.json from Challenge 1.
 python3 semifinal/swarm_controller.py --task 2a --single-drone --pads_file ...
@@ -255,7 +254,7 @@ python3 semifinal/swarm_controller.py --task 2a --single-drone --pads_file ...
 | ArUco detection returns nothing | Re-confirm the announced dict with org-on-site (see Step 2 / Step 3). All 20 possibilities are accepted by the controller — ArUco `{4X4,5X5,6X6,7X7}_{50,100,250,1000}` + AprilTag `{16h5,25h9,36h10,36h11}` — and the `DICT_` prefix / case / whitespace are normalized. If startup raised `ValueError`, the error lists every accepted name; copy-paste the announced name and retry. Confirm marker is in FOV — lower altitude and verify `--gimbal-pitch -90`. |
 | ArUco marker physical size / detection range | Markers are **20cm x 20cm** (org confirmed 2026-06-06 21:32). On D435 RGB 640x480 (~70deg HFOV) the marker subtends ~hundreds of px at 1m and drops below ~30 px around 5-6m where detection becomes unreliable. A: pace this out during the arena scout so the mapping-drone cruise altitude in `arena_waypoints_safe.json` keeps markers in reliable detection range. Same marker also appears near Challenge 2 landing pads (org 2026-06-06 21:34) — Hula side uses `cv2.aruco`, not the pyhulax auto-land helper. |
 | Wrong landing-pad validity classification | Edit `mapping_drone/validity.py` `decide_landing_validity()` — should be a one-liner. |
-| Hula collides mid-air during Challenge 2A | Stagger takeoffs by 5 s, assign different altitudes per drone (1.2 / 1.5 / 1.8 m) |
+| Hula collides mid-air during Challenge 2A | Stagger takeoffs by 5 s, assign different altitudes per drone (0.9 / 1.0 / 1.1 m — canonical Hula recommended altitude is 1.1 m and the org rule "strictly no flying over obstacles" means clearance, not altitude, drives invalidation). |
 | RoboMaster not detected | ArUco is the sole detection path (YOLO killed 2026-06-06). Confirm the announced dict matches what was passed via `--aruco-dict <name>` (default `DICT_6X6_250`); check gimbal pitch (-90 default); lower altitude for marker FOV (markers are 20cm × 20cm — detection drops below ~30 px around 5-6m on the D435). If still nothing, A reports robot positions verbally from the camera-feed watch + we ask judge whether a re-fly slot is possible. |
 | Battery dies mid-flight | Built-in failsafe should auto-land. Ask coordinator for spare battery. **(Procedural prevention: see Step 3 / Step 4 battery checks added below.)** |
 | C2 Terminal Windows crashes | Reboot. Re-load our code from USB. State is in `runs/` which is persisted to disk. |
@@ -305,4 +304,4 @@ Specific point values not in slides. Update this table when org publishes scorin
 
 ---
 
-*Runbook v1 — based on org slides (5 Jun 2026) + L1-L5 Discord material. Iterate as we learn more at venue.*
+*Runbook v3 (2026-06-09) — authoritative source: finals_brief_extracted.md (org pptx, T-1 evening).*

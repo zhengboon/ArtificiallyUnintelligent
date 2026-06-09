@@ -1,13 +1,22 @@
 """aruco_realsense.py — ArUco + RealSense depth → 3D camera-frame position.
 
-The endgame prototype: same ArUco detection as aruco_webcam.py, but the colour
-stream comes from a RealSense D435 (or D430/D450), depth is read at each
-detected marker's centre pixel, and we unproject pixel + depth into a 3D
-position in the camera's coordinate frame.
+The endgame prototype: same ArUco detection as aruco_webcam.py, but the image
+stream comes from a RealSense, depth is read at each detected marker's centre
+pixel, and we unproject pixel + depth into a 3D position in the camera's
+coordinate frame.
+
+Camera support:
+  - D435 has an RGB sensor — runs in colour mode (default).
+  - D430 / D450 (the venue mapping-drone cameras, per org 2026-06-08) have
+    NO RGB sensor — use `--ir-mode` to stream the left IR (Y8) instead.
+    `--ir-mode` also turns the IR projector emitter OFF so the dot pattern
+    doesn't shred ArUco contrast; depth on textureless surfaces will
+    degrade as a tradeoff. See semifinal/D430_RGB_RISK.md for the canonical
+    sketch this implements.
 
 What it does per frame:
-  1. wait_for_frames → align depth to colour
-  2. detect ArUco markers in the colour image
+  1. wait_for_frames → align depth to colour (or IR in --ir-mode)
+  2. detect ArUco markers in the image
   3. for each marker: centre pixel (u, v) + depth at that pixel
   4. unproject: X = (u-cx)*Z/fx, Y = (v-cy)*Z/fy, Z = depth_m
   5. log (id, u, v, depth_mm, X, Y, Z) on first sighting + on disappearance
@@ -15,7 +24,8 @@ What it does per frame:
 
 Run:
     pip install pyrealsense2 opencv-contrib-python numpy
-    python3 aruco_realsense.py                   # live GUI
+    python3 aruco_realsense.py                   # live GUI (RGB, e.g. D435)
+    python3 aruco_realsense.py --ir-mode         # D430/D450 fallback (IR_LEFT)
     python3 aruco_realsense.py --no-gui          # headless, prints only
     python3 aruco_realsense.py --jsonl out.jsonl # append every detection record
 
@@ -28,7 +38,8 @@ Notes:
     occasional zero-return. If the entire neighbourhood has no depth return
     (too close, reflective, or just bad luck), the script skips that marker.
     The JSONL `depth_mm` field reflects this local median, not a single pixel.
-  - Depth + colour are aligned via rs.align so pixel coordinates map 1:1.
+  - Depth + colour (or IR) are aligned via rs.align so pixel coordinates
+    map 1:1.
 """
 
 import argparse
@@ -55,6 +66,11 @@ def main() -> int:
     ap.add_argument("--height", type=int, default=480)
     ap.add_argument("--fps", type=int, default=30)
     ap.add_argument("--no-gui", action="store_true", help="Run headless.")
+    ap.add_argument("--ir-mode", action="store_true",
+                    help="Stream IR_LEFT (Y8) instead of colour. Required for "
+                         "D430/D450 (no RGB sensor). Disables the IR projector "
+                         "emitter so the dot pattern doesn't degrade ArUco "
+                         "detection; depth on textureless surfaces may suffer.")
     ap.add_argument("--jsonl", type=Path, default=None,
                     help="Append every detection record to this JSONL file.")
     args = ap.parse_args()
@@ -69,19 +85,45 @@ def main() -> int:
     pipe = rs.pipeline()
     cfg = rs.config()
     cfg.enable_stream(rs.stream.depth, args.width, args.height, rs.format.z16, args.fps)
-    cfg.enable_stream(rs.stream.color, args.width, args.height, rs.format.bgr8, args.fps)
+    if args.ir_mode:
+        # IR_LEFT (index 1). Y8 = 8-bit grayscale, native to the stereo cam.
+        # D430/D450 have no RGB sensor, so this is the only viable image stream.
+        cfg.enable_stream(rs.stream.infrared, 1, args.width, args.height,
+                          rs.format.y8, args.fps)
+    else:
+        cfg.enable_stream(rs.stream.color, args.width, args.height,
+                          rs.format.bgr8, args.fps)
     try:
         profile = pipe.start(cfg)
     except RuntimeError as e:
         print(f"ERROR: pipeline.start failed: {e}", file=sys.stderr)
         return 1
 
-    align = rs.align(rs.stream.color)
-    color_intr = profile.get_stream(rs.stream.color).as_video_stream_profile().get_intrinsics()
-    fx, fy = color_intr.fx, color_intr.fy
-    cx, cy = color_intr.ppx, color_intr.ppy
-    print(f"Camera: {profile.get_device().get_info(rs.camera_info.name)}")
-    print(f"Color intrinsics: fx={fx:.2f} fy={fy:.2f} cx={cx:.2f} cy={cy:.2f}")
+    if args.ir_mode:
+        # Align depth to IR (the colour stream doesn't exist on D430/D450) and
+        # turn the IR projector emitter OFF so its dot pattern doesn't blow
+        # ArUco contrast. Strategy A from D430_RGB_RISK.md — emitter stays off
+        # for every grab; depth quality on textureless surfaces is the tradeoff.
+        align = rs.align(rs.stream.infrared)
+        ir_intr = (profile.get_stream(rs.stream.infrared, 1)
+                          .as_video_stream_profile().get_intrinsics())
+        fx, fy = ir_intr.fx, ir_intr.fy
+        cx, cy = ir_intr.ppx, ir_intr.ppy
+        try:
+            depth_sensor = profile.get_device().first_depth_sensor()
+            depth_sensor.set_option(rs.option.emitter_enabled, 0.0)
+        except Exception as exc:  # noqa: BLE001 — best-effort, log + continue
+            print(f"WARN: could not disable IR emitter: {exc}", file=sys.stderr)
+        print(f"Camera: {profile.get_device().get_info(rs.camera_info.name)}")
+        print(f"IR intrinsics: fx={fx:.2f} fy={fy:.2f} cx={cx:.2f} cy={cy:.2f}")
+    else:
+        align = rs.align(rs.stream.color)
+        color_intr = (profile.get_stream(rs.stream.color)
+                             .as_video_stream_profile().get_intrinsics())
+        fx, fy = color_intr.fx, color_intr.fy
+        cx, cy = color_intr.ppx, color_intr.ppy
+        print(f"Camera: {profile.get_device().get_info(rs.camera_info.name)}")
+        print(f"Color intrinsics: fx={fx:.2f} fy={fy:.2f} cx={cx:.2f} cy={cy:.2f}")
     print(f"Dictionary: DICT_{args.dict}")
 
     jsonl_f = args.jsonl.open("a", encoding="utf-8") if args.jsonl else None
@@ -98,13 +140,22 @@ def main() -> int:
         while True:
             frames = align.process(pipe.wait_for_frames())
             df = frames.get_depth_frame()
-            cf = frames.get_color_frame()
+            if args.ir_mode:
+                cf = frames.get_infrared_frame(1)
+            else:
+                cf = frames.get_color_frame()
             if not df or not cf:
                 continue
             depth = np.asanyarray(df.get_data())   # uint16, mm
-            color = np.asanyarray(cf.get_data())   # uint8, BGR
-
-            gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
+            if args.ir_mode:
+                ir = np.asanyarray(cf.get_data())  # uint8, single-channel
+                gray = ir
+                # Promote IR to 3-channel BGR so the rest of the loop (overlay
+                # drawing, drawDetectedMarkers, imshow) is untouched.
+                color = cv2.cvtColor(ir, cv2.COLOR_GRAY2BGR)
+            else:
+                color = np.asanyarray(cf.get_data())   # uint8, BGR
+                gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
             corners, ids, _ = detector.detectMarkers(gray)
 
             current: dict[int, tuple[float, float, float]] = {}
@@ -159,7 +210,9 @@ def main() -> int:
             seen = current
 
             if not args.no_gui:
-                hud = f"DICT_{args.dict}  |  detected: {sorted(current) or '-'}"
+                mode_tag = "IR" if args.ir_mode else "RGB"
+                hud = (f"DICT_{args.dict}  |  {mode_tag}  |  "
+                       f"detected: {sorted(current) or '-'}")
                 cv2.putText(color, hud, (10, 25), cv2.FONT_HERSHEY_SIMPLEX,
                             0.6, (255, 255, 255), 2)
                 cv2.imshow("aruco_realsense", color)

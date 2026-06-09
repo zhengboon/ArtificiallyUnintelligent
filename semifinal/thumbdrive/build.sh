@@ -51,6 +51,14 @@ cp "$REPO/semifinal/CHALLENGE_BREAKDOWN.md" "$OUT/docs/"
 cp "$REPO/semifinal/FINALS_PLAN.md" "$OUT/docs/"
 cp "$REPO/semifinal/runbook.md" "$OUT/docs/"
 cp "$REPO/semifinal/learning_materials_and_others.md" "$OUT/docs/"
+# Authoritative org pptx extract (received 2026-06-09) — most-authoritative document.
+cp "$REPO/semifinal/finals_brief_extracted.md" "$OUT/docs/"
+# Day-1 operations library — operator on C2 Terminal needs offline copies at the venue.
+for f in DAY1_RUNBOOK.md DAY1_POCKET_CARD.md DAY1_SETUP_SEQUENCE.md \
+         SCORING_PLAYBOOK.md HANDOFF_C1_TO_C2.md CONVOY_OPPONENT_ROLE.md \
+         D430_RGB_RISK.md ORG_TICKETS_DRAFT.md README.md; do
+    cp "$REPO/semifinal/$f" "$OUT/docs/"
+done
 cp "$REPO/semifinal/final_challenge_slides.pdf" "$OUT/docs/" 2>/dev/null || true
 cp -r "$REPO/semifinal/docs/pyhulax" "$OUT/docs/"
 
@@ -70,36 +78,20 @@ cp -r "$REPO/semifinal/uwb_api_hula_swarm"/* "$OUT/uwb_api_hula_swarm/"
 
 # Notebook
 echo "[7/9] training notebook..."
-cp "$REPO/semifinal/Train_YOLO_Models_new.ipynb" "$OUT/" 2>/dev/null || true
+# Train_YOLO_Models_new.ipynb lives under learning_material_5_yolo_rknn/ and is already staged
+# by step [5/9]. No top-level copy — A killed YOLO training 2026-06-06, notebook is historical only.
 
-# Configs (waypoints, etc.) — create starter
+# Configs (waypoints, validity templates) — copy the real curated files at 4.0m (above the 3.5m floor).
+# Inline heredocs were removed: they wrote {waypoints:[...]} dict-wrapped JSON, but controller.py's
+# _parse_waypoints_json expects a bare list [[n,e,alt],...] so loads would have died with
+# ValueError: expected a JSON list, got dict. The real configs (arena_NxN.json,
+# waypoints_2x2_default.json, valid_ids_*.json) are already at 4.0m and the correct schema.
 echo "[8/9] configs..."
-cat > "$OUT/configs/arena_waypoints_safe.json" <<'EOF'
-{
-  "_comment": "Safe default waypoints — overwrite with real arena coords on Day 1 after the arena tour.",
-  "_format": "list of [north_m, east_m, altitude_m] in UWB world frame",
-  "waypoints": [
-    [0.0, 0.0, 1.5],
-    [3.0, 0.0, 1.5],
-    [3.0, 3.0, 1.5],
-    [0.0, 3.0, 1.5],
-    [0.0, 0.0, 1.0]
-  ]
-}
-EOF
-
-cat > "$OUT/configs/arena_waypoints_aggressive.json" <<'EOF'
-{
-  "_comment": "Aggressive waypoints — fewer + further apart, higher altitude for faster mapping.",
-  "_format": "list of [north_m, east_m, altitude_m] in UWB world frame",
-  "waypoints": [
-    [0.0, 0.0, 2.0],
-    [4.0, 0.0, 2.0],
-    [4.0, 4.0, 2.0],
-    [0.0, 4.0, 2.0]
-  ]
-}
-EOF
+if [ ! -d "$REPO/semifinal/configs" ]; then
+    echo "ERROR: $REPO/semifinal/configs missing — cannot stage waypoint/validity templates" >&2
+    exit 1
+fi
+cp -r "$REPO/semifinal/configs"/* "$OUT/configs/"
 
 # Setup script
 echo "[9/9] setup script..."

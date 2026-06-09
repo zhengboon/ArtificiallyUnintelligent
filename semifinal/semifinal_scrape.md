@@ -1,4 +1,4 @@
-# Semi-Final — Org Discord Scrape
+# Finals — Org Discord Scrape (early/qualifier-era; superseded by finals_brief_extracted.md)
 
 Verbatim copy of org's Discord posts about the semi-final scope. Source: BH2026ROBOVERSE channel(s), posted 2026-06-01 (one day before this file was written).
 
@@ -147,16 +147,18 @@ if ids is not None:
 
 ## Updated mental model — TWO drone platforms
 
+> **STALE (pre-2026-06-06) — see `learning_materials_and_others.md` lines 210-222 for the current table.** This block predates (a) the 2026-06-06 11:28 am Hula UWB API drop and (b) the 2026-06-06 05:00 am ArUco-as-primary-detection clarification. Kept here only because it sits inside this scrape; the live mental model lives in `learning_materials_and_others.md`.
+
 | | **Hula swarm** | **Mapping drone** |
 |---|---|---|
 | Quantity | Multiple (swarm) | One (singular) |
 | SDK | `pyhulax` | `mavsdk` (Python) |
-| Position source | Optical flow + optional QR | **UWB tag** (real-time arena coords) |
+| Position source | Optical flow + optional QR (SUPERSEDED — UWB tag added 2026-06-06 11:28 via `UWBParserThread.py`) | **UWB tag** (real-time arena coords) |
 | Position interface | `drone.get_position()` | **ROS2 topic `uwb_tag` PoseStamped subscriber** |
-| Control approach | High-level `move_to(x,y,z)` | **Velocity setpoints** (`set_velocity_ned`), P-controller loop |
-| Depth camera | Built-in optical flow | **Realsense D430/D450/D435** |
+| Control approach | Unconfirmed — verify against `huladola.py` / `kolomee.py` (our own annotation, not org-quoted; `learning_materials_and_others.md` line 216 says "discrete `move(direction, dist)`") | **Velocity setpoints** (`set_velocity_ned`), P-controller loop |
+| Depth camera | Built-in optical flow | **Realsense D430 + D450** (no RGB module; org-confirmed 2026-06-08) |
 | Compute | Onboard flight controller | **Compute module with NPU** (Rockchip) |
-| Detection model | YOLO via `pyhulax.video.YOLODetector` (.pt) | **YOLO via RKNN** (NPU-accelerated, .pt → .onnx → .rknn) |
+| Detection model | **ArUco via `cv2.aruco`** (primary, per 2026-06-06 05:00 org clarification); YOLO via `pyhulax.video.YOLODetector` retained only as backup/insurance | **ArUco via `cv2.aruco`** (primary); YOLO via RKNN (NPU-accelerated, .pt → .onnx → .rknn) retained as backup |
 | Connection | TCP/UDP over WiFi | **Serial over `/dev/ttyS6:921600`** (per kolomee.py) |
 | What it does | Search the arena, find targets | **Build map + photos + collected depth, possibly precision-place** |
 
