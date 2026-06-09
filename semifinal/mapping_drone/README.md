@@ -124,6 +124,10 @@ python -m mapping_drone.controller [flags]
 | `--mavsdk-addresses A,B,C` | Comma-separated fallback list; tried in order with 5 s per-address connect timeout. Wins over `--mavsdk-address` when both present. See below. |
 | `--runs-dir DIR`      | Parent directory for `run_<ts>` output dirs. Default `mapping_drone/runs` (relative to CWD). |
 | `--log-level`         | `INFO` (default) or `DEBUG`.                                                  |
+| `--verbose`           | Promote silent-but-useful hot-path lines (per-frame scan result, per-UWB tick, per-velocity command, per-WP arrival distance, every state transition) from DEBUG to INFO. Does NOT lower the root level to DEBUG — keeps third-party noise out of `log.txt`. |
+| `--tailscale`         | Also POST every log line to the desktop `log_sink` over Tailscale (matches `tools/log_broadcaster/wrap.sh`). Default host `100.79.202.101:9999`, default tag `mapping-drone-<run_ts>`. Sink writes to `D:/hackerverse/laptop_logs/<tag>.log` on the desktop. Sink failures are silently swallowed (a one-shot INFO line is emitted on the first failure). |
+| `--tailscale-host`    | `<host>[:<port>]` override for the log_sink endpoint. Default `100.79.202.101:9999`. Only used when `--tailscale` is set. |
+| `--tailscale-tag`     | Override the log_sink tag (= log file basename). Default `mapping-drone-<run_ts>` so each run is its own log file. Only used when `--tailscale` is set. |
 
 ### `--gimbal-pitch`
 

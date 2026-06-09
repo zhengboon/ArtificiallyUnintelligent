@@ -18,6 +18,8 @@ import signal
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -43,6 +45,90 @@ from .uwb import MockUwbNode, UwbAdapter, UwbNode
 from .validity import decide_landing_validity, describe_rule
 
 logger = logging.getLogger("mapping_drone.controller")
+
+# ============================================================
+# Verbose dispatch + Tailscale log broadcast
+# ============================================================
+# Module-level toggle set by _parse_args / _setup_logging when --verbose is on.
+# Used by _vinfo() below to promote "silent-but-useful" lines from DEBUG to
+# INFO without flipping the entire root logger to DEBUG (which would also
+# surface every third-party library DEBUG and drown the run log).
+_VERBOSE = False
+
+
+def _vinfo(msg: str, *args: Any) -> None:
+    """Log at INFO when --verbose, DEBUG otherwise.
+
+    Used for the hot-path lines (per-frame, per-tick, per-velocity-command,
+    per-WP arrival distance) that are too chatty for the normal INFO floor
+    but are exactly what we want during a Day-1 debugging session. Routed
+    through this single dispatcher so the verbose level can be flipped from
+    one place without rewriting call sites.
+    """
+    if _VERBOSE:
+        logger.info(msg, *args)
+    else:
+        logger.debug(msg, *args)
+
+
+class TailscaleHandler(logging.Handler):
+    """logging.Handler that POSTs each formatted record to a log_sink URL.
+
+    Matches the pre-existing tools/log_broadcaster/wrap.sh contract: POSTs
+    the line as the request body to ``http://<host>:<port>/<tag>``. The
+    receiving log_sink.py appends to D:/hackerverse/laptop_logs/<tag>.log.
+
+    Failures are silently swallowed (the sink may be unreachable mid-flight
+    over flaky wifi) — but a one-shot INFO line is emitted on the FIRST
+    failure so the operator knows the broadcast isn't landing. Subsequent
+    failures stay silent to avoid log spam.
+
+    Uses stdlib urllib.request only — no `requests` dependency. Per-POST
+    timeout is hard-coded to 2 s so a wedged sink can never block the
+    controller's main thread for more than a tick.
+    """
+
+    POST_TIMEOUT_S = 2.0
+
+    def __init__(self, host: str, tag: str) -> None:
+        super().__init__()
+        # Normalise: accept '100.x.y.z:9999' or '100.x.y.z' (default port).
+        if ":" in host:
+            self._host = host
+        else:
+            self._host = f"{host}:9999"
+        self._tag = tag
+        self._url = f"http://{self._host}/{self._tag}"
+        self._failed_once = False
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            line = self.format(record)
+            req = urllib.request.Request(
+                self._url,
+                data=line.encode("utf-8", errors="replace"),
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=self.POST_TIMEOUT_S):
+                    pass
+            except (urllib.error.URLError, OSError, TimeoutError):
+                if not self._failed_once:
+                    self._failed_once = True
+                    # NOTE: we log via the module logger (which still has
+                    # the stdout + file handlers) but bypass ourselves —
+                    # otherwise a sink that's down would itself try to POST
+                    # the "sink unreachable" line and recurse the failure.
+                    logger.info(
+                        "tailscale log sink unreachable at %s — "
+                        "swallowing further POST errors silently",
+                        self._url,
+                    )
+        except Exception:
+            # Last-ditch swallow: a logging.Handler must NEVER raise out of
+            # emit() or it can take down the controller thread.
+            self.handleError(record)
+
 
 # Velocity controller gains (carry-over from kolomee.py)
 KP_XY = 0.1
@@ -399,6 +485,20 @@ class MappingController:
         self._status_task: asyncio.Task | None = None
         self._is_mock_drone = isinstance(drone, MockMavsdk)
 
+    # ----- state-transition helper -----
+    def _set_state(self, new_state: str) -> None:
+        """Assign self.state.state and log the transition when --verbose.
+
+        Centralises every controller state hop so --verbose surfaces the
+        progression (INIT -> STARTING -> AWAITING_UWB -> AWAITING_HEALTH ->
+        ARMING -> ...) at INFO without having to instrument each call site
+        twice.
+        """
+        prev = self.state.state
+        self.state.state = new_state
+        if prev != new_state:
+            _vinfo("state: %s -> %s", prev, new_state)
+
     # ----- validity helper -----
     def _validity_for(self, aruco_id: int) -> Optional[bool]:
         """Return cached validity, populating on first sighting.
@@ -441,6 +541,10 @@ class MappingController:
                     self.state.drone_n = n
                     self.state.drone_e = e
                     self.state.last_uwb_ts = self.uwb.last_update_ts
+                    _vinfo("uwb tick: n=%.3f e=%.3f (ready)", n, e)
+                else:
+                    _vinfo("uwb tick: no data (down_m=%.3f)",
+                           self.state.drone_down)
                 self.state.position_history.append(
                     (time.monotonic(), self.state.drone_n, self.state.drone_e, -self.state.drone_down)
                 )
@@ -590,6 +694,10 @@ class MappingController:
 
     # ----- flight primitives -----
     async def _send_velocity(self, vn: float, ve: float, vd: float, yaw_deg: float = 0.0) -> None:
+        _vinfo(
+            "vel cmd: vn=%.3f ve=%.3f vd=%.3f yaw=%.1f",
+            vn, ve, vd, yaw_deg,
+        )
         try:
             await self.drone.offboard.set_velocity_ned(
                 self.VelocityNedYaw(vn, ve, vd, yaw_deg)
@@ -685,6 +793,11 @@ class MappingController:
             err_n = target_n - n
             err_e = target_e - e
             err_d = target_down - d
+            _vinfo(
+                "wp arrival check: dn=%.3f de=%.3f dd=%.3f (thr %.2f/%.2f/%.2f)",
+                err_n, err_e, err_d,
+                N_THRESHOLD, E_THRESHOLD, D_THRESHOLD,
+            )
             if (
                 abs(err_n) < N_THRESHOLD
                 and abs(err_e) < E_THRESHOLD
@@ -746,7 +859,7 @@ class MappingController:
 
     async def emergency_land(self) -> None:
         logger.warning("EMERGENCY LAND")
-        self.state.state = "EMERGENCY_LAND"
+        self._set_state("EMERGENCY_LAND")
         try:
             await self._send_velocity(0.0, 0.0, 0.0)
         except Exception:
@@ -777,6 +890,8 @@ class MappingController:
         for i in range(FRAMES_PER_WAYPOINT):
             frame = await asyncio.to_thread(self.realsense.grab)
             if frame is None:
+                _vinfo("scan frame %d/%d: realsense grab returned None",
+                       i + 1, FRAMES_PER_WAYPOINT)
                 await asyncio.sleep(0.1)
                 continue
             pose = (
@@ -792,6 +907,10 @@ class MappingController:
             except Exception as exc:
                 logger.warning("grid integrate failed: %s", exc)
             detections = await asyncio.to_thread(self.detector.detect_in_frame, frame)
+            _vinfo(
+                "scan frame %d/%d: grabbed OK, %d detections",
+                i + 1, FRAMES_PER_WAYPOINT, len(detections),
+            )
             for aruco_id, pixel_center, bbox in detections:
                 self._register_sighting(frame, aruco_id, pixel_center, bbox)
             await asyncio.sleep(0.1)
@@ -878,7 +997,7 @@ class MappingController:
 
     # ----- top-level mission -----
     async def run_mission(self, waypoints: list[tuple[float, float, float]]) -> None:
-        self.state.state = "STARTING"
+        self._set_state("STARTING")
         self.state.started_at = time.monotonic()
 
         # background pumps
@@ -891,7 +1010,7 @@ class MappingController:
         offboard_started = False
         try:
             # await UWB ready
-            self.state.state = "AWAITING_UWB"
+            self._set_state("AWAITING_UWB")
             for _ in range(50):
                 _, _, ready = self.uwb.get_position()
                 if ready:
@@ -903,7 +1022,7 @@ class MappingController:
             # health: wait for is_local_position_ok with a 15s timeout.
             # Default is_armable=False (NOT True) when the field is missing —
             # we'd rather refuse to arm than arm blind.
-            self.state.state = "AWAITING_HEALTH"
+            self._set_state("AWAITING_HEALTH")
             health_ok = await self._await_health(HEALTH_TIMEOUT_S)
             if not health_ok:
                 self.state.aborted = True
@@ -915,9 +1034,9 @@ class MappingController:
                 return
 
             # arm + takeoff
-            self.state.state = "ARMING"
+            self._set_state("ARMING")
             await self.drone.action.arm()
-            self.state.state = "TAKEOFF"
+            self._set_state("TAKEOFF")
             try:
                 await self.drone.action.set_takeoff_altitude(TAKEOFF_HEIGHT)
             except Exception:
@@ -926,14 +1045,14 @@ class MappingController:
             await asyncio.sleep(3.0)
 
             # offboard pre-warm
-            self.state.state = "OFFBOARD_PREWARM"
+            self._set_state("OFFBOARD_PREWARM")
             await self._offboard_prewarm()
             offboard_started = True
 
             # mission deadline
             deadline = time.monotonic() + float(self.args.max_flight_time_s)
 
-            self.state.state = "MISSION"
+            self._set_state("MISSION")
             for idx, (wn, we, walt) in enumerate(waypoints):
                 if self._stop_event.is_set() or self.state.aborted:
                     break
@@ -953,7 +1072,7 @@ class MappingController:
                     break
                 # hover & scan in parallel; hover_for keeps the drone steady
                 # while _scan_at_waypoint pulls frames.
-                self.state.state = f"SCAN_WP_{idx + 1}"
+                self._set_state(f"SCAN_WP_{idx + 1}")
                 scan_task = asyncio.create_task(self._scan_at_waypoint())
                 hover_task = asyncio.create_task(self.hover_for(WAYPOINT_PAUSE_S))
                 try:
@@ -995,7 +1114,7 @@ class MappingController:
                 return
 
             # normal landing
-            self.state.state = "LANDING"
+            self._set_state("LANDING")
             try:
                 await self._send_velocity(0.0, 0.0, 0.0)
             except Exception:
@@ -1015,7 +1134,7 @@ class MappingController:
                     logger.warning("land failed: %s", exc)
                 await self._safe_disarm_after_land()
 
-            self.state.state = "DONE" if not self.state.aborted else "ABORTED"
+            self._set_state("DONE" if not self.state.aborted else "ABORTED")
 
             # stop background pumps
             self._stop_event.set()
@@ -1220,14 +1339,37 @@ def _load_waypoints(
     return list(DEFAULT_WAYPOINTS), "DEFAULT_WAYPOINTS"
 
 
-def _setup_logging(level: str, run_dir: Path) -> logging.FileHandler:
+def _setup_logging(
+    level: str,
+    run_dir: Path,
+    *,
+    verbose: bool = False,
+    tailscale: bool = False,
+    tailscale_host: str = "100.79.202.101:9999",
+    tailscale_tag: str | None = None,
+    run_ts: str = "",
+) -> tuple[logging.FileHandler, Optional[TailscaleHandler]]:
     """Configure root logger and attach a FileHandler at ``run_dir/log.txt``.
 
-    Returns the attached FileHandler so the caller can close + remove it in a
-    finally block. Without that, Windows keeps the file open and any later
-    attempt to tear down the run dir (e.g. tempfile.TemporaryDirectory cleanup
-    in smoke tests) fails with PermissionError [WinError 32].
+    Returns ``(file_handler, tailscale_handler_or_None)`` so the caller can
+    close + remove both in a finally block. Without that, Windows keeps the
+    log.txt file open and any later attempt to tear down the run dir (e.g.
+    tempfile.TemporaryDirectory cleanup in smoke tests) fails with
+    PermissionError [WinError 32].
+
+    When ``verbose`` is True we flip the module-level ``_VERBOSE`` flag so
+    ``_vinfo()`` calls promote to INFO. We deliberately do NOT lower the
+    root level to DEBUG — that would also pull in third-party DEBUG noise
+    (pyrealsense2 / rclpy / asyncio) and bury the signal we actually want.
+
+    When ``tailscale`` is True we also attach a TailscaleHandler that POSTs
+    each formatted record to the desktop log_sink. Uses the same on-disk
+    format as the file handler so a sink-side log file is byte-identical to
+    log.txt (modulo the sink's own timestamp prefix).
     """
+    global _VERBOSE
+    _VERBOSE = bool(verbose)
+
     lvl = getattr(logging, level.upper(), logging.INFO)
     root = logging.getLogger()
     root.setLevel(lvl)
@@ -1240,7 +1382,18 @@ def _setup_logging(level: str, run_dir: Path) -> logging.FileHandler:
     fh = logging.FileHandler(run_dir / "log.txt")
     fh.setFormatter(fmt)
     root.addHandler(fh)
-    return fh
+
+    th: Optional[TailscaleHandler] = None
+    if tailscale:
+        tag = tailscale_tag or f"mapping-drone-{run_ts or 'unknown'}"
+        th = TailscaleHandler(tailscale_host, tag)
+        th.setFormatter(fmt)
+        root.addHandler(th)
+        logger.info(
+            "tailscale broadcast ON: posting log lines to http://%s/%s",
+            th._host, th._tag,
+        )
+    return fh, th
 
 
 # ============================================================
@@ -1334,7 +1487,15 @@ async def run(args: argparse.Namespace) -> tuple[int, RunWriter | None, "Mapping
     base = Path(args.runs_dir).resolve()
     run_dir = base / f"run_{run_ts}"
     run_dir.mkdir(parents=True, exist_ok=True)
-    log_handler = _setup_logging(args.log_level, run_dir)
+    log_handler, ts_handler = _setup_logging(
+        args.log_level,
+        run_dir,
+        verbose=getattr(args, "verbose", False),
+        tailscale=getattr(args, "tailscale", False),
+        tailscale_host=getattr(args, "tailscale_host", "100.79.202.101:9999"),
+        tailscale_tag=getattr(args, "tailscale_tag", None),
+        run_ts=run_ts,
+    )
     # Wrap the entire run body so the FileHandler is always closed +
     # removed, even on early returns or unhandled exceptions. Leaving it
     # open is fine on POSIX but Windows pins the file and any later
@@ -1517,6 +1678,19 @@ async def run(args: argparse.Namespace) -> tuple[int, RunWriter | None, "Mapping
             logging.getLogger().removeHandler(log_handler)
         except Exception:
             pass
+        # Also detach the tailscale handler if we attached one. urllib has
+        # no persistent connection to close but we still want the handler
+        # off the root logger so a second in-process run (e.g. pytest
+        # suite) doesn't double-post.
+        if ts_handler is not None:
+            try:
+                ts_handler.close()
+            except Exception:
+                pass
+            try:
+                logging.getLogger().removeHandler(ts_handler)
+            except Exception:
+                pass
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -1588,6 +1762,37 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
              "operators running from the repo root can override with --runs-dir)",
     )
     p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    p.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Promote silent-but-useful hot-path lines (per-frame scan result, "
+             "per-UWB tick, per-velocity command, per-WP arrival distance, "
+             "every state transition) from DEBUG to INFO. Does NOT lower the "
+             "root level to DEBUG — keeps third-party noise out of the log.",
+    )
+    p.add_argument(
+        "--tailscale",
+        action="store_true",
+        help="Also POST every log line to the desktop log_sink over Tailscale "
+             "(matches tools/log_broadcaster/wrap.sh). Defaults to host "
+             "100.79.202.101:9999 and tag mapping-drone-<run_ts>. Errors are "
+             "swallowed (the sink may be unreachable mid-flight); a one-shot "
+             "INFO line is emitted on the first POST failure.",
+    )
+    p.add_argument(
+        "--tailscale-host",
+        default="100.79.202.101:9999",
+        help="<host>[:<port>] override for the log_sink endpoint (default "
+             "100.79.202.101:9999, the desktop tailnet IP). Only used when "
+             "--tailscale is set.",
+    )
+    p.add_argument(
+        "--tailscale-tag",
+        default=None,
+        help="Override the log_sink tag (=log file basename). Default is "
+             "'mapping-drone-<run_ts>' so each run is its own log file on the "
+             "sink. Only used when --tailscale is set.",
+    )
     p.add_argument(
         "--dry-run",
         action="store_true",
