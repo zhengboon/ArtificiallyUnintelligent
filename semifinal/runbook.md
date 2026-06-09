@@ -13,7 +13,7 @@
 
 ## The night before (Tue 9 June, 21:00 SGT call)
 
-- [ ] **Write `semifinal/swarm_controller.py`** by porting `huladola.py` to the controller pattern (--mock-all, --task 2a/2b flags, pads_file/search-pattern args). Verify `python semifinal/swarm_controller.py --mock-all` prints clean import + lifecycle BEFORE 21:00 call. If we run out of time, fall back to invoking `huladola.py` directly and treat lines that reference `semifinal/swarm_controller.py` as pointing at `huladola.py`. **(NOT YET BUILT — placeholder)**
+- [ ] **Write `semifinal/swarm_controller.py`** by porting `huladola.py` to the controller pattern (--mock, --task 2a/2b flags, pads_file/search-pattern args). Verify `python semifinal/swarm_controller.py --mock` prints clean import + lifecycle BEFORE 21:00 call. If we run out of time, fall back to invoking `huladola.py` directly and treat lines that reference `semifinal/swarm_controller.py` as pointing at `huladola.py`. **(NOT YET BUILT — placeholder)**
 - [ ] **Create `semifinal/configs/arena_waypoints_safe.json` and `arena_waypoints_aggressive.json`**. Safe = `[[0,0,1.5],[2,0,1.5],[2,2,1.5],[0,2,1.5]]` (matches controller's DEFAULT_WAYPOINTS). Aggressive = wider/higher e.g. `[[0,0,2.0],[3,0,2.0],[3,3,2.0],[0,3,2.0]]`. Verify both parse as `list[[n_m, e_m, alt_m]]`. **(NOT YET BUILT — placeholder)**
 - [ ] Confirm USB×2 contents (run `ls semifinal/thumbdrive/` and verify all listed below):
   - `controllers/` (semifinal/mapping_drone/ + semifinal/swarm_controller.py **(TODO: file does not exist yet — see Night-Before task above)** + tests)
@@ -92,7 +92,7 @@
 ### Step 1 (0830 – 0930): Code load (before org briefing)
 - [ ] Plug in USB to C2 Terminal. Copy `controllers/` to a working dir.
 - [ ] On Windows side: if `swarm_controller.py` was finished overnight, run it to confirm clean import + lifecycle. **(NOT YET BUILT — placeholder.)** Otherwise: `huladola.py` is a reference example only — has no CLI mock mode. Fallback: smoke-test by importing the module to confirm Python env works, e.g. `python3 -c "import importlib.util, sys; sys.path.insert(0, 'semifinal'); import huladola"`.
-- [ ] On Ubuntu VM: `python3 -m mapping_drone.controller --mock-all` should run a fake mission end-to-end (≈45 s) and write `runs/run_*/STATUS.txt` + `top_down.png`.
+- [ ] On Ubuntu VM: `python3 -m mapping_drone.controller --mock` should run a fake mission end-to-end (≈45 s) and write `runs/run_*/STATUS.txt` + `top_down.png`.
 - [ ] If both pass, code is loaded. If either fails, see "If X breaks" cheatsheet at the bottom.
 
 ### Step 2 (0930 – 1030): Org briefing
@@ -129,7 +129,7 @@
 ### Step 5 (1430 – 1800): Challenge 1 — SCORED (we are slot #3, expect call ~14:40–14:45)
 - [ ] From the C2 Terminal (Windows side), open a NoMachine/SSH session into the **mapping drone** (separate onboard Ubuntu 22.04 + ROS2 + RKNN NPU device — NOT the C2 Terminal's local VM).
 - [ ] `scp` (or USB-copy) the `mapping_drone/` controllers from the C2 Terminal onto the drone.
-- [ ] Connect to the mapping drone and run the controller **on the drone** over that session (`python3 -m mapping_drone.controller --real --waypoints semifinal/configs/arena_waypoints_safe.json`).
+- [ ] Connect to the mapping drone and run the controller **on the drone** over that session (`python3 -m mapping_drone.controller --waypoints semifinal/configs/arena_waypoints_safe.json`).
 - [ ] Watch `STATUS.txt` live (in another shell: `watch -n 1 cat runs/run_*/STATUS.txt | tail -25`).
 - [ ] K (Keyboard) reads out mapping-drone battery % at takeoff and every 60 s; Z (Screen-watcher) calls "ABORT — RTL" if any drone drops <20% mid-mission.
 - [ ] Screen-watcher (Z) calls out every new sighting + validity classification.
@@ -207,7 +207,7 @@ Cross-coverage: each role has a deputy. If K is sick, Z takes keyboard; if Z is 
 ### Configuration A — Safe (default first attempt)
 ```bash
 # Challenge 1
-python3 -m mapping_drone.controller --real --waypoints semifinal/configs/arena_waypoints_safe.json --gimbal-pitch -90 --max-flight-time-s 240
+python3 -m mapping_drone.controller --waypoints semifinal/configs/arena_waypoints_safe.json --gimbal-pitch -90 --max-flight-time-s 240
 
 # Challenge 2A
 python3 semifinal/swarm_controller.py --task 2a --pads_file mapping_drone/runs/run_<TS>/landing_pads.json --select_strategy first_three_valid  # fill <TS> from controller startup log
@@ -219,7 +219,7 @@ python3 semifinal/swarm_controller.py --task 2b --search-pattern lawnmower-3way 
 ### Configuration B — Aggressive (if Config A worked and we have time)
 ```bash
 # Higher cruise altitude + wider waypoint spacing → faster mapping but lower resolution
-python3 -m mapping_drone.controller --real --waypoints semifinal/configs/arena_waypoints_aggressive.json --gimbal-pitch -75 --max-flight-time-s 180
+python3 -m mapping_drone.controller --waypoints semifinal/configs/arena_waypoints_aggressive.json --gimbal-pitch -75 --max-flight-time-s 180
 
 # More aggressive landing zone selection (closer pads). Replace ... with mapping_drone/runs/run_<TS>/landing_pads.json from Challenge 1.
 python3 semifinal/swarm_controller.py --task 2a --pads_file ... --select_strategy nearest_three
@@ -231,7 +231,7 @@ python3 semifinal/swarm_controller.py --task 2b --search-pattern lawnmower-3way 
 ### Configuration C — Recovery (something broke, just get a baseline)
 ```bash
 # Mock everything (no drone, no UWB, no Realsense) — safest baseline; just produces artifacts the judge can score on.
-python3 -m mapping_drone.controller --mock-all --waypoints semifinal/configs/arena_waypoints_safe.json
+python3 -m mapping_drone.controller --mock --waypoints semifinal/configs/arena_waypoints_safe.json
 
 # Single-drone fallback (only 1 of 3 Hulas working). Replace ... with mapping_drone/runs/run_<TS>/landing_pads.json from Challenge 1.
 python3 semifinal/swarm_controller.py --task 2a --single-drone --pads_file ...

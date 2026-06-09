@@ -28,14 +28,14 @@ Companion to `runbook.md`. Do these BEFORE arming. One page. Print on paper.
 ## Pre-flight checks (do BEFORE arming)
 
 - [ ] **UWB sniffer**: `python3 -m tools.uwb_sniffer` (or `python3 semifinal/tools/uwb_sniffer.py`). Confirm `uwb_tag` topic publishes; confirm NED axes match (n=pose.y, e=pose.x, alt=-pose.z). Override with `--topic <name>` if org renamed it.
-- [ ] **CLI flags intact**: `python3 -m mapping_drone --help` from `semifinal/`. Verify `--real`, `--mock-all`, `--waypoints-from-json`, `--aruco-dict`, `--mavsdk-address`, `--mavsdk-addresses`, `--gimbal-pitch`, `--max-flight-time-s` are all listed. If any missing → wrong checkout / stale USB copy.
+- [ ] **CLI flags intact**: `python3 -m mapping_drone --help` from `semifinal/`. Verify `--real`, `--mock` (alias `--mock-all`), `--waypoints-from-json`, `--aruco-dict`, `--mavsdk-address`, `--mavsdk-addresses`, `--gimbal-pitch`, `--max-flight-time-s` are all listed. **Real mode is the default — actual drone runs need NO flag**. If any missing → wrong checkout / stale USB copy.
 - [ ] **Marker-on-floor camera mount check**: place a known ArUco marker 1 m due north of drone GCS origin. Arm, hover at 1.5 m, watch `STATUS.txt` / log. Confirm world XY of detection lands within **20 cm** of (n=1.0, e=0.0). If off → gimbal mount rotated or Realsense extrinsics wrong; do NOT proceed to scored slot.
 
 ---
 
 ## If MAVSDK won't connect
 
-- [ ] Pass the full fallback list: `python3 -m mapping_drone.controller --real --mavsdk-addresses serial:///dev/ttyS6:921600,serial:///dev/ttyACM0:115200,serial:///dev/ttyUSB0:57600,udp://:14540,udp://:14550`. Controller tries each with 5 s timeout and logs which one connected.
+- [ ] Pass the full fallback list: `python3 -m mapping_drone.controller --mavsdk-addresses serial:///dev/ttyS6:921600,serial:///dev/ttyACM0:115200,serial:///dev/ttyUSB0:57600,udp://:14540,udp://:14550`. Controller tries each with 5 s timeout and logs which one connected.
 - [ ] If all 5 fail: check the USB-serial cable is seated, verify the serial port appears (`ls /dev/ttyS* /dev/ttyACM* /dev/ttyUSB*`), check baud against the FC's mavlink param, try a different USB port.
 - [ ] Last resort: ask K which serial pyhulax targets on the C2 Windows side and mirror that port/baud on the Ubuntu VM side.
 
@@ -45,7 +45,7 @@ Companion to `runbook.md`. Do these BEFORE arming. One page. Print on paper.
 
 - [ ] Pre-staged: `semifinal/configs/valid_ids_unknown.json` (template with `{valid_ids:[], invalid_ids:[]}`).
 - [ ] After briefing: copy to `configs/valid_ids_<date>.json`, populate `{valid_ids:[...], invalid_ids:[...]}` from the announced rule.
-- [ ] Run controller with: `MAPPING_DRONE_VALIDITY=lookup MAPPING_DRONE_VALIDITY_LOOKUP=configs/valid_ids_<date>.json python3 -m mapping_drone.controller --real ...`
+- [ ] Run controller with: `MAPPING_DRONE_VALIDITY=lookup MAPPING_DRONE_VALIDITY_LOOKUP=configs/valid_ids_<date>.json python3 -m mapping_drone.controller ...`
 - [ ] No code edit needed — `validity.py` rule `lookup` reads + caches the JSON. Confirm `describe_rule()` output in log mentions the lookup file path.
 
 ---
@@ -63,7 +63,7 @@ Companion to `runbook.md`. Do these BEFORE arming. One page. Print on paper.
 - [ ] Default (4-corner 2×2 box @ 1.5 m) is pre-staged at `configs/waypoints_2x2_default.json`.
 - [ ] After A's arena scout: copy current arena layout into `configs/waypoints_<date>.json` as `[[n_m, e_m, alt_m], ...]`.
 - [ ] Pass to controller: `--waypoints-from-json configs/waypoints_<date>.json`. Loader replaces the built-in `DEFAULT_WAYPOINTS` fallback.
-- [ ] Verify with a mock dry-run before the scored slot: `python3 -m mapping_drone.controller --mock-all --waypoints-from-json configs/waypoints_<date>.json`.
+- [ ] Verify with a mock dry-run before the scored slot: `python3 -m mapping_drone.controller --mock --waypoints-from-json configs/waypoints_<date>.json`.
 
 ---
 
@@ -71,8 +71,8 @@ Companion to `runbook.md`. Do these BEFORE arming. One page. Print on paper.
 
 1. **UWB sniffer** — `python3 -m tools.uwb_sniffer` for 10 s. Confirm pose stream + NED axes.
 2. **RealSense pipeline test** — `python3 -m mapping_drone.tests.smoke_realsense_stationary`. Confirm a profile started (640x480@30 / 848x480@30 / 1280x720@30 / 640x480@15 — log says which).
-3. **MockMavsdk dry-run** — `python3 -m mapping_drone.controller --mock-all --waypoints-from-json configs/waypoints_2x2_default.json`. Confirm `runs/run_*/STATUS.txt` + `top_down.png` produced.
-4. **RealMavsdk connect-only** — `python3 -m mapping_drone.controller --real --mavsdk-addresses <list> --max-flight-time-s 5`. The controller will connect, attempt to arm + take off, then hit the 5 s wall and disarm cleanly. Goal: confirm MAVSDK negotiates one of the candidate addresses and the drone arms/disarms safely. (No dedicated arm-disarm-only flag — we use the existing `--max-flight-time-s` watchdog as a hard wall.)
+3. **MockMavsdk dry-run** — `python3 -m mapping_drone.controller --mock --waypoints-from-json configs/waypoints_2x2_default.json`. Confirm `runs/run_*/STATUS.txt` + `top_down.png` produced.
+4. **RealMavsdk connect-only** — `python3 -m mapping_drone.controller --mavsdk-addresses <list> --max-flight-time-s 5`. The controller will connect, attempt to arm + take off, then hit the 5 s wall and disarm cleanly. Goal: confirm MAVSDK negotiates one of the candidate addresses and the drone arms/disarms safely. (No dedicated arm-disarm-only flag — we use the existing `--max-flight-time-s` watchdog as a hard wall.)
 5. **First short scored attempt** — Configuration A from `runbook.md`. Watch `STATUS.txt` live.
 
 Do not skip steps. Each step gates the next.

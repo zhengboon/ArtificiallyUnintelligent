@@ -111,11 +111,11 @@ python -m mapping_drone.controller [flags]
 
 | Flag                  | Meaning                                                                       |
 | --------------------- | ----------------------------------------------------------------------------- |
-| `--real`              | Real UWB + real MAVSDK + real RealSense. Default at the venue.                |
+| `--real`              | Real UWB + real MAVSDK + real RealSense. **DEFAULT — actual drone runs need NO flag.** |
 | `--mock-uwb`          | Use programmable mock UWB. Skips ROS2 import.                                 |
 | `--mock-mavsdk`       | Mock flight controller. No serial port required.                              |
 | `--mock-realsense`    | Synthetic depth + RGB frames. No camera required.                             |
-| `--mock-all`          | All three mocks. Pure laptop run, no hardware.                                |
+| `--mock` / `--mock` | All three mocks. Pure laptop run, no hardware. (`--mock` is the short alias.) |
 | `--waypoints PATH`    | JSON list of `[n_m, e_m, alt_m]`. Default = 4-pt demo square.                 |
 | `--gimbal-pitch DEG`  | Gimbal tilt; `-90` = straight down (DEFAULT, canonical down-facing mapping).  |
 | `--aruco-dict NAME`   | ArUco/AprilTag dictionary name (e.g. `6X6_250` [default], `4X4_50`, `APRILTAG_36h11`). Case-insensitive, optional `DICT_` prefix. See below. |
@@ -170,16 +170,16 @@ Examples:
 
 ```
 # Laptop smoke test, no hardware (uses default -90 gimbal pitch)
-python -m mapping_drone.controller --mock-all --log-level DEBUG
+python -m mapping_drone.controller --mock --log-level DEBUG
 
 # Drone bench test with mock flight + real camera
 python -m mapping_drone.controller --mock-uwb --mock-mavsdk
 
 # Real run (gimbal pitch defaults to -90; shown explicitly for clarity)
-python -m mapping_drone.controller --real --gimbal-pitch -90 --waypoints arena.json
+python -m mapping_drone.controller --gimbal-pitch -90 --waypoints arena.json
 
 # Real run with a different printed-marker dictionary
-python -m mapping_drone.controller --real --aruco-dict 5X5_250 --waypoints arena.json
+python -m mapping_drone.controller --aruco-dict 5X5_250 --waypoints arena.json
 ```
 
 ## Output artifacts
@@ -272,7 +272,7 @@ On Windows PowerShell the equivalent is:
 
 ```
 $env:MAPPING_DRONE_VALIDITY = "all_valid"
-python -m mapping_drone.controller --mock-all
+python -m mapping_drone.controller --mock
 ```
 
 ## Where to integrate K's RKNN YOLO model later
@@ -356,15 +356,15 @@ Examples:
 
 ```
 # Day-1 walk: try all 5 canonical addresses
-python -m mapping_drone.controller --real \
+python -m mapping_drone.controller \
     --mavsdk-addresses "serial:///dev/ttyS6:921600,serial:///dev/ttyACM0:115200,serial:///dev/ttyUSB0:57600,udp://:14540,udp://:14550"
 
 # Two-address cycle (USB serial OR SITL UDP)
-python -m mapping_drone.controller --real \
+python -m mapping_drone.controller \
     --mavsdk-addresses "serial:///dev/ttyACM0:115200,udp://:14540"
 
 # Original single-address behaviour (unchanged)
-python -m mapping_drone.controller --real \
+python -m mapping_drone.controller \
     --mavsdk-address serial:///dev/ttyAMA0:921600
 ```
 

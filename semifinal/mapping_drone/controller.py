@@ -1489,7 +1489,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="BrainHack mapping drone controller")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--real", action="store_true", help="use all real hardware (default)")
-    mode.add_argument("--mock-all", action="store_true", help="mock UWB, MAVSDK, Realsense")
+    mode.add_argument(
+        "--mock",
+        "--mock-all",
+        dest="mock_all",
+        action="store_true",
+        help="mock UWB, MAVSDK, Realsense (--mock and --mock-all are aliases)",
+    )
     p.add_argument("--mock-uwb", action="store_true")
     p.add_argument("--mock-mavsdk", action="store_true")
     p.add_argument("--mock-realsense", action="store_true")

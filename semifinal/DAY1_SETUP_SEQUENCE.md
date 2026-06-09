@@ -36,7 +36,7 @@ Then load into the Ubuntu 22.04 VM. Primary mechanism: VirtualBox/VMware shared 
 
 Single command per check. If any fails, fix before proceeding.
 
-- [ ] `python -m mapping_drone --help` — CLI parses; `--real`, `--mock-all`, `--waypoints-from-json`, `--aruco-dict`, `--mavsdk-addresses`, `--gimbal-pitch`, `--max-flight-time-s` all listed.
+- [ ] `python -m mapping_drone --help` — CLI parses; `--real`, `--mock` (alias `--mock-all`), `--waypoints-from-json`, `--aruco-dict`, `--mavsdk-addresses`, `--gimbal-pitch`, `--max-flight-time-s` all listed. Real mode is the default — actual drone runs need NO flag.
 - [ ] `python -c "from mapping_drone.mapping import ALL_SUPPORTED_DICT_NAMES; print(len(ALL_SUPPORTED_DICT_NAMES))"` — must print `20`.
 - [ ] `python tools/uwb_sniffer.py` for 10 s — confirm `uwb_tag` topic publishes; NED axes match (n=pose.y, e=pose.x, alt=-pose.z). Ctrl-C to stop.
 - [ ] `python -c "import pyrealsense2 as rs; print(rs.context().query_devices()[0].get_info(rs.camera_info.usb_type_descriptor))"` — must print a `3.x` string. If `2.x` → wrong USB port, replug.
