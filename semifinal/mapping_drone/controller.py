@@ -1819,8 +1819,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--aruco-dict",
-        default="6X6_250",
-        help="ArUco dictionary name (e.g. 6X6_250, 4X4_50)",
+        default="7X7_1000",
+        help="ArUco dictionary name (org markers are 7X7_1000; e.g. 6X6_250, 4X4_50)",
     )
     p.add_argument(
         "--max-vel-xy",

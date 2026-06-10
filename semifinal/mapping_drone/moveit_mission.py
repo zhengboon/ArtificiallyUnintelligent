@@ -55,7 +55,7 @@ except Exception as _exc:  # mavsdk not installed (laptop dev / --nofly)
     _MAVSDK_IMPORT_ERROR = _exc
 
 # --- Tuning, matching the organiser's move_it4.py ---
-ALTITUDE_TARGET_DEFAULT = 2.0      # org sample default (override per arena/floor)
+ALTITUDE_TARGET_DEFAULT = 4.0      # above the 3.5 m floor + matches configs (org move_it4 used 2.0; override via --takeoff-alt)
 ALTITUDE_TOLERANCE = 0.10
 HORIZONTAL_TOLERANCE = 0.20
 MAX_SPEED = 1.5
@@ -66,7 +66,7 @@ LOCAL_POS_TIMEOUT_S = 30.0
 FRAMES_PER_WAYPOINT = 8
 WAYPOINT_SCAN_SETTLE_S = 2.0
 DEDUPE_RADIUS_M = 0.5
-DEFAULT_WAYPOINTS = [(2.0, 2.0), (3.0, 2.0), (4.0, 2.0), (5.0, 2.0)]  # (north, east), per move_it4
+DEFAULT_WAYPOINTS = [(2.0, 2.0), (3.0, 2.0), (4.0, 2.0), (5.0, 2.0)]  # (north, east), per move_it4 (alt = --takeoff-alt)
 
 
 def _world_distance(a, b) -> float:
@@ -322,16 +322,17 @@ class MoveItMission:
             await asyncio.sleep(4.0)
 
             deadline = self.started_at + float(self.args.max_flight_time_s)
-            for idx, (wn, we) in enumerate(waypoints, start=1):
+            for idx, (wn, we, wz) in enumerate(waypoints, start=1):
                 if self._stop or time.monotonic() > deadline:
                     logger.warning("stop/time-limit before wp %d", idx)
                     break
+                alt_wp = wz if wz is not None else alt
                 self.state = f"FLY_WP_{idx}"
-                logger.info("WAYPOINT %d/%d -> N=%.2f E=%.2f", idx, len(waypoints), wn, we)
-                await self._navigate_uwb(wn, we, alt)
+                logger.info("WAYPOINT %d/%d -> N=%.2f E=%.2f alt=%.2f", idx, len(waypoints), wn, we, alt_wp)
+                await self._navigate_uwb(wn, we, alt_wp)
                 # hold position; MAVSDK keeps streaming the last setpoint while we scan
                 await drone.offboard.set_position_velocity_ned(
-                    PositionNedYaw(wn, we, -alt, 0.0), VelocityNedYaw(0.0, 0.0, 0.0, 0.0))
+                    PositionNedYaw(wn, we, -alt_wp, 0.0), VelocityNedYaw(0.0, 0.0, 0.0, 0.0))
                 self.state = f"SCAN_WP_{idx}"
                 await asyncio.sleep(WAYPOINT_SCAN_SETTLE_S)
                 await asyncio.to_thread(self._scan_once)
@@ -357,11 +358,25 @@ class MoveItMission:
             await self.drone.action.land()
         except Exception as exc:
             logger.error("land failed: %s", exc)
-        await asyncio.sleep(6.0)
+        # NEVER disarm while airborne: wait for in_air=False up to a hard cap.
+        landed = False
+        deadline = time.monotonic() + 40.0
         try:
-            await self.drone.action.disarm()
+            async for in_air in self.drone.telemetry.in_air():
+                if not in_air:
+                    landed = True
+                    break
+                if time.monotonic() > deadline:
+                    break
         except Exception:
             pass
+        if landed:
+            try:
+                await self.drone.action.disarm()
+            except Exception:
+                pass
+        else:
+            logger.error("still in_air after 40s — NOT disarming (safety); use the RC kill switch")
         self.state = "ABORTED" if aborted else "DONE"
         return 1 if aborted else 0
 
@@ -369,12 +384,13 @@ class MoveItMission:
         self._stop = True
 
 
-def _load_waypoints(args) -> list[tuple[float, float]]:
+def _load_waypoints(args):
+    """Return [(north, east, alt_or_None), ...]. Accepts [n,e] or [n,e,alt] rows."""
     path = args.waypoints or args.waypoints_from_json
     if not path:
-        return list(DEFAULT_WAYPOINTS)
+        return [(n, e, None) for (n, e) in DEFAULT_WAYPOINTS]
     data = json.loads(Path(path).read_text())
-    out = [(float(r[0]), float(r[1])) for r in data]   # (north, east); extra cols ignored
+    out = [(float(r[0]), float(r[1]), (float(r[2]) if len(r) > 2 else None)) for r in data]
     if not out:
         raise ValueError(f"{path}: waypoints list is empty")
     return out
@@ -387,7 +403,8 @@ def _parse_args(argv=None) -> argparse.Namespace:
     mode.add_argument("--nofly", action="store_true", help="UWB+camera+artifacts, no arm")
     mode.add_argument("--check", action="store_true", help="connect + print pose, no arm")
     p.add_argument("--mavsdk-address", default="serial:///dev/ttyS6:921600")
-    p.add_argument("--aruco-dict", default="6X6_250")
+    p.add_argument("--aruco-dict", default="7X7_1000",
+                   help="org landing-pad markers are DICT_7X7_1000 (default reflects that)")
     p.add_argument("--waypoints", default=None)
     p.add_argument("--waypoints-from-json", default=None)
     p.add_argument("--takeoff-alt", type=float, default=ALTITUDE_TARGET_DEFAULT,
@@ -411,6 +428,11 @@ def main() -> int:
     run_dir = Path(args.runs_dir).resolve() / f"run_{run_ts}"
     run_dir.mkdir(parents=True, exist_ok=True)
     logger.info("run dir: %s | ArUco dict: %s | validity: %s", run_dir, args.aruco_dict, describe_rule())
+    _org_ids = (11, 45, 51, 67, 101)
+    _cls = {i: decide_landing_validity(i) for i in _org_ids}
+    logger.info("VALIDITY of org IDs %s -> %s", _org_ids, _cls)
+    if all(v is False for v in _cls.values()):
+        logger.warning("ALL FIVE org pads classify INVALID — set MAPPING_DRONE_VALIDITY before a scored run!")
 
     drone = None
     if args.fly or args.check:

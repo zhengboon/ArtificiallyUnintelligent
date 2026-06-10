@@ -361,7 +361,8 @@ def _parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--assumed-alt", type=float, default=1.0,
                    help="fallback camera height (m) for --pose uwb, used ONLY if /uwb_tag "
                         "carries no z (nlink normally publishes ENU z-up altitude, which is used)")
-    p.add_argument("--aruco-dict", default="6X6_250")
+    p.add_argument("--aruco-dict", default="7X7_1000",
+                   help="org landing-pad markers are DICT_7X7_1000 (default reflects that)")
     p.add_argument("--waypoints", default=None)
     p.add_argument("--waypoints-from-json", default=None)
     p.add_argument("--gimbal-pitch", type=float, default=-90.0)
