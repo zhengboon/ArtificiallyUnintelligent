@@ -858,6 +858,11 @@ class MappingController:
         )
 
     async def emergency_land(self) -> None:
+        if getattr(self.args, "nofly", False):
+            # Never armed in no-fly mode — issuing land/offboard.stop against a
+            # grounded, disarmed PX4 would only log spurious errors.
+            logger.info("no-fly mode: emergency-land is a no-op (drone never armed)")
+            return
         logger.warning("EMERGENCY LAND")
         self._set_state("EMERGENCY_LAND")
         try:
@@ -995,8 +1000,82 @@ class MappingController:
             valid,
         )
 
+    # ----- no-flight bench mode -----
+    async def _run_nofly(self, waypoints: list[tuple[float, float, float]]) -> None:
+        """Bench mode: sensing + detection + mapping + artifacts, never moves.
+
+        Starts the same background telemetry/UWB/status pumps as a real
+        mission so STATUS.txt and the pose used for deprojection are live,
+        then loops ``_scan_at_waypoint`` in place until --max-flight-time-s
+        elapses or Ctrl-C. It NEVER calls action.arm/takeoff/land or
+        offboard.start/set_velocity_ned/set_position_ned, so the drone cannot
+        leave the ground. ``waypoints`` is accepted for signature parity but
+        is intentionally unused — a grounded drone cannot fly to them.
+        """
+        logger.info(
+            "NO-FLY MODE: subsystems + scan/detect/map pipeline only. The drone "
+            "will NOT arm, take off, go offboard, move, or land. World coords are "
+            "not physically meaningful at ground level — this validates detection "
+            "+ artifact writing, not navigation."
+        )
+        self._set_state("STARTING")
+        self.state.started_at = time.monotonic()
+
+        self._telem_task = asyncio.create_task(self._telemetry_loop())
+        self._attitude_task = asyncio.create_task(self._attitude_loop())
+        self._battery_task = asyncio.create_task(self._battery_loop())
+        self._in_air_task = asyncio.create_task(self._in_air_loop())
+        self._status_task = asyncio.create_task(self._status_writer_loop())
+
+        try:
+            self._set_state("AWAITING_UWB")
+            for _ in range(50):
+                _, _, ready = self.uwb.get_position()
+                if ready:
+                    break
+                await asyncio.sleep(0.2)
+            else:
+                logger.warning("UWB not ready after 10s — continuing anyway (no-fly)")
+
+            deadline = time.monotonic() + float(self.args.max_flight_time_s)
+            self._set_state("NOFLY_SCAN")
+            cycle = 0
+            while not self._stop_event.is_set() and not self.state.aborted:
+                if time.monotonic() > deadline:
+                    logger.info(
+                        "no-fly: scan duration reached (%.0fs)",
+                        float(self.args.max_flight_time_s),
+                    )
+                    break
+                cycle += 1
+                _vinfo("no-fly scan cycle %d", cycle)
+                try:
+                    await self._scan_at_waypoint()
+                except Exception as exc:
+                    logger.warning("no-fly scan cycle %d failed: %s", cycle, exc)
+                await asyncio.sleep(0.2)
+        finally:
+            self._set_state("DONE" if not self.state.aborted else "ABORTED")
+            self._stop_event.set()
+            for t in (
+                self._telem_task,
+                self._attitude_task,
+                self._battery_task,
+                self._in_air_task,
+                self._status_task,
+            ):
+                if t is not None:
+                    t.cancel()
+                    try:
+                        await t
+                    except (asyncio.CancelledError, Exception):
+                        pass
+
     # ----- top-level mission -----
     async def run_mission(self, waypoints: list[tuple[float, float, float]]) -> None:
+        if getattr(self.args, "nofly", False):
+            await self._run_nofly(waypoints)
+            return
         self._set_state("STARTING")
         self.state.started_at = time.monotonic()
 
@@ -1799,6 +1878,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Bring up MAVSDK, UWB, and Realsense, log per-subsystem health, "
              "then tear down without arming. Respects --mock-* flags. Exit 0 "
              "if all 3 subsystems came up, 2 if any failed.",
+    )
+    p.add_argument(
+        "--nofly",
+        action="store_true",
+        help="No-flight bench mode for a drone that must stay grounded. Brings "
+             "up all subsystems and runs the full scan/detect/map/artifact "
+             "pipeline IN PLACE, but NEVER arms, takes off, starts offboard, "
+             "sends a velocity/position command, or lands. Use this to verify "
+             "ArUco detection, RealSense, UWB, and artifact writing on a "
+             "powered-but-grounded drone (point the camera at printed markers). "
+             "World coordinates are not physically meaningful at ground level, "
+             "but every other stage of the pipeline is exercised. Honours "
+             "--max-flight-time-s as the scan duration; Ctrl-C stops cleanly.",
     )
     args = p.parse_args(argv)
     if not (args.real or args.mock_all or args.mock_uwb or args.mock_mavsdk or args.mock_realsense):
