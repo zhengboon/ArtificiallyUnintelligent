@@ -122,48 +122,49 @@ class RealsenseNode:
     def start(self) -> None:
         if self._started:
             return
-        errors: list[str] = []
-        for width, height, fps in self.PROFILE_CANDIDATES:
-            cfg = self._build_config(width, height, fps)
-            try:
-                self._profile = self._pipeline.start(cfg)
-            except Exception as exc:
-                errors.append(f"{width}x{height}@{fps}: {exc}")
-                log.warning(
-                    "Realsense profile %dx%d @ %d Hz failed: %s",
-                    width, height, fps, exc,
-                )
-                continue
-            if self._use_ir:
-                ir_stream = self._profile.get_stream(rs.stream.infrared, 1)
-                self._intrinsics = ir_stream.as_video_stream_profile().get_intrinsics()
-                # Grab the depth sensor so grab() can turn the IR projector
-                # OFF (its dot pattern would corrupt ArUco detection).
+        # REDUNDANT camera paths: try the requested mode (color unless
+        # --use-ir-for-aruco), and if EVERY profile fails, AUTO-fall back to IR
+        # — so the same code works on a D435 (RGB) and a D450 (no RGB) with no
+        # operator flag. If IR was already requested, we only try IR.
+        modes = [self._use_ir] if self._use_ir else [False, True]
+        all_errors: list[str] = []
+        for ir_mode in modes:
+            self._use_ir = ir_mode
+            self._align = rs.align(rs.stream.infrared if ir_mode else rs.stream.color)
+            label = "IR/no-RGB" if ir_mode else "color"
+            for width, height, fps in self.PROFILE_CANDIDATES:
+                cfg = self._build_config(width, height, fps)
                 try:
-                    self._depth_sensor = self._profile.get_device().first_depth_sensor()
-                    if self._depth_sensor.supports(rs.option.emitter_enabled):
-                        self._depth_sensor.set_option(rs.option.emitter_enabled, 0.0)
-                except Exception as exc:  # pragma: no cover - hardware-specific
-                    log.warning("could not disable IR emitter: %s", exc)
-            else:
-                color_stream = self._profile.get_stream(rs.stream.color)
-                self._intrinsics = color_stream.as_video_stream_profile().get_intrinsics()
-            self.WIDTH = width
-            self.HEIGHT = height
-            self.FPS = fps
-            self.profile_used = (width, height, fps)
-            self._started = True
-            log.info(
-                "Realsense started: %dx%d @ %d Hz, fx=%.2f cx=%.2f (%s)",
-                width, height, fps,
-                self._intrinsics.fx, self._intrinsics.ppx,
-                "IR/no-RGB" if self._use_ir else "color",
-            )
-            return
-        tried = ", ".join(f"{w}x{h}@{f}" for w, h, f in self.PROFILE_CANDIDATES)
+                    self._profile = self._pipeline.start(cfg)
+                except Exception as exc:
+                    all_errors.append(f"{label} {width}x{height}@{fps}: {exc}")
+                    continue
+                if ir_mode:
+                    ir_stream = self._profile.get_stream(rs.stream.infrared, 1)
+                    self._intrinsics = ir_stream.as_video_stream_profile().get_intrinsics()
+                    # Turn the IR projector OFF (dot pattern corrupts ArUco).
+                    try:
+                        self._depth_sensor = self._profile.get_device().first_depth_sensor()
+                        if self._depth_sensor.supports(rs.option.emitter_enabled):
+                            self._depth_sensor.set_option(rs.option.emitter_enabled, 0.0)
+                    except Exception as exc:  # pragma: no cover - hardware-specific
+                        log.warning("could not disable IR emitter: %s", exc)
+                else:
+                    color_stream = self._profile.get_stream(rs.stream.color)
+                    self._intrinsics = color_stream.as_video_stream_profile().get_intrinsics()
+                self.WIDTH, self.HEIGHT, self.FPS = width, height, fps
+                self.profile_used = (width, height, fps)
+                self._started = True
+                log.info(
+                    "Realsense started: %dx%d @ %d Hz, fx=%.2f cx=%.2f (%s)",
+                    width, height, fps, self._intrinsics.fx, self._intrinsics.ppx, label,
+                )
+                return
+            if not ir_mode and len(modes) > 1:
+                log.warning("all COLOR profiles failed — AUTO-falling back to IR (no-RGB camera?)")
         raise RuntimeError(
-            f"Realsense pipeline.start() failed for all candidate profiles "
-            f"[{tried}]. Errors: {'; '.join(errors)}"
+            "Realsense pipeline.start() failed for all profiles in all modes. "
+            f"Errors: {'; '.join(all_errors)}"
         )
 
     def stop(self) -> None:

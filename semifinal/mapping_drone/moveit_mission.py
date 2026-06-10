@@ -131,13 +131,19 @@ class MoveItMission:
         Yaw always from the FC attitude stream.
         """
         yaw = self._yaw_deg
+        src = getattr(self.args, "pose", "auto")
         fc_fresh = self._fc_ts > 0.0 and (time.monotonic() - self._fc_ts) < FC_POSE_STALE_S
-        if getattr(self.args, "pose", "fc") == "fc" and fc_fresh:
-            return self._fc_n, self._fc_e, self._fc_down, yaw, True
-        # UWB horizontal (or FC unavailable). Altitude from FC if fresh.
-        n, e, ready = self.uwb.get_position()
         down = self._fc_down if fc_fresh else -float(self.args.takeoff_alt)
-        return n, e, down, yaw, ready
+        # Path 1: FC fused NED (DDS-immune) — for 'fc' and 'auto'.
+        if src in ("fc", "auto") and fc_fresh:
+            return self._fc_n, self._fc_e, self._fc_down, yaw, True
+        # Path 2: UWB /uwb_tag (arena frame) — for 'uwb', and as 'auto' fallback.
+        if src in ("uwb", "auto"):
+            n, e, ready = self.uwb.get_position()
+            if ready:
+                return n, e, down, yaw, True
+        # Neither source fresh -> not ready; caller holds position.
+        return (self._fc_n if fc_fresh else 0.0), (self._fc_e if fc_fresh else 0.0), down, yaw, False
 
     # ---- scan / artifacts (shared with px4_mission) ----------------
     def _validity_for(self, aruco_id: int) -> Optional[bool]:
@@ -546,14 +552,16 @@ def _parse_args(argv=None) -> argparse.Namespace:
     mode.add_argument("--nofly", action="store_true", help="UWB+camera+artifacts, no arm")
     mode.add_argument("--check", action="store_true", help="connect + print pose, no arm")
     p.add_argument("--mavsdk-address", default="serial:///dev/ttyS6:921600")
-    p.add_argument("--pose", choices=["fc", "uwb"], default="fc",
-                   help="horizontal pose source: fc=MAVSDK fused NED (default, DDS-immune, "
-                        "matches survey_box waypoints); uwb=/uwb_tag arena frame (unreliable "
-                        "under cross-team DDS). Altitude always from FC.")
+    p.add_argument("--pose", choices=["auto", "fc", "uwb"], default="auto",
+                   help="horizontal pose source (REDUNDANT): auto=FC fused NED, auto-fallback "
+                        "to /uwb_tag if FC goes stale (default); fc=FC only (DDS-immune, matches "
+                        "survey_box waypoints); uwb=/uwb_tag arena frame only. Altitude always from FC.")
     p.add_argument("--use-ir-for-aruco", action="store_true",
                    help="D450 (no-RGB) cameras: read left IR + synth BGR for ArUco")
-    p.add_argument("--aruco-dict", default="7X7_1000",
-                   help="org landing-pad markers are DICT_7X7_1000 (default reflects that)")
+    p.add_argument("--aruco-dict", default="7X7_1000,6X6_250",
+                   help="comma-separated dicts scanned every frame. Default hedges both "
+                        "7X7_1000 (assumed org dict) AND 6X6_250 so we don't miss markers "
+                        "if the real dict differs; logs which dict each ID came from.")
     p.add_argument("--waypoints", default=None)
     p.add_argument("--waypoints-from-json", default=None)
     p.add_argument("--takeoff-alt", type=float, default=ALTITUDE_TARGET_DEFAULT,

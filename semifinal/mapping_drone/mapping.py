@@ -106,31 +106,44 @@ class ArucoDetector:
     """Wraps cv2.aruco. Uses the new ArucoDetector API when available,
     otherwise falls back to the legacy detectMarkers signature."""
 
-    def __init__(self, dict_name: str = "7X7_1000") -> None:
-        key = _normalize_dict_name(dict_name)
-        if key not in _ARUCO_DICTS:
-            supported = sorted(_ARUCO_DICTS.keys())
-            raise ValueError(
-                f"Unknown ArUco dict: {dict_name!r}. Supported "
-                f"({len(supported)}): {supported[:20]}"
-            )
-        self.dict_name = key
-        aruco_dict_id = _ARUCO_DICTS[key]
-
-        if hasattr(cv2.aruco, "getPredefinedDictionary"):
-            self._dictionary = cv2.aruco.getPredefinedDictionary(aruco_dict_id)
-        else:  # very old OpenCV
-            self._dictionary = cv2.aruco.Dictionary_get(aruco_dict_id)
-
-        self._detector = None
-        if hasattr(cv2.aruco, "ArucoDetector"):
-            params = cv2.aruco.DetectorParameters()
-            self._detector = cv2.aruco.ArucoDetector(self._dictionary, params)
+    def __init__(self, dict_name: str = "7X7_1000,6X6_250") -> None:
+        # dict_name may be a comma-separated list — every frame is scanned with
+        # EACH dictionary and the union of detections is returned. We are not
+        # 100% sure the org markers are 7X7_1000 (it came from Discord, not the
+        # slides), so we hedge by also scanning 6X6_250. A real 7X7 marker won't
+        # decode under the 6X6 grid and vice-versa, so there is no double count.
+        names = [n for n in (s.strip() for s in dict_name.split(",")) if n]
+        if not names:
+            names = ["7X7_1000"]
+        # Shared detector params + whether the new (>=4.7) ArucoDetector API exists.
+        self._has_new_api = hasattr(cv2.aruco, "ArucoDetector")
+        if hasattr(cv2.aruco, "DetectorParameters"):
+            self._params = cv2.aruco.DetectorParameters()
+        elif hasattr(cv2.aruco, "DetectorParameters_create"):
+            self._params = cv2.aruco.DetectorParameters_create()
         else:
-            if hasattr(cv2.aruco, "DetectorParameters_create"):
-                self._params = cv2.aruco.DetectorParameters_create()
-            else:
-                self._params = cv2.aruco.DetectorParameters()
+            self._params = None
+        # Build one (name, dictionary, detector) entry per requested dict.
+        self._entries: list[tuple[str, object, object]] = []
+        for nm in names:
+            key = _normalize_dict_name(nm)
+            if key not in _ARUCO_DICTS:
+                supported = sorted(_ARUCO_DICTS.keys())
+                raise ValueError(
+                    f"Unknown ArUco dict: {nm!r}. Supported "
+                    f"({len(supported)}): {supported[:20]}"
+                )
+            aruco_dict_id = _ARUCO_DICTS[key]
+            if hasattr(cv2.aruco, "getPredefinedDictionary"):
+                dictionary = cv2.aruco.getPredefinedDictionary(aruco_dict_id)
+            else:  # very old OpenCV
+                dictionary = cv2.aruco.Dictionary_get(aruco_dict_id)
+            detector = cv2.aruco.ArucoDetector(dictionary, self._params) if self._has_new_api else None
+            self._entries.append((key, dictionary, detector))
+        self.dict_name = ",".join(e[0] for e in self._entries)
+        self._logged_ids: set[tuple[int, str]] = set()   # (id, dict) already INFO-logged
+        logger.info("ArucoDetector scanning %d dictionaries: %s",
+                    len(self._entries), self.dict_name)
 
     def detect_in_frame(
         self, frame
@@ -152,26 +165,34 @@ class ArucoDetector:
             return []
         gray = cv2.cvtColor(frame.color_bgr, cv2.COLOR_BGR2GRAY)
 
-        if self._detector is not None:
-            corners, ids, _ = self._detector.detectMarkers(gray)
-        else:
-            corners, ids, _ = cv2.aruco.detectMarkers(
-                gray, self._dictionary, parameters=self._params
-            )
-
-        if ids is None or len(ids) == 0:
-            return []
-
         out: list[tuple[int, tuple[int, int], tuple[int, int, int, int]]] = []
-        for marker_id, corner_set in zip(ids.flatten(), corners):
-            pts = corner_set.reshape(-1, 2)
-            cx = int(round(float(pts[:, 0].mean())))
-            cy = int(round(float(pts[:, 1].mean())))
-            x1 = int(math.floor(float(pts[:, 0].min())))
-            y1 = int(math.floor(float(pts[:, 1].min())))
-            x2 = int(math.ceil(float(pts[:, 0].max())))
-            y2 = int(math.ceil(float(pts[:, 1].max())))
-            out.append((int(marker_id), (cx, cy), (x1, y1, x2, y2)))
+        seen: set[tuple[int, int, int]] = set()   # (id, cx//20, cy//20) dedup across dicts
+        for name, dictionary, detector in self._entries:
+            if detector is not None:
+                corners, ids, _ = detector.detectMarkers(gray)
+            else:
+                corners, ids, _ = cv2.aruco.detectMarkers(
+                    gray, dictionary, parameters=self._params
+                )
+            if ids is None or len(ids) == 0:
+                continue
+            for marker_id, corner_set in zip(ids.flatten(), corners):
+                pts = corner_set.reshape(-1, 2)
+                cx = int(round(float(pts[:, 0].mean())))
+                cy = int(round(float(pts[:, 1].mean())))
+                dedup_key = (int(marker_id), cx // 20, cy // 20)
+                if dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+                x1 = int(math.floor(float(pts[:, 0].min())))
+                y1 = int(math.floor(float(pts[:, 1].min())))
+                x2 = int(math.ceil(float(pts[:, 0].max())))
+                y2 = int(math.ceil(float(pts[:, 1].max())))
+                out.append((int(marker_id), (cx, cy), (x1, y1, x2, y2)))
+                tag = (int(marker_id), name)
+                if tag not in self._logged_ids:
+                    self._logged_ids.add(tag)
+                    logger.info("ArUco id=%d detected via dict %s", int(marker_id), name)
         return out
 
 

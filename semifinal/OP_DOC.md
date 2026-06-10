@@ -41,6 +41,28 @@ written out in full — copy/paste them exactly.
 
 ---
 
+## Redundancy matrix — every subsystem has a fallback
+
+We don't fully trust any single path, so each one has a backup. Most switch
+**automatically**; a few you flip with a flag.
+
+| Subsystem | Primary | Fallback(s) | How to switch |
+|---|---|---|---|
+| **Control transport** | MAVSDK on `ttyS6` (`moveit_mission`) | PX4-ROS2 / XRCE (`px4_mission`); then RC manual | run `px4_mission` if MAVSDK is dead (Step 5z) |
+| **Pose (horizontal)** | FC fused NED | `/uwb_tag` arena frame → then hold-in-place | **automatic** with `--pose auto` (default) |
+| **Altitude** | FC `down_m` | `--takeoff-alt` assumed value | automatic |
+| **Camera / ArUco input** | RGB color (D435) | left-IR → synth-BGR (D450) | **automatic** color→IR fallback in `RealsenseNode` |
+| **ArUco dictionary** | `7X7_1000` | `6X6_250` (both scanned every frame) | add more via `--aruco-dict a,b,c` |
+| **Validity rule** | lookup `valid_ids_finals.json` | env rules (odd/even/all); else `None`=unknown | `MAPPING_DRONE_VALIDITY=...` |
+| **Coverage / frame** | surveyed waypoints (`--pose uwb`, arena coords) | takeoff-relative NED (`--pose fc`); else tiny demo | `--waypoints-from-json` + `--pose` |
+| **Safety** | watchdogs auto-land (battery/pose/stuck/setpoint) | Ctrl-C → land+disarm | RC **kill switch** (always in hand) |
+
+`--pose auto` means: use the FC's fused NED; the instant it goes stale, fall
+back to `/uwb_tag`; if both are gone, hold position. You get FC's DDS-immunity
+**and** UWB's arena frame without choosing up front.
+
+---
+
 ## STEP 0 — Pick a drone and fingerprint it
 
 Drones are **not identical** (different camera, packages, paths). The moment you get one:
@@ -172,22 +194,30 @@ Artifacts land in `mapping_drone/runs/run_<timestamp>/` — check `landing_pads.
 
 ## STEP 5 — `--fly` (autonomous sweep) — the scored run
 
+**Altitude:** there is **no org-published altitude** — it's our choice (`--takeoff-alt`,
+metres, default **4.0**; per-waypoint alt is the 3rd column of the waypoints JSON).
+The org sample used 2.0 m. Trade-off: **higher = wider camera footprint (fewer lanes,
+faster) but smaller, lower-res markers**; **lower = sharper ArUco (better valid/invalid
+accuracy, which is scored) but more lanes**. D455 footprint ≈ `1.9·h × 1.1·h` (so 4 m ≈
+7.6×4.4 m; 3 m ≈ 5.7×3.3 m). Recommendation: **3–4 m**, and **confirm the arena's
+vertical clearance (net/ceiling height) with the marshal before flying higher.**
+
 Pre-flight: battery charged, props clear, **RC kill-switch in hand**, marshal go.
 ```bash
 export ROS_LOCALHOST_ONLY=1
 cd ~/AD/semifinal
 source ~/ros2_ws/install/setup.bash
 
-# Path 3-UWB (arena-frame waypoints):
-python3 -m mapping_drone.moveit_mission --fly --pose uwb \
+# DEFAULT (recommended) — --pose auto (FC, auto-fallback to /uwb_tag) and the
+# camera auto-falls back color->IR, so no camera flag is needed:
+python3 -m mapping_drone.moveit_mission --fly \
     --waypoints-from-json configs/waypoints_surveyed.json \
     --takeoff-alt 4.0 --max-flight-time-s 420
-#   D450 camera? add --use-ir-for-aruco
 
-# Path 3-FC (takeoff-relative NED waypoints):
-python3 -m mapping_drone.moveit_mission --fly --pose fc \
-    --waypoints-from-json configs/waypoints_surveyed.json \
-    --takeoff-alt 4.0 --max-flight-time-s 420
+# Force a single pose source if needed:
+#   --pose uwb   (waypoints are ARENA coords, Path 3-UWB)
+#   --pose fc    (waypoints are TAKEOFF-RELATIVE NED, Path 3-FC)
+# Force IR camera (only if auto-detect picked wrong): --use-ir-for-aruco
 ```
 Expected: connects → local position OK → arms → offboard → takeoff → flies waypoints (closed-loop) → scans at each → lands → disarms (only after `in_air=False`).
 
@@ -239,9 +269,9 @@ source ~/ros2_ws/install/setup.bash                                             
 # check / nofly / fly
 python3 -m mapping_drone.moveit_mission --check
 python3 -m mapping_drone.moveit_mission --nofly --max-flight-time-s 60
-python3 -m mapping_drone.moveit_mission --fly --pose fc  --waypoints-from-json configs/waypoints_surveyed.json --takeoff-alt 4.0
-python3 -m mapping_drone.moveit_mission --fly --pose uwb --waypoints-from-json configs/waypoints_surveyed.json --takeoff-alt 4.0
-#   append --use-ir-for-aruco on a D450 (no-RGB) camera
+python3 -m mapping_drone.moveit_mission --fly --waypoints-from-json configs/waypoints_surveyed.json --takeoff-alt 4.0   # --pose auto + auto-IR (default)
+#   force a path:  --pose fc | --pose uwb   |   force IR cam: --use-ir-for-aruco
+#   scan more dicts: --aruco-dict 7X7_1000,6X6_250,5X5_250
 
 # survey the box (NOTE: corner-walk mode needs carrying — unusable; use floor read / probe per Step 3)
 python3 tools/survey_box.py --margin 0.7 --lanes 3 --alt 4.0 --out configs/waypoints_surveyed.json
