@@ -3,10 +3,15 @@
 You don't need to understand the whole codebase. The code is **already written**. Your job is to
 **run it in the right order** on the drone and read the results.
 
-> **Big truth (read this once):** the real finals drone's flight controller talks **PX4 over ROS2
-> (micro-XRCE-DDS)**, **not MAVLink**. So you do **NOT** use the old `controller.py` / MAVSDK stuff —
-> that's simulator-only. You use **`px4_mission`**. Full reasoning: [`DRONE_STACK_ANALYSIS.md`](DRONE_STACK_ANALYSIS.md).
-> The deep operator detail is in [`MAPPING_DRONE_SETUP_GUIDE.md`](MAPPING_DRONE_SETUP_GUIDE.md).
+> **Big truth (read this once):** the organiser's official sample (`move_it4.py`, 10 Jun) flies the drone
+> with **MAVSDK over `serial:///dev/ttyS6:921600`** — so the **org-blessed path is
+> `python3 -m mapping_drone.moveit_mission`** (`--check` / `--nofly` / `--fly`), aligned to that sample.
+> If a given drone only exposes the **PX4-ROS2 (micro-XRCE-DDS)** link instead — as our test unit "three"
+> did — use the equivalent **`px4_mission`** (same modes, `--pose px4|uwb`) as a fallback. Both share the
+> same camera / UWB / artifact code; only the *flight transport* differs. Either way, do **NOT** use the old
+> `controller.py`. Reasoning: [`DRONE_STACK_ANALYSIS.md`](DRONE_STACK_ANALYSIS.md). Operator detail:
+> [`MAPPING_DRONE_SETUP_GUIDE.md`](MAPPING_DRONE_SETUP_GUIDE.md). (The commands below show `px4_mission`;
+> for the MAVSDK path just swap in `moveit_mission` — same `--check`/`--nofly`/`--fly`/`--aruco-dict`.)
 
 ## 1. What are we doing? (Challenge 1)
 
