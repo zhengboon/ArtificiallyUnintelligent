@@ -40,7 +40,7 @@
 - **Open org question (Z, 2026-06-07):** "are we doing 2 challenges at once or 1 then 2?" — needs a fresh ticket (old ticket etiquette: close stale, open fresh).
 
 **🆕 v2.2 changes (org drops 2026-06-06 PM, captured 2026-06-07 AM):**
-- **ArUco beside Hula landing pads too** (org 2026-06-06 PM); markers are **20cm x 20cm**; **exact dictionary will be announced Day-1** — controller `--aruco-dict` flag must accept any standard dict. Same ArUco-aided landing aid pattern now applies to BOTH Challenge 1 (mapping drone landing-pad classification) AND Challenge 2A (Hula landings); Hula side uses `cv2.aruco` directly rather than the pyhulax landing-marker auto-land helper. Marker physical size (20cm) sets the detection-range budget — mapping drone altitude should be tuned so markers stay in reliable detection range. Audit of `mapping.py:ArucoDetector` confirms `--aruco-dict` currently accepts: `4X4_50`, `4X4_100`, `4X4_250`, `5X5_250`, `6X6_50`, `6X6_100`, `6X6_250`, `6X6_1000`, `7X7_250` (uppercase short-form only, exact match). **Gap:** missing `4X4_1000`, `5X5_{50,100,1000}`, `7X7_{50,100,1000}`, all 4 APRILTAG variants, no case-insensitive matching, no `DICT_` long-form. Code edit required before Day-1 to cover any dict the org might announce.
+- **ArUco beside Hula landing pads too** (org 2026-06-06 PM); markers are **20cm x 20cm**; **exact dictionary will be announced Day-1** — controller `--aruco-dict` flag must accept any standard dict. Same ArUco-aided landing aid pattern now applies to BOTH Challenge 1 (mapping drone landing-pad classification) AND Challenge 2A (Hula landings); Hula side uses `cv2.aruco` directly rather than the pyhulax landing-marker auto-land helper. Marker physical size (20cm) sets the detection-range budget — mapping drone altitude should be tuned so markers stay in reliable detection range. Audit of `mapping.py:ArucoDetector` confirms `--aruco-dict` currently accepts: `4X4_50`, `4X4_100`, `4X4_250`, `5X5_250`, `6X6_50`, `6X6_100`, `6X6_250`, `6X6_1000`, `7X7_250` (uppercase short-form only, exact match). **Gap:** missing `4X4_1000`, `5X5_{50,100,1000}`, `7X7_{50,100,1000}`, all 4 APRILTAG variants, no case-insensitive matching, no `DICT_` long-form. Code edit required before Day-1 to cover any dict the org might announce. **(RESOLVED — `mapping.py:ArucoDetector` now accepts all 20 standard dicts, case-insensitive, `DICT_` prefix optional; default `--aruco-dict 7X7_1000,6X6_250` scans both every frame. See section 3 / risk table.)**
 - **Org ticket etiquette:** close stale support tickets and open fresh ones for new questions so the queue stays prioritised. STINKIES' 2026-06-06 14:13 "what codes should we come prepared with on 10 June?" is still unanswered.
 
 **🆕 v3.0 changes (2026-06-09 T-1, from the official Finals brief pptx received Telegram 22:06 SGT — supersedes all earlier Discord-derived schedule/scoring assumptions):**
@@ -56,7 +56,7 @@
   - **Challenge 2 slot #24: we drive 2 convoy RoboMasters against THE WIENERS.** This is a cross-team duty — K + A take an org-supplied RoboMaster controller each; Z stays on artifacts.
 - **Drone sharing (slide 22):** We get **Hula 3,4 + Mapping 3,4**, shared with **BOYD BUDDIES (slot #4)**. Back-to-back handoff. Coordinate with BOYD BUDDIES Day-1 morning — agree on hot-battery swap pattern + who returns drones to cage marshal.
 - **Speed caps (slides 5,6):**
-  - Mapping drone: **0.3 m/s max**. `controller.py` `MAX_VEL_XY` and waypoint cruise speed must be clamped — search for the constant before Day-1.
+  - Mapping drone: **0.3 m/s max**. The primary entry point is now `python3 -m mapping_drone` → `moveit_mission` (MAVSDK on `serial:///dev/ttyS6:921600`); `controller.py` is RETIRED (legacy, no longer an entry point), and `px4_mission` is the PX4-ROS2/XRCE fallback only. Clamp `moveit_mission`'s cruise/velocity caps to 0.3 m/s before Day-1.
   - Hula: **0.5 m/s max, recommended height 1.1 m, STRICTLY NO FLYING OVER OBSTACLES.** Different altitude regime from the 3.5 m mapping-drone floor — two altitude profiles needed.
 - **Time budgets:** Each scored attempt is **max 8 min** (slide 5 mapping + slide 6 hula). Our `--max-flight-time-s` defaults to 420 s (7 min) — already sized 60 s under the 480 s org cap, no further extension needed.
 - **Scoring rubric (slide 9) for University (total 100%):**
@@ -82,13 +82,13 @@
 - **Layout warning (slide 5):** "The landing pads for the assessment will have a different configuration compared to the test set-up." Test runs do not transfer 1-1.
 - **CUAS booth bonus (slide 10):** Photo of drone at Counter UAS booth + screenshot of zone-explored page. Booth = Above & Beyond: Skies & Space zone, MBS L4. **4% — easy points, collect Day 1.**
 - **Code touches required before Day-1:**
-  1. `controller.py`: clamp `MAX_VEL_XY` (and any cruise-speed param) to 0.3 m/s.
+  1. `moveit_mission` (the live mapping-drone entry point; `controller.py` is retired): clamp cruise/velocity caps to 0.3 m/s.
   2. `swarm_controller.py`: add 0.5 m/s velocity cap + 1.1 m altitude default + obstacle-avoidance assertion (it's still a stub).
   3. Both controllers: surface the per-attempt 8-min limit; current default is already 420 s (sized 60 s under the 480 s org cap).
 
 **🆕 v2.3 changes (2026-06-09 T-1 from 2026-06-07/08 org drops):**
 - **Minimum flight height = 3.5 m** (org 2026-06-08 12:18). All pre-staged arena templates (1.5 m / 2.5 m) sit below the floor. Bump every waypoint template to **4.0 m** for margin against the 3.5 m floor and re-verify on a mock dry-run before any scored slot.
-- **Mapping drone cameras = Intel Realsense D430 + D450 mixed across runs** (org 2026-06-08 12:18). Both modules are depth-only stereo IR + IR projector — **no RGB sensor confirmed in either**. `ArucoDetector` currently consumes a color frame. Mitigation: `--use-ir-for-aruco` flag (added/planned) detects ArUco on one IR camera with the IR emitter toggled off for the ArUco frame, alternating with depth frames so we don't lose mapping.
+- **Mapping drone cameras = Intel Realsense D430 + D450 mixed across runs** (org 2026-06-08 12:18). D435 has RGB; D450 is depth-only stereo IR + projector (no RGB). **Handled in code:** `RealsenseNode` AUTO-falls-back color→IR when all colour profiles fail, so it works on both D435 (RGB) and D450 (no-RGB) with no flag; `--use-ir-for-aruco` forces IR (emitter off for the ArUco frame). Camera is headless (no `cv2.imshow`) and tolerates dropped frames.
 - **Camera facing down** (org 2026-06-08 12:19) confirms `--gimbal-pitch -90` default. No change.
 - **Resolution configurable** (org 2026-06-08 12:19) confirms `RealsenseNode.PROFILE_CANDIDATES` fallback chain is correct. No change.
 - **Launch direction is free; takeoff point is fixed** (org 2026-06-08 12:17). Pre-yaw the drone to the optimal first-scan direction before arming. Captured in `runbook.md` Day-1 morning + `DAY1_RUNBOOK.md` pre-flight.
@@ -112,6 +112,7 @@
 - **Match org's expected env where possible.** Hula swarm runs on the C2 Terminal Windows side; mapping drone code runs onboard via NoMachine. We don't fight the architecture.
 - **Fail safe.** Every script: `try / finally land + disarm`. Battery failsafe enabled. Watchdog on every loop. UWB-loss handling.
 - **Document as we go.** Update `semifinal/README.md` + `learning_materials_and_others.md` whenever org posts.
+- **Day-of runbook = [`OP_DOC.md`](OP_DOC.md).** All mapping-drone operating procedures (Step 0 fingerprint → 1 sensors → 2 check → 3 frame → 4 nofly → 5 fly → 6 artifacts, with lettered fallbacks) live there. This plan is the strategy/schedule/roles; OP_DOC is the procedure. The mapping drone runs as `python3 -m mapping_drone` with three modes: `--check` (connect + pose, no arm), `--nofly` (camera + detect + map, no arm), `--fly` (autonomous).
 
 ---
 
@@ -186,6 +187,8 @@
 
 ### Finals Day 1 — Wed 10 June (9:00am – 6:00pm)
 
+> **Runbook:** for the actual step-by-step mapping-drone procedures (sensors → check → frame → nofly → fly → artifacts, with lettered fallbacks), follow [`OP_DOC.md`](OP_DOC.md) — it is THE single day-of decision tree. The schedule below is the time-boxing; OP_DOC is the how.
+
 | Time | Action |
 |---|---|
 | **6:00am** | Wake. Light breakfast. **Smart casual** dress code — covered footwear (NO slippers / sandals). |
@@ -193,8 +196,8 @@
 | **6:45** | Leave for MBS. Train + walk = ~30-45 min from most parts of SG. |
 | **7:30** | **Registration counter opens** — Marina Bay Sands Expo and Convention Centre, **Level 4**. Collect lanyard + swag. Show photo ID + confirmation email. |
 | **7:45–9:00** | On-site setup window. Find a spot, plug in, boot laptops, verify WiFi, sanity-check that `pyhulax` + `pyrealsense2` import. K runs the 3 prototype scripts as a smoke. Z reviews the runbook one more time. Find BOYD BUDDIES (slot #4) and agree on Hula/Mapping 3,4 handoff cadence. |
-| **0930 – 1030** | **Org briefing.** Capture validity rule + ArUco dict announced here. Pass to `--aruco-dict` and the lookup-rule JSON file before any scored slot. |
-| **1030 – 1200** | **Testing window** — Uni teams choose mapping cage or hula cage. FCFS via Discord. Mapping = per-day total allowance (carries over); Hula = 5 min/session + 20 min cooldown, 2 teams in cage max. |
+| **0930 – 1030** | **Org briefing.** Capture validity rule + ArUco dict + valid/invalid ID split announced here. Pass the dict to `--aruco-dict` and edit `configs/valid_ids_finals.json` with the marshal's real valid/invalid split before any scored slot (see [`OP_DOC.md`](OP_DOC.md)). |
+| **1030 – 1200** | **Testing window** — Uni teams choose mapping cage or hula cage. FCFS via Discord. Mapping = per-day total allowance (carries over); Hula = 5 min/session + 20 min cooldown, 2 teams in cage max. Walk the mapping drone through [`OP_DOC.md`](OP_DOC.md): fingerprint → `--check` → frame → `--nofly` → `--fly`. |
 | **1200 – 1300** | Lunch (no testing). Standup: apply briefing findings to configs. |
 | **1300 – 1330** | Last testing window before C1 prep. Pick weakest path. |
 | **1330 – 1430** | **Prep for Challenge 1 — NO MAPPING DRONE FLYING.** Mock dry-run only, USB sanity, configs locked. |
@@ -223,7 +226,7 @@
 
 ## 3. Dependencies + handoffs (so nobody blocks anyone)
 
-**PRIMARY DETECTION PATH:** ArUco (dict TBD Day-1, default `DICT_6X6_250`) via `cv2.aruco` — runs on (a) mapping drone for Challenge 1 landing-pad IDs (already wired in `controller.py` + `mapping.py`), (b) Hula camera for ground-robot detection in Challenge 2B (K + A to wire, no model handoff needed, `opencv-contrib-python` ships it). Controller `--aruco-dict` accepts any of the 20 standard dicts (case-insensitive, `DICT_` prefix optional) — swap on the venue command line once org announces the actual dict.
+**PRIMARY DETECTION PATH:** ArUco via `cv2.aruco` — runs on (a) mapping drone for Challenge 1 landing-pad IDs (wired in `mapping.py`, driven by the `moveit_mission` entry point; `controller.py` is retired), (b) Hula camera for ground-robot detection in Challenge 2B (K + A to wire, no model handoff needed, `opencv-contrib-python` ships it). Default `--aruco-dict` is **`7X7_1000,6X6_250`** and BOTH dicts are scanned every frame (we only guessed 7X7 from Discord; org markers are assumed DICT_7X7_1000, IDs 11/45/51/67/101 — CONFIRM with marshal). `--aruco-dict` accepts any of the 20 standard dicts (case-insensitive, `DICT_` prefix optional) — swap on the venue command line once org announces the actual dict.
 
 ```
 INSURANCE PATH (YOLO backup):
@@ -282,10 +285,10 @@ Z: ready for Challenge 1 at venue [T-1]
 | UWB signal patchy in arena | Medium | Failsafe: hold position on UWB loss >1s, land if sustained. Logged for post-flight review. |
 | One of us is sick on finals day | Low | Each task should have a "deputy" — if K is out, Z runs the swarm. Practice cross-coverage in dry runs. |
 | Coordinate frame bug (camera-frame vs world-frame, ENU vs NED) | High | **Ground test** every direction command before flying. `generateTopDown.py` is explicit about the convention — match it exactly. |
-| ArUco landing-pad validity rule undisclosed | Medium | Code reads + reports all marker IDs regardless. When org reveals the rule (Day 1), add the classifier in <30 min. |
+| ArUco landing-pad validity rule undisclosed | Medium | Code reads + reports all marker IDs regardless. Default rule is now `lookup` → `configs/valid_ids_finals.json` (NOT `even`; an `even` default marked every odd org ID invalid). When the marshal announces the valid/invalid split (Day 1), just edit that JSON — no code change. Env override: `MAPPING_DRONE_VALIDITY` / `MAPPING_DRONE_VALIDITY_LOOKUP`. |
 | A's laptop intermittently failing — Day-1 reliability risk | High (A reported 2026-06-07 00:13, "been repeating quite often") | A USBs work nightly; primary code lives on Z + K laptops too. A's role (judge-talker + arena scout + ArUco helper) does not require A's laptop to be the canonical dev box. If A's laptop dies at venue, A operates off Z's or K's machine. |
 | Day-1 ArUco dict mismatch — org announces a dict our controller doesn't accept | **MITIGATED** | Controller now accepts all 20 standard dicts (16 ArUco + 4 AprilTag) via case-insensitive `--aruco-dict` per `mapping.py` fix 2026-06-07. Long-form `DICT_` prefix + whitespace also normalised. Smoke-tested: bad name raises ValueError listing all 20 supported names. |
-| D430/D450 expose no RGB stream — `ArucoDetector` currently consumes color frame | **High** (org 2026-06-08 confirmed both modules are depth-only stereo IR) | `--use-ir-for-aruco` flag (added/planned) detects ArUco on one IR camera with the IR emitter toggled off for the ArUco frame, alternating with depth frames. Day-1 morning smoke: `python -c` one-liner queries available `rs` streams; if RGB present, run as normal; if only IR + depth, pass `--use-ir-for-aruco` to the controller. |
+| D450 exposes no RGB stream (D435 does) | **MITIGATED** | `RealsenseNode` AUTO-falls-back color→IR when all colour profiles fail, so it runs on D435 (RGB) and D450 (no-RGB) with NO flag. `--use-ir-for-aruco` forces IR (emitter off for the ArUco frame). Headless, tolerates dropped frames. |
 | All arena waypoint templates sit below the 3.5 m minimum altitude floor | **High** (org 2026-06-08 12:18 set the 3.5 m floor; existing templates are 1.5 m / 2.5 m) | Bump every waypoint template to 4.0 m (3.5 m floor + 0.5 m margin). Re-verify with a mock dry-run before any scored slot. Owner: Z. |
 | Code crashes mid-run | Medium | `try/finally land + disarm` everywhere. Watchdog 60s. Battery failsafe enabled. |
 | Org's drones differ from what we trained for | Low | We've reviewed all org reference code; adaptation should be small. |
@@ -305,8 +308,11 @@ hackerverse/
 │   ├── runbook.md                        ← day-of step-by-step (Z writes T-2)
 │   ├── README.md                         ← overall prep report
 │   ├── swarm_controller.py               ← Hula swarm orchestrator (K + Z) (NOT YET BUILT — placeholder)
-│   ├── mapping_drone/
-│   │   └── controller.py                 ← mapping drone orchestrator (Z)
+│   ├── mapping_drone/                    ← run as `python3 -m mapping_drone` (Z)
+│   │   ├── moveit_mission.py             ← PRIMARY entry point (MAVSDK on serial:///dev/ttyS6:921600)
+│   │   ├── px4_mission.py                ← PX4-ROS2/XRCE FALLBACK only
+│   │   └── controller.py                 ← LEGACY, RETIRED (no longer an entry point)
+│   ├── OP_DOC.md                         ← THE day-of runbook (decision tree, Step 0→6 + fallbacks)
 │   ├── uwb_api_hula_swarm/               ← UWBParserThread.py + PDF (org released 2026-06-06, Hula swarm UWB via pyserial @ 921600)
 │   ├── run_finals.py                     ← unified launcher (Z, T-3) (NOT YET BUILT — placeholder)
 │   ├── hula_smoke.py                     ← single-drone smoke (K, T-5) (NOT YET BUILT — placeholder)
@@ -339,7 +345,7 @@ hackerverse/
 | Item | Owner | Done means |
 |---|---|---|
 | Hula swarm controller | K + Z | Drives N drones, detects targets, lands all on Ctrl-C, writes run summary |
-| Mapping drone controller | Z | Adapted kolomee.py + Realsense + ArUco landing-pad classifier (dict TBD Day-1, default `DICT_6X6_250`; controller accepts any of the 20 standard dicts via `--aruco-dict`), writes top_down.png + landing_pads.json + marker images + run_summary.json. YOLO insurance track de-scoped (A confirmed not using YOLO 2026-06-06). |
+| Mapping drone controller | Z | `moveit_mission` (MAVSDK) + Realsense + ArUco landing-pad classifier (default `--aruco-dict 7X7_1000,6X6_250`, both scanned every frame; accepts any of the 20 standard dicts), writes top_down.png + landing_pads.json + marker images + run_summary.json. `controller.py` retired. YOLO insurance track de-scoped (A confirmed not using YOLO 2026-06-06). |
 | Trained model in 3 formats | A | `.pt`, `.onnx`, `.rknn` all load without error, smoke-tested |
 | Runbook | Z | Printed paper copy in venue bag |
 | USB pack | Z | All code + models + docs on USB, tested by extracting on fresh laptop |

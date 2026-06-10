@@ -14,17 +14,18 @@ fleet (user-confirmed 2026-06-10; the earlier 2026-06-08 "D430 or D450, both dep
 reply is superseded — there is no D430). The **D450** is the depth-only stereo-IR + projector
 module with **no RGB sensor**; the **D435 has RGB** and runs the colour path unmodified.
 
-Our current pipeline at `mapping_drone/mapping.py::ArucoDetector` reads
-from `frame.color_bgr` and runs `cv2.cvtColor(..., COLOR_BGR2GRAY)` on it.
-`mapping_drone/realsense.py::RealsenseNode` enables both `rs.stream.depth`
-and `rs.stream.color`. On a D435 (which has RGB) this works. On a D430 /
-D450 the colour stream simply will not exist — `pipeline.start()` will
-raise on every profile in `PROFILE_CANDIDATES` because each one calls
-`cfg.enable_stream(rs.stream.color, ...)`.
+Our pipeline at `mapping_drone/mapping.py::ArucoDetector` reads from
+`frame.color_bgr` and runs `cv2.cvtColor(..., COLOR_BGR2GRAY)` on it. On a
+D435 (which has RGB) the colour path in `RealsenseNode` works unmodified.
+On a D450 the colour stream does not exist, so `pipeline.start()` raises on
+every colour profile in `PROFILE_CANDIDATES` (each calls
+`cfg.enable_stream(rs.stream.color, ...)`).
 
-If org's drone integration did not bolt a separate RGB camera onto the
-D430 / D450 module, we have **zero ArUco detection** on the real drone
-unless we patch this before takeoff.
+That no-RGB case is now HANDLED: `RealsenseNode` automatically retries the
+profile list in IR mode when every colour profile fails, and synthesises a
+BGR image from the left IR stream so ArUco and the depth/mapping path keep
+working with no change to `mapping.py`. See "Decision: IMPLEMENTED" and
+"How it works (as built)" below.
 
 ## Severity
 
@@ -33,161 +34,89 @@ markers means no `landing_pads.json`, which is the main judge-readable
 output.
 
 The no-RGB case is now a CONFIRMED-real branch, not a hypothetical: if your assigned
-drone carries the **D450**, the colour pipeline raises and you get zero ArUco until the IR
-patch below is applied. (A **D435** needs no patch.) Drones are shared, so re-check the
-camera model after every handoff.
+drone carries the **D450**, the colour pipeline raises — but `RealsenseNode` now AUTO-falls
+back to IR (no flag needed), so ArUco still works. (A **D435** also works unchanged.) Drones
+are shared, so re-check the camera model after every handoff and watch the start() log line
+to confirm which path negotiated.
 
-## Decision: TODO, not implemented
+## Decision: IMPLEMENTED
 
-Implementing `--use-ir-for-aruco` blind, with no hardware to test on,
-risks shipping a path that looks right but doesn't actually negotiate
-the IR profile or toggle the emitter the way librealsense expects.
-We're flagging it as a documented TODO with a patch sketch instead, so
-the Day-1 morning fix is mechanical (no design left to do under
-pressure).
+The IR fallback is shipped in `mapping_drone/realsense.py::RealsenseNode`.
+It runs in two ways:
 
-Estimated patch time on the bench with a real D430/D450 in hand:
-**1-2 hours** including a 5-minute confirmation that ArUco detection
-actually works on the IR-as-grayscale stream.
+* **Automatic (default, no flag).** `start()` first tries the colour
+  profiles; if EVERY colour profile fails (the D450 no-RGB case), it logs
+  `all COLOR profiles failed — AUTO-falling back to IR (no-RGB camera?)`
+  and retries the same profile list in IR mode. So the same command works
+  on a D435 (RGB) and a D450 (no RGB) with no operator action.
+* **Manual.** `--use-ir-for-aruco` forces IR mode directly (skips the
+  colour attempt), wired via `RealsenseNode(use_ir_for_aruco=...)`.
 
-## Patch sketch
+The mock path ignores the flag. No bench-time patching is required.
 
-### Step 1 — `mapping_drone/realsense.py`
+## How it works (as built)
 
-Add an opt-in IR mode to `RealsenseNode`.
+### `mapping_drone/realsense.py`
 
-```python
-class RealsenseNode:
-    def __init__(self, use_ir_for_aruco: bool = False) -> None:
-        ...
-        self._use_ir = bool(use_ir_for_aruco)
-        self._depth_sensor = None  # set in start() so we can toggle emitter
+`RealsenseNode.__init__(use_ir_for_aruco: bool = False)` stores `_use_ir`
+and pre-builds the alignment target. `_build_config()` enables
+`rs.stream.depth` plus either `rs.stream.color` (BGR8) or, in IR mode,
+`rs.stream.infrared` index 1 (Y8 — left IR, native grayscale; the D450
+has no RGB stream).
 
-    def _build_config(self, width, height, fps):
-        cfg = rs.config()
-        cfg.enable_stream(rs.stream.depth, width, height, rs.format.z16, fps)
-        if self._use_ir:
-            # IR_LEFT (index 1). Y8 = 8-bit grayscale, native to the stereo cam.
-            # No RGB stream — the D430/D450 doesn't have one.
-            cfg.enable_stream(rs.stream.infrared, 1, width, height, rs.format.y8, fps)
-        else:
-            cfg.enable_stream(rs.stream.color, width, height, rs.format.bgr8, fps)
-        return cfg
+`start()` iterates modes `[False, True]` (or just `[True]` when IR was
+requested) and, within each, the `PROFILE_CANDIDATES` list. On the first
+profile that negotiates it captures the right intrinsics (IR_LEFT
+intrinsics in IR mode), and **in IR mode disables the projector emitter**
+(`set_option(rs.option.emitter_enabled, 0.0)`, guarded by a `supports()`
+check) so the dot pattern doesn't corrupt ArUco. This is the
+emitter-off-for-every-grab strategy (clean ArUco; depth may suffer on
+textureless surfaces — acceptable if the arena has texture).
 
-    def start(self) -> None:
-        ...
-        # After successful pipeline.start():
-        if self._use_ir:
-            # Align IR to depth instead of color (color stream doesn't exist).
-            self._align = rs.align(rs.stream.infrared)
-            ir_stream = self._profile.get_stream(rs.stream.infrared, 1)
-            self._intrinsics = ir_stream.as_video_stream_profile().get_intrinsics()
-            # Grab the depth sensor so we can toggle the IR projector emitter.
-            # With emitter ON: depth is clean, but the projector dot pattern is
-            # all over the IR image -> ArUco detection degrades sharply.
-            # With emitter OFF: IR image is a clean greyscale -> ArUco works,
-            # but depth quality drops on textureless surfaces.
-            self._depth_sensor = self._profile.get_device().first_depth_sensor()
-        else:
-            self._align = rs.align(rs.stream.color)
-            ...
+`grab()` pulls `infrared_frame(1)` + depth in IR mode and synthesises a
+3-channel BGR via `cv2.cvtColor(ir, cv2.COLOR_GRAY2BGR)`, so
+`RealsenseFrame.color_bgr` is populated the same way as the colour path.
 
-    def grab(self) -> RealsenseFrame | None:
-        ...
-        if self._use_ir:
-            # Strategy A (simplest): emitter OFF for every grab. Depth quality
-            #   suffers on plain floors but ArUco is clean. Acceptable if the
-            #   arena has texture (carpet, tape lines).
-            # Strategy B (alternating): toggle emitter off, grab, toggle back on
-            #   next iteration. Halves both depth-FPS and ArUco-FPS. Use only if
-            #   Strategy A's depth is unusable.
-            # Recommend Strategy A for the patch — re-evaluate on bench if depth
-            # holes appear.
-            try:
-                self._depth_sensor.set_option(rs.option.emitter_enabled, 0.0)
-            except Exception as exc:
-                log.warning("emitter off failed: %s", exc)
-            frames = self._pipeline.wait_for_frames(timeout_ms=2000)
-            aligned = self._align.process(frames)
-            ir_frame = aligned.get_infrared_frame(1)
-            depth_frame = aligned.get_depth_frame()
-            if not ir_frame or not depth_frame:
-                return None
-            ir = np.asanyarray(ir_frame.get_data())  # (H, W) uint8
-            # Promote IR grayscale to a 3-channel BGR so downstream ArucoDetector
-            # (which does cv2.cvtColor(color_bgr, COLOR_BGR2GRAY)) still works
-            # WITHOUT any change to mapping.py. The cvtColor on a triplicated
-            # grayscale image is a no-op that returns the same single-channel
-            # data — slightly wasteful but keeps the fix surgical.
-            color_bgr_synth = cv2.cvtColor(ir, cv2.COLOR_GRAY2BGR)
-            depth = np.asanyarray(depth_frame.get_data())
-            return RealsenseFrame(
-                color_bgr=color_bgr_synth,
-                depth_mm=depth.astype(np.uint16, copy=False),
-                intrinsics=self._intrinsics,
-                timestamp=time.monotonic(),
-                width=self.WIDTH,
-                height=self.HEIGHT,
-            )
-        # else: original color path, unchanged.
-        ...
-```
+### `mapping_drone/moveit_mission.py` (the entry point)
 
-### Step 2 — `mapping_drone/controller.py`
+The CLI flag lives in the real entry point — `python3 -m mapping_drone`
+runs `moveit_mission`; `controller.py` is RETIRED (legacy, not an entry
+point). `moveit_mission.py` adds `--use-ir-for-aruco` (argparse) and
+constructs `RealsenseNode(use_ir_for_aruco=args.use_ir_for_aruco)`.
 
-Add the CLI flag and thread it through.
-
-```python
-# In _parse_args():
-p.add_argument(
-    "--use-ir-for-aruco",
-    action="store_true",
-    help="D430/D450 fallback: stream IR instead of color (no RGB sensor on "
-         "those modules). Synthesises a grey BGR image from IR_LEFT so "
-         "ArucoDetector still works. Disables the IR projector emitter for "
-         "every frame so the dot pattern doesn't degrade marker detection; "
-         "depth quality may drop on textureless surfaces. Mock path ignores "
-         "this flag.",
-)
-
-# In _build_realsense():
-def _build_realsense(args: argparse.Namespace) -> RealsenseAdapter:
-    if args.mock_realsense or args.mock_all:
-        return MockRealsenseNode()
-    return RealsenseNode(use_ir_for_aruco=getattr(args, "use_ir_for_aruco", False))
-```
-
-### Step 3 — no change needed to `mapping_drone/mapping.py`
+### `mapping_drone/mapping.py` — no change needed
 
 `ArucoDetector.detect_in_frame` consumes `frame.color_bgr` and does its
-own `cv2.cvtColor(..., COLOR_BGR2GRAY)`. By having the IR path synthesise
-a 3-channel BGR from IR_LEFT, the detector keeps working without any
-edit. Same goes for `OccupancyGrid.integrate` which only touches
-`frame.depth_mm` and `frame.intrinsics`.
-
-The intrinsics field gets the IR_LEFT intrinsics instead of color
-intrinsics — those are the right ones for deprojecting IR-pixel
+own `cv2.cvtColor(..., COLOR_BGR2GRAY)`. Because the IR path synthesises a
+3-channel BGR from IR_LEFT, the detector keeps working without any edit.
+Same goes for the depth/mapping integration, which only touches
+`frame.depth_mm` and `frame.intrinsics`. The intrinsics field gets the
+IR_LEFT intrinsics in IR mode — the right ones for deprojecting IR-pixel
 coordinates anyway.
 
-## Day-1 morning checklist (if drone confirmed no-RGB)
+## Day-1 morning checklist (any camera — no patch to apply)
 
-1. SSH to drone, `cd ~/semifinal`.
-2. Apply the three-block patch above.
-3. `python -m mapping_drone.controller --real --use-ir-for-aruco --dry-run`
-   to confirm pipeline.start() succeeds with the IR profile.
-4. Print one ArUco marker, point camera at it, run a quick grab + detect
-   smoke test (one-off Python script — don't waste time on a full mission).
-5. If detection works: commit, ready for arena.
-6. If detection fails because the emitter projector pattern leaks
-   through despite `set_option(rs.option.emitter_enabled, 0.0)`, switch
-   to Strategy B (alternating-frame emitter toggle) — the depth sensor
-   handle is already grabbed.
+No code change is required; the fallback is shipped. Follow the runbook in
+**OP_DOC.md** (Step 1 sensors -> Step 2 check -> Step 4 nofly). The
+camera-specific confirmations are:
+
+1. Run a `--nofly` pass and watch the `Realsense started: ... (color|IR/no-RGB)`
+   log line to confirm which path negotiated. On a D450 it should report
+   `IR/no-RGB` (auto-fallback); on a D435, `color`. Force IR with
+   `--use-ir-for-aruco` if you want to test the IR path on a D435.
+2. Point the camera at a real DICT_7X7_1000 marker and confirm a detection
+   logs (`detect_in_frame` reports id/center/bbox and the matched dict).
+3. If IR detection is poor because the projector pattern leaks through
+   despite the emitter being disabled, the alternating-frame emitter toggle
+   is the documented next option (the depth sensor handle is already grabbed
+   in `start()` — would need a small `grab()` change).
 
 ## Open question for org (already drafted in `ORG_TICKETS_DRAFT.md`)
 
-If we can confirm with org that they bolted a separate RGB camera onto
-the D430 / D450 module, this entire risk evaporates and we delete this
-file. As of 2026-06-09 no such confirmation exists.
+The IR fallback already de-risks the no-RGB case regardless of org's
+answer. Confirming whether org bolted a separate RGB camera onto the D450
+would just let us prefer the colour path on those units — nice-to-know, no
+longer blocking. As of 2026-06-09 no such confirmation exists.
 
 ROBO05_Daniel's still-open question (2026-06-07 8:04pm) about camera
 "resolution and FOV" is related but doesn't disambiguate — answer would

@@ -2,33 +2,32 @@
 
 **SLOT #3 — be ready by 1430** (prep-window cutoff). Drone slot expected ~1440-1455 depending on slot 1+2 timing. Prep window 1330-1430 = NO MAPPING DRONE FLYING.
 
-One page. Glance, type, fly. Reference is `DAY1_RUNBOOK.md`. Setup is `DAY1_SETUP_SEQUENCE.md`. Strategy is `SCORING_PLAYBOOK.md`.
+One page. Glance, type, fly. **THE runbook is `OP_DOC.md`** (Step 0 fingerprint -> 1 sensors -> 2 check -> 3 frame -> 4 nofly -> 5 fly -> 6 artifacts, with lettered fallbacks) — go there for procedures. Setup is `DAY1_SETUP_SEQUENCE.md`. Strategy is `SCORING_PLAYBOOK.md`.
+
+In EVERY terminal: `export ROS_LOCALHOST_ONLY=1` (also forced at entry; dodges cross-team DDS on the shared `ROS_DOMAIN_ID=0`). One process per terminal.
 
 ---
 
 ## CRITICAL CHECK (do FIRST, before any of the below)
 
-- **rs streams: RGB present?** `python -c "import pyrealsense2 as rs; ctx=rs.context(); d=ctx.query_devices()[0]; print([s.get_info(rs.camera_info.name) for s in d.query_sensors()])"`. If **NO** RGB (D430/D450 bare modules expose none — org 2026-06-08 12:18), escalate to org marshal immediately — IR-fallback flag is NOT yet wired in the controller. Do NOT try to add `--use-ir-for-aruco` (argparse will reject).
+- **Camera just works on D435 (RGB) and D450 (no-RGB) with no flag** — `RealsenseNode` AUTO-falls-back color->IR if every colour profile fails. `--use-ir-for-aruco` forces IR if you want to skip the fallback probe. Headless (no `cv2.imshow`); tolerates dropped frames.
 
 ---
 
 ## BEFORE FIRST RUN  (in order — each step gates the next)
 
+Full sequence with fallbacks lives in `OP_DOC.md` (Step 0-4). Quick version:
+
 ```
-# 1. RealSense on USB 3.x (must print 3.x, not 2.x)
-python -c "import pyrealsense2 as rs; print(rs.context().query_devices()[0].get_info(rs.camera_info.usb_type_descriptor))"
+# 0. Per-drone readiness fingerprint
+tools/drone_fingerprint.sh
 
-# 2. UWB sniffer — 10 s, expect uwb_tag topic + NED axes (n=pose.y, e=pose.x, alt=-pose.z)
-python tools/uwb_sniffer.py
+# 1. CHECK — MAVSDK connect on serial:///dev/ttyS6:921600 + print pose, NO arm
+python3 -m mapping_drone.moveit_mission --check
 
-# 3. RealSense pipeline (interactive — press ENTER per range; 1 s frame timeout)
-python -m mapping_drone.tests.smoke_realsense_stationary
-
-# 4. Full mock dry-run (no arm, writes runs/run_*/STATUS.txt + top_down.png)
-python -m mapping_drone --mock --waypoints-from-json configs/waypoints_2x2_default.json
-
-# 5. MAVSDK connect smoke (real radio, ~30-45 s total — drone WILL arm, take off ~3 m, hover ~3 s, then land. Stand clear. Requires UWB live, else hangs in AWAITING_UWB.)
-python -m mapping_drone --mavsdk-addresses serial:///dev/ttyS6:921600,serial:///dev/ttyACM0:115200,serial:///dev/ttyUSB0:57600,udp://:14540,udp://:14550 --max-flight-time-s 5
+# 2. NOFLY — camera + ArUco detect + map, NO arm (ground proof)
+python3 -m mapping_drone.moveit_mission --nofly \
+  --waypoints-from-json configs/arena_<N>x<N>.json
 ```
 
 ---
@@ -36,26 +35,27 @@ python -m mapping_drone --mavsdk-addresses serial:///dev/ttyS6:921600,serial:///
 ## SCORED RUN
 
 ```
-python -m mapping_drone \
-  --aruco-dict <DICT_FROM_BRIEFING> \
+python3 -m mapping_drone.moveit_mission --fly \
   --waypoints-from-json configs/arena_<N>x<N>.json
 ```
 
-`<DICT_FROM_BRIEFING>` — accepts `DICT_6X6_250`, `6x6_250`, `apriltag_36h11`, case-insensitive.
+Pose defaults to `--pose auto` (MAVSDK FC fused NED, auto-fallback to `/uwb_tag`, then hold). Force one with `--pose fc` / `--pose uwb`. Altitude is ALWAYS from the FC (UWB has no Z).
 
-`--max-flight-time-s` default is **420 s** (60 s under the 480 s org cap) — no override needed. Pick the pre-staged `configs/arena_<N>x<N>.json` (3x3 / 4x4 / 6x6 / 8x8) closest to the announced arena size; all are pre-staged at **4.0 m** (above the 3.5 m floor org set on 2026-06-08 12:18). Confirm `alt_m >= 4.0` in the JSON before launch.
+`--aruco-dict` default is **`7X7_1000,6X6_250`** — BOTH dicts scanned every frame (we only guessed 7X7 from Discord). Org markers assumed `DICT_7X7_1000`, IDs 11/45/51/67/101 — **CONFIRM with marshal**. Pass `--aruco-dict <DICT>` (case-insensitive) only to override.
+
+`--max-flight-time-s` default is **420 s** (60 s under the 480 s org cap) — no override needed. Pick the pre-staged `configs/arena_<N>x<N>.json` (3x3 / 4x4 / 6x6 / 8x8) closest to the announced arena size; all are pre-staged at **4.0 m** (`--takeoff-alt` default 4.0; 3-4 m recommended, confirm ceiling with marshal). Confirm `alt_m` in the JSON before launch.
 
 ---
 
-## VALIDITY RULE SWAP  (after org publishes IDs)
+## VALIDITY RULE SWAP  (after marshal confirms IDs)
+
+Default rule is already **`lookup` -> `configs/valid_ids_finals.json`** (NOT 'even' — 'even' would mark every odd org ID invalid). Just edit the JSON:
 
 ```
-# 1. Edit configs/valid_ids_<DATE>.json   {"valid_ids":[...], "invalid_ids":[...]}
-# 2. Launch with lookup rule:
-MAPPING_DRONE_VALIDITY=lookup \
-MAPPING_DRONE_VALIDITY_LOOKUP=configs/valid_ids_<DATE>.json \
-  python -m mapping_drone --aruco-dict <DICT> \
-  --waypoints-from-json configs/arena_<N>x<N>.json
+# 1. Edit configs/valid_ids_finals.json   {"valid_ids":[...], "invalid_ids":[...]}
+#    with the marshal's real valid/invalid split, then run --fly as above.
+# Env override (only if pointing elsewhere):
+#   MAPPING_DRONE_VALIDITY=lookup MAPPING_DRONE_VALIDITY_LOOKUP=/abs/path.json
 ```
 
 Confirm `describe_rule()` in log mentions the lookup file path.
@@ -64,34 +64,22 @@ Confirm `describe_rule()` in log mentions the lookup file path.
 
 ## IF MAVSDK WON'T CONNECT
 
+Default is `--mavsdk-address serial:///dev/ttyS6:921600`. Re-run `--check` against another endpoint:
+
 ```
-python -m mapping_drone --mavsdk-addresses \
-  serial:///dev/ttyS6:921600,serial:///dev/ttyACM0:115200,serial:///dev/ttyUSB0:57600,udp://:14540,udp://:14550
+python3 -m mapping_drone.moveit_mission --check \
+  --mavsdk-address serial:///dev/ttyACM0:115200    # or udp://:14540 etc.
 ```
 
-Controller tries each with 5 s timeout, logs which connected. If all 5 fail: reseat USB-serial, `ls /dev/ttyS* /dev/ttyACM* /dev/ttyUSB*`, check FC baud param, mirror K's pyhulax port/baud.
+If it won't connect: reseat USB-serial, `ls /dev/ttyS* /dev/ttyACM* /dev/ttyUSB*`, check FC baud param, mirror K's pyhulax port/baud. See `OP_DOC.md` fallbacks. PX4-ROS2/XRCE fallback only: `python3 -m mapping_drone.px4_mission`.
 
 ---
 
 ## EMERGENCY ABORT
 
-`Ctrl-C`  — SIGINT triggers emergency_land + disarm. Do not Ctrl-Z. Do not yank the radio.
+`Ctrl-C`  — SIGINT triggers land + disarm. Do not Ctrl-Z. Do not yank the radio.
 
----
-
-## BROADCAST LOGS (for team debug)
-
-When debugging mid-flight from a second laptop on the same tailnet:
-
-```
-python -m mapping_drone --mock --verbose --tailscale \
-  --waypoints-from-json configs/waypoints_2x2_default.json
-```
-
-- `--verbose` promotes the hot-path lines (per-frame scan result, per-UWB tick, per-velocity command, per-WP arrival distance, every state transition) from DEBUG to INFO.
-- `--tailscale` ALSO POSTs every log line to the desktop `log_sink` (default `100.79.202.101:9999`, tag `mapping-drone-<run_ts>`). Sink file lands at `D:/hackerverse/laptop_logs/mapping-drone-<run_ts>.log` on the desktop.
-- Override host/tag if needed: `--tailscale-host 100.x.y.z:9999 --tailscale-tag custom-tag`.
-- Sink failures are silently swallowed — broadcast is best-effort, never crashes the controller.
+Auto-land watchdogs (no action needed): battery <15%, pose-loss, position-stuck, offboard-setpoint-failure. Disarm only fires after `in_air=False`.
 
 ---
 
@@ -114,4 +102,4 @@ Both USBs get a copy. Never overwrite — append a suffix if `cp` collides.
 
 ---
 
-*See `DAY1_RUNBOOK.md` for fallback mechanics. See `DAY1_SETUP_SEQUENCE.md` for 7:30-9:00 setup. This card wins for typing speed; runbook wins for nuance.*
+*See `OP_DOC.md` for the full decision-tree + fallback mechanics. See `DAY1_SETUP_SEQUENCE.md` for 7:30-9:00 setup. This card wins for typing speed; OP_DOC.md wins for nuance.*

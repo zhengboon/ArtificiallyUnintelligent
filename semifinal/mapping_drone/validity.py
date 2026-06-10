@@ -1,27 +1,27 @@
 """Landing-pad validity classification.
 
-STUB MODULE. The competition organisers have NOT published the rule that
-determines whether an ArUco-marked landing pad is "valid" or "invalid" for
-the Reconnaissance challenge. The default placeholder treats even marker IDs
-as valid and odd marker IDs as invalid; this is a guess to keep the pipeline
-end-to-end testable.
+The DEFAULT rule is ``lookup``: it reads valid/invalid ArUco-ID sets from
+``configs/valid_ids_finals.json`` (which lists the org's landing-pad IDs).
+This replaced the old ``even`` placeholder — the org IDs (11/45/51/67/101)
+are all ODD, so an ``even`` default would mark every real pad INVALID. An ID
+in neither set resolves to ``None`` (unknown). If the lookup file is missing,
+every ID resolves to ``None`` with a warning (never a crash).
 
-When the organisers publish the real rule, the expected change is a one-line
-edit to the lambda for `_RULES[_DEFAULT_RULE]` (currently the `'even'` entry),
-or — if the rule needs lookup tables / external state — to the body of
-`decide_landing_validity`.
+Day-1: edit ``configs/valid_ids_finals.json`` with the marshal's real
+valid/invalid split. To switch rules at runtime, set ``MAPPING_DRONE_VALIDITY``
+(see below) — no code change needed.
 
 Runtime override
 ----------------
 The environment variable ``MAPPING_DRONE_VALIDITY`` selects an alternate rule
 at startup without code changes. Accepted values:
 
-    even          even IDs valid (DEFAULT)
+    lookup        load valid/invalid ID sets from a JSON file (DEFAULT)
+    even          even IDs valid
     odd           odd IDs valid
     all_valid     every detected pad valid
     all_invalid   every detected pad invalid
     id_below_50   IDs with value < 50 valid
-    lookup        load valid/invalid ID sets from a JSON file (see below)
 
 Any other value falls back to the default with a warning.
 
@@ -33,7 +33,7 @@ Lookup rule
 
 Path resolution order:
     1. ``MAPPING_DRONE_VALIDITY_LOOKUP`` env var (absolute or relative path)
-    2. ``configs/valid_ids_unknown.json`` resolved against CWD
+    2. ``configs/valid_ids_finals.json`` resolved against CWD
 
 For the lookup rule, ``decide_landing_validity`` returns ``True`` if the ID
 is in ``valid_ids``, ``False`` if it is in ``invalid_ids``, and ``None``
@@ -154,11 +154,7 @@ def _active_rule_name() -> str:
 def decide_landing_validity(aruco_id: int) -> Optional[bool]:
     """Classify a landing pad by its ArUco marker ID.
 
-    STUB. Org has not published the rule. Default placeholder: even IDs valid.
-    REPLACE this function body when org publishes the actual rule — typically
-    a one-line change to ``_RULES[_DEFAULT_RULE]`` (currently the ``'even'``
-    lambda) or this function.
-
+    Default rule is ``lookup`` against ``configs/valid_ids_finals.json``.
     Honours the ``MAPPING_DRONE_VALIDITY`` env var; see module docstring.
 
     Returns ``True`` / ``False`` for all built-in rules. For the ``lookup``
