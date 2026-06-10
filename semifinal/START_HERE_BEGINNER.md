@@ -26,8 +26,8 @@ Everything above is coded. You run one command and a `run_<timestamp>/` folder a
 | **ArUco marker** | a printed black-and-white square the drone detects. Ours are dictionary **`7X7_1000`**, IDs 11/45/51/67/101 |
 | **UWB** | the indoor "GPS" — tells the drone its x/y position in the room |
 | **RealSense** | the depth camera on the drone (sees distance + picture) |
-| **MAVSDK** | the software that talks to the drone's flight controller |
-| **gimbal** | the motor that tilts the camera; we point it straight down (`-90`) |
+| **MAVSDK** | the software that talks to the drone's flight controller. It reaches it over an **internal serial port** on the drone's onboard computer (`serial:///dev/ttyS6`) — via the Ethernet/NoMachine link to that computer, **NOT** a network IP. The `udp://` entries are pretend-drone (simulator) fallbacks only. |
+| **gimbal / camera angle** | the mapping drone's camera faces straight **down and is FIXED**. `--gimbal-pitch -90` only TELLS the mapping math the camera points down — it does **not** drive a motor. (The tiltable, software-commandable gimbal is on the Hula swarm drones, not this one.) |
 | **mock** | *pretend* hardware. Lets you run everything on a laptop with no drone |
 | **NoMachine** | remote-desktop app you use to control the drone's onboard computer |
 | **run folder** | `mapping_drone/runs/run_<date_time>/` — where results are saved |
@@ -125,6 +125,9 @@ python3 -m mapping_drone \
   --gimbal-pitch -90 \
   --mavsdk-addresses "serial:///dev/ttyS6:921600,serial:///dev/ttyACM0:115200,serial:///dev/ttyUSB0:57600"
 ```
+(These are **serial** ports on the drone's onboard computer — the flight controller is internal serial, not a
+network address. The full guide lists extra `udp://` entries; those are simulator/bench fallbacks that never
+reach the real drone, so serial-only is correct at the venue.)
 Run it inside `tmux` so it survives if NoMachine disconnects. `Ctrl-C` = emergency land.
 **For everything about this step, use [`MAPPING_DRONE_SETUP_GUIDE.md`](MAPPING_DRONE_SETUP_GUIDE.md).**
 

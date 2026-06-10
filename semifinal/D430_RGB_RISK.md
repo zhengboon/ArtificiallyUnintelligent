@@ -1,11 +1,18 @@
 # D430 / D450 no-RGB risk — mapping drone
 
+> **SUPERSEDED 2026-06-10:** cameras CONFIRMED as **D435 + D450** (mixed, shared fleet). **There is no
+> D430.** The **D435 has RGB** so the colour path works UNMODIFIED; only the **D450** (no RGB) needs the IR
+> fallback in this doc. Filename kept as `D430_RGB_RISK.md` so existing links don't break — the content is
+> the D435/D450 fleet.
+
 ## Summary
 
 Org confirmed on 2026-06-08 12:18 (BH2026ROBOVERSE Discord, reply to
 ROBO05_KyrosChenJunyu / Mili 2026-06-07 8:53pm) that the mapping drone
-carries an Intel RealSense **D430** or **D450** module. Both are
-depth-only stereo IR + projector modules with **no RGB sensor**.
+carries an Intel RealSense **D435** (has RGB) or **D450** (no RGB) module — a mixed/shared
+fleet (user-confirmed 2026-06-10; the earlier 2026-06-08 "D430 or D450, both depth-only"
+reply is superseded — there is no D430). The **D450** is the depth-only stereo-IR + projector
+module with **no RGB sensor**; the **D435 has RGB** and runs the colour path unmodified.
 
 Our current pipeline at `mapping_drone/mapping.py::ArucoDetector` reads
 from `frame.color_bgr` and runs `cv2.cvtColor(..., COLOR_BGR2GRAY)` on it.
@@ -25,9 +32,10 @@ P0 for Challenge 1. ArUco detection is the entire deliverable — no
 markers means no `landing_pads.json`, which is the main judge-readable
 output.
 
-We have not yet seen the drone in person (mapping drone has not been
-physically handed to us as of 2026-06-09). The risk is unverified but
-plausible enough to plan a Day-1 morning patch.
+The no-RGB case is now a CONFIRMED-real branch, not a hypothetical: if your assigned
+drone carries the **D450**, the colour pipeline raises and you get zero ArUco until the IR
+patch below is applied. (A **D435** needs no patch.) Drones are shared, so re-check the
+camera model after every handoff.
 
 ## Decision: TODO, not implemented
 

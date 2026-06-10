@@ -55,10 +55,11 @@ mapping drone. **Far more accurate and easier. I do not recommend velocity flyin
 - These known (id → world xy) pairs are a **ground-truth check** for the detection +
   `camera_to_world` pipeline: fly over marker 11 and confirm the reported world coord lands
   near (1.35, 4.4).
-- Validity rule (`validity.decide_landing_validity`) is still the placeholder
-  (even=valid / odd=invalid). With IDs {11,45,51,67,101} that placeholder would mark
-  **all five invalid** (all odd). **Confirm the real validity rule Day-1** and set it via
-  `MAPPING_DRONE_VALIDITY=` or by editing the function body.
+- **🔴 CRITICAL TRAP — validity.** All five announced IDs {11,45,51,67,101} are **ODD**. The shipped
+  default rule is even=valid/odd=invalid (`mapping_drone/validity.py:56`), so **AS SHIPPED every real
+  competition pad classifies INVALID** — `landing_pads.json` would report all five invalid = worst-possible
+  15% score. You **MUST** override the rule Day-1 via `MAPPING_DRONE_VALIDITY=` (or
+  `MAPPING_DRONE_VALIDITY_LOOKUP=`) **before any scored run**. Never fly the default.
 
 ---
 
@@ -72,15 +73,30 @@ mapping drone. **Far more accurate and easier. I do not recommend velocity flyin
   actual drone — every line that touches hardware should already work before the slot.
 - **Detection of ground robots is ArUco-based** ("hula drone to detect aruco marker on
   ground robots", 6/6 5:00am). YOLO/RKNN is backup only.
-- **Camera models confirmed (user, 10/6): D435 + D450** (mixed fleet, drones shared). **D435 has RGB** →
-  the current color pipeline works as-is. **D450 has no RGB** (per `D430_RGB_RISK.md`) → the color pipeline
-  raises and yields zero ArUco until the IR fallback is wired (`--use-ir-for-aruco` is currently
-  docstring-only, not implemented). Identify the camera per assigned drone; patch if D450.
+- **🔵 HULA (Challenge 2) onboarding** — swarm control needs the Hula in **NETWORKING mode** (WHITE flashing
+  lamp; both your PC and the aircraft join the venue router), **NOT** the default direct-connect mode (PURPLE
+  flashing). Toggle: **press the power button 3× quickly** while powered on (power-on = hold 2 s; default AP
+  password `12345678`; WiFi reset = hold reset 5 s; firmware rollback = 10 s). Gimbal face-down is **SDK-only**
+  (`pyhulax set_camera_angle(pitch=-90)`), not the consumer app. Hula does **NOT** work with MAVSDK (use
+  `pyhulax` / `huladola.py`). ~9-10 min flight per 1200 mAh battery — budget battery swaps. Source:
+  `hula_manual_EN.md`.
+- **🔵 Challenge-2 landing aid** — there IS an ArUco marker near the C2 "landing"/helicopter pad and you MAY
+  use it as a landing aid (org, 6/6 9:34pm), **but it is NOT the marker pyhulax uses for its "auto" land**.
+  Don't assume detecting it triggers pyhulax auto-land — implement your own descent keyed off its pose.
+- **Camera models confirmed (user, 10/6): D435 + D450** (mixed fleet, drones shared). **There is no D430** —
+  the older 2026-06-08 "D430 or D450" reply is superseded. **D435 has RGB** → the current color pipeline works
+  as-is. **D450 has no RGB** (D435 keeps RGB; per `D430_RGB_RISK.md`, now updated to the D435/D450 fleet) →
+  the color pipeline raises and yields zero ArUco until the IR fallback is wired (`--use-ir-for-aruco` is
+  currently docstring-only, not implemented). Identify the camera per assigned drone; patch if D450.
 - **"How to code and use the Drones at the Final"** (10/6 5:40am) and the **Finals
   brief.pptx** are the authoritative day-of procedure — read them at the venue. The brief
   was already extracted into `semifinal/finals_brief_extracted.md`.
 - **Concept submission** due **11 June 1:30pm** (one entry per team) — non-technical but
   a hard deadline.
+- **Logistics:** briefing starts **9:30am** (be seated by then). **All members should attend BOTH days** and
+  **come prepared** — have Challenge-1 and Challenge-2 code working before arrival; do not plan to start
+  coding on 10/11 June. **Testing-slot times/length are still UNANNOUNCED** (org said "soon", 7/6 & 8/6) —
+  chase the announcement and assume the slot is short.
 
 ---
 

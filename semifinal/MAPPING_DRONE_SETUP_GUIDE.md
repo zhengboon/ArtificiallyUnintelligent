@@ -68,7 +68,7 @@ pipeline works on the actual drone before you ever get a flight slot.
 | 3 | **Validity** | placeholder `even` ([validity.py:56](mapping_drone/validity.py#L56)) | not published | **All 5 IDs are ODD → `even` marks them ALL invalid.** Get the rule from the marshal, wire via env var. Never ship the default. |
 | 4 | **Arena/waypoints** | 2×2 m default; all configs square | markers span x≈4.4 m, y≈7.85 m | Build a rectangular waypoints file (§ step 6). Don't use the 2×2 default. |
 | P0-a | **Camera** | RGB-only pipeline | **confirmed: fleet is D435 + D450 (mixed)** | **D435 → has RGB, color path works as-is.** **D450 → no RGB**, color pipeline raises → zero ArUco. IR fallback is **docstring-only, not wired**. Identify your drone's camera (step 5); if D450, patch before flying. |
-| P0-b | **MAVSDK connect** | bare default `ttyS6` **blocks forever, no timeout** ([controller.py:1283](mapping_drone/controller.py#L1283)) | — | **Always** pass `--mavsdk-addresses` (5 s/addr fallback walker). |
+| P0-b | **MAVSDK connect** | bare default `ttyS6` **blocks forever, no timeout** ([controller.py:1283](mapping_drone/controller.py#L1283)) | — | **Always** pass `--mavsdk-addresses` (5 s/addr walker). These are **serial ports on the drone's onboard computer**, not network addresses — Ethernet/NoMachine only gets you *onto* that computer; MAVSDK reaches the FC over internal serial (see §2 Transport). |
 
 ---
 
@@ -84,7 +84,9 @@ velocity-based** and `moveit.py` is **not in the repo** (pull from the org Drive
   1. extend `_load_real_mavsdk` ([controller.py:396](mapping_drone/controller.py#L396)) to also import
      `PositionNedYaw` from `mavsdk.offboard`;
   2. replace the velocity command in `fly_to_position_velocity` ([controller.py:815](mapping_drone/controller.py#L815))
-     with `await self.drone.offboard.set_position_ned(PositionNedYaw(n,e,down,yaw))`;
+     with `await self.drone.offboard.set_position_ned(PositionNedYaw(n,e,down,yaw))`. **`down` is NEGATIVE when
+     airborne** (4.0 m survey alt → `down = -4.0`; takeoff 3.6 m → `-3.6`); reuse the existing `alt → down`
+     negation — a *positive* `down` drives the drone into the floor (sign unchanged from the velocity path);
   3. make `hover_for` hold position instead of streaming corrective velocities;
   4. change the offboard pre-warm ([controller.py:730](mapping_drone/controller.py#L730)) to stream zero-**position**
      (current pose) setpoints — PX4 needs the same setpoint type streamed before `offboard.start()`;
@@ -102,10 +104,16 @@ velocity-based** and `moveit.py` is **not in the repo** (pull from the org Drive
 - **Drone only:** `mavsdk`, `pyrealsense2`, and ROS2 `rclpy`+`geometry_msgs` (pre-installed in org image —
   do NOT `pip install rclpy`). Laptop/mock dev needs only opencv-contrib + numpy.
 - A live ROS2 **`uwb_tag`** `PoseStamped` publisher in the arena (subscriber is hard-coded BEST_EFFORT QoS).
-- Camera model confirmed (D430/D450 vs D435 — changes the RGB/IR path).
+- Camera model confirmed (**D435** = has RGB vs **D450** = no RGB; there is no D430 — changes the RGB/IR path).
 - Gimbal physically straight down; drone **pre-yawed** toward your first-sweep direction before arming
   (takeoff point is fixed for all teams, but launch yaw is your choice). Battery ≥ 30% for a scored run.
 - For Option B only: `moveit.py` pulled from the org Drive.
+
+> **Transport — read once.** The **Ethernet cable** (or NoMachine/SSH) connects you to the drone's
+> **onboard computer** (the companion Ubuntu box). The **PX4 flight controller is internal to that computer
+> over serial** — MAVSDK reaches it at **`serial:///dev/ttyS6:921600`**, **NOT** over any network/Ethernet IP.
+> The `udp://:14540` / `udp://:14550` entries in `--mavsdk-addresses` are **PX4 SITL / bench fallbacks only**
+> and will never reach the real drone's FC. Run the controller *on the drone*, with **serial** addresses.
 
 ---
 
@@ -127,6 +135,8 @@ python3 tools/mavsdk_probe.py --help     # confirm flags, then run with the cano
 # canonical order: serial:///dev/ttyS6:921600 , serial:///dev/ttyACM0:115200 ,
 #                  serial:///dev/ttyUSB0:57600 , udp://:14540 , udp://:14550
 ```
+The `serial://` entries are ports **on the drone's onboard computer** (FC is internal serial) — those are the
+real ones at the venue. The `udp://` entries are **PX4 SITL / bench fallbacks** that cannot reach the real FC.
 
 **Step 4 — UWB topic + axis check.** Confirm `/uwb_tag` publishes and the ENU→NED swap (n=pose.y, e=pose.x,
 alt=−pose.z) matches the room. Physically move the tag and watch the signs:
@@ -156,8 +166,11 @@ Because the fleet is mixed and drones are **shared**, you may get a different ca
   the marshal first):
   ```bash
   cp configs/arena_8x8.json configs/waypoints_10jun.json
-  # edit to the real rectangle at z=4.0 m, e.g. [[0,0,4.0],[4.4,0,4.0],[4.4,7.85,4.0],[0,7.85,4.0]]
-  # add denser rows so the 0.3 m/s drone actually passes over each pad
+  # edit to a SERPENTINE sweep at z=4.0 m that passes over INTERIOR pads, not just the 4 corners, e.g.
+  # [[0,0,4.0],[4.4,0,4.0],[4.4,1.5,4.0],[0,1.5,4.0],[0,3.0,4.0],[4.4,3.0,4.0],[4.4,4.4,4.0],[0,4.4,4.0],
+  #  [0,5.9,4.0],[4.4,5.9,4.0],[4.4,7.4,4.0],[0,7.4,4.0],[0,7.85,4.0],[4.4,7.85,4.0]]
+  # A bare 4-corner perimeter MISSES interior pads. Keep each leg <= ~9 m so the 30 s fly_to timeout
+  # (controller.py:1069) at 0.3 m/s isn't hit mid-leg (which scans the wrong place).
   ```
   Validate it parses: `python3 -c "import json; w=json.load(open('configs/waypoints_10jun.json')); assert w and all(len(p)==3 for p in w); print(len(w),'waypoints')"`
   ⚠️ Do **not** use `waypoints_unknown.json` blindly — despite the README it's a stray populated 2×2 grid,
@@ -188,6 +201,8 @@ all three subsystems up, 2 = a failure:
 python3 -m mapping_drone --dry-run --mavsdk-addresses \
 "serial:///dev/ttyS6:921600,serial:///dev/ttyACM0:115200,serial:///dev/ttyUSB0:57600,udp://:14540,udp://:14550"
 ```
+(`udp://:14540,udp://:14550` are PX4 SITL/bench fallbacks — at the venue only the `serial://` entries reach
+the real FC; you can omit the udp ones on the drone.)
 
 **Step 9 — scored run.** See §4. (The runbooks' "connect-only via `--max-flight-time-s 5`" actually ARMS
 and FLIES — prefer `--dry-run` for a no-fly check.)
@@ -212,6 +227,8 @@ python3 -m mapping_drone \
 - Add `--tailscale` for live log fan-out to the desktop sink; `--verbose` to promote per-tick/per-leg lines.
 - If the marshal gives a built-in rule, drop the lookup env and set `MAPPING_DRONE_VALIDITY=<rule>`.
 - This launches the **existing velocity path** — only fly it if you did NOT swap in `set_position_ned`.
+- The `udp://:14540,udp://:14550` addresses are **SITL/bench fallbacks**; on the real drone only the
+  `serial://` entries reach the flight controller (FC is internal serial). Drop the udp ones at the venue.
 
 ---
 
@@ -259,12 +276,20 @@ python3 -m mapping_drone \
    stereo depth image — open since the 6/7 Q&A).
 6. **Locations of id67 and id101** (unpublished). Is the gimbal fixed at −90 or software-commandable?
 7. **Scored-run policy:** attempts allowed, fast-abort allowed? (Crash = no re-assessment; 8 min/480 s cap.)
+8. **Testing-slot time / length / trial limit** — still UNANNOUNCED as of capture (org said "announce soon"
+   twice, 7/6 & 8/6). Confirm at the briefing; assume short and that every hardware path already works.
+9. **Coordinates of IDs 67 and 101** (unpublished), and WRITTEN confirmation that **Challenge 1 uses the same
+   `DICT_7X7_1000`** (the post title flip-flopped Ch2&3 → Ch1 → Ch2&3).
+10. **Required top-down depth-map output FORMAT** — stereo depth image vs matplotlib obstacle point-plot
+    (asked 7/6, never answered). Wrong format fails the task even with correct flying.
 
 ---
 
 ## 8. Doc-drift warnings (existing repo docs that are now wrong)
 
-- `runbook.md:120` — tells you to pass `--use-ir-for-aruco`; that flag does **not** exist (argparse rejects it).
+- `runbook.md:120` (a SEPARATE file from `DAY1_RUNBOOK.md`) — tells you to pass `--use-ir-for-aruco`; that
+  flag does **not** exist (argparse rejects it — docstring-only). `DAY1_RUNBOOK.md:39`/`:139` correctly say
+  NOT to pass it. (Prefer section anchors over line numbers — they drift.)
 - `mapping_drone/README.md` validity section lists 5 rules; there are **6** (adds `lookup` — verified in
   `validity.py`). Use `lookup` for an ID whitelist.
 - `configs/waypoints_unknown.json` documented as an empty fail-fast trap; on disk it's a stray populated 2×2.
