@@ -413,7 +413,13 @@ def main() -> int:
             flight.start()
         if pose_source is not flight:
             pose_source.start()
-        realsense.start()
+        try:
+            realsense.start()
+        except Exception as exc:
+            if args.check:
+                logger.warning("RealSense unavailable (%s) — continuing --check without camera", exc)
+            else:
+                raise   # --nofly / --fly genuinely need the camera
         mission = Px4Mission(args, pose_source, flight, realsense, run_writer)
 
         def _on_sig(*_a):

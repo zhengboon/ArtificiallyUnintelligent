@@ -450,7 +450,13 @@ def main() -> int:
     aborted = False
     try:
         uwb.start()
-        realsense.start()
+        try:
+            realsense.start()
+        except Exception as exc:
+            if args.check:
+                logger.warning("RealSense unavailable (%s) — continuing --check without camera", exc)
+            else:
+                raise   # --nofly / --fly genuinely need the camera
         mission = MoveItMission(args, uwb, realsense, run_writer, drone)
 
         def _on_sig(*_a):
