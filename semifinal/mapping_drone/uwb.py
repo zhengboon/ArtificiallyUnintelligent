@@ -65,6 +65,8 @@ class UwbNode:
         self._lock = threading.Lock()
         self._n: float = 0.0
         self._e: float = 0.0
+        self._z: float = 0.0
+        self._have_z: bool = False
         self._ready: bool = False
         self._last_update_ts: float = 0.0
         self._node: object | None = None
@@ -116,6 +118,7 @@ class UwbNode:
             pose = msg.pose  # type: ignore[attr-defined]
             n = float(pose.position.y)
             e = float(pose.position.x)
+            z_up = float(pose.position.z)  # nlink /uwb_tag carries altitude as ENU z-up
         except Exception:
             logger.exception("Malformed PoseStamped on '%s'", self._topic)
             return
@@ -123,6 +126,8 @@ class UwbNode:
         with self._lock:
             self._n = n
             self._e = e
+            self._z = z_up
+            self._have_z = self._have_z or (abs(z_up) > 1e-6)
             self._ready = True
             self._last_update_ts = time.monotonic()
 
@@ -151,6 +156,11 @@ class UwbNode:
     def get_position(self) -> tuple[float, float, bool]:
         with self._lock:
             return self._n, self._e, self._ready
+
+    def get_altitude(self) -> float | None:
+        """ENU z-up altitude from /uwb_tag (nlink carries it), or None if absent."""
+        with self._lock:
+            return self._z if self._have_z else None
 
     @property
     def last_update_ts(self) -> float:

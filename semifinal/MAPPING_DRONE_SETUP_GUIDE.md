@@ -1,5 +1,13 @@
 # Mapping-drone setup guide (Challenge 1) — reconciled with 10-June org guidance
 
+> **⚠️ UPDATE 2026-06-10 PM — the real drone is PX4-ROS2, not MAVLink.** Confirmed on the drone: the
+> finals flight controller speaks PX4 over micro-XRCE-DDS (ROS2 `/fmu/*`), so the MAVSDK `controller.py`
+> flow in this guide is **simulator/qualifier-only and will NOT fly the real drone**. For the real drone
+> use **`python3 -m mapping_drone.px4_mission`** (`--check` / `--nofly` / `--fly`, `--pose px4|uwb`).
+> Start with [`START_HERE_BEGINNER.md`](START_HERE_BEGINNER.md) + [`DRONE_STACK_ANALYSIS.md`](DRONE_STACK_ANALYSIS.md).
+> The dict / validity / camera (D435 vs D450) / UWB / arena sections below all still apply — only the
+> **flight transport** changed (MAVSDK serial → PX4-ROS2 offboard).
+
 **Written 2026-06-10.** Grounded in the actual code (`mapping_drone/`) and the new org drops.
 Source facts: [`downloaded stuff/KEY_UPDATES_for_mapping_drone.md`](downloaded%20stuff/KEY_UPDATES_for_mapping_drone.md).
 This supersedes the navigation/dict assumptions in `DAY1_SETUP_SEQUENCE.md` and `runbook.md` where

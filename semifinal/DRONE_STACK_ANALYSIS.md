@@ -1,0 +1,106 @@
+# Drone-stack analysis (10 June 2026) — what flies the real finals drone
+
+Analysis of the full drone file dump (`zbstuff/drone files.zip` → the team's `roboverse26`
+stack + `ros2_ws/src`), cross-checked against our `semifinal/` code. Produced by a 9-agent
+audit. **Bottom line: the real drone is PX4-ROS2 (micro-XRCE-DDS), and our
+`mapping_drone/px4_ros.py` + `px4_mission.py` are the correct flight path.**
+
+---
+
+## 1. Control architecture (decisive)
+
+The real finals mapping drone (Orange Pi RK3588) is controlled **only** by **PX4-ROS2 OFFBOARD
+over micro-XRCE-DDS** — there is **no MAVLink**. On the drone, `MicroXRCEAgent serial -D
+/dev/ttyS1 -b 921600` (`start_micro.sh`) brings up the `/fmu/*` topics; MAVSDK finds no heartbeat.
+
+Correct interface (implemented in [`mapping_drone/px4_ros.py`](mapping_drone/px4_ros.py)):
+- **Publish:** `/fmu/in/offboard_control_mode`, `/fmu/in/trajectory_setpoint`, `/fmu/in/vehicle_command`
+- **Subscribe:** `/fmu/out/vehicle_local_position`, `/fmu/out/vehicle_status`
+- **QoS (load-bearing): BEST_EFFORT + VOLATILE + KEEP_LAST.** RELIABLE silently fails to match
+  PX4's BEST_EFFORT publishers → zero pose. (Our code uses VOLATILE depth 10 pub / 5 sub — correct.
+  The stock `offboard_control.py` uses depth 1; either works.)
+- **Offboard engage sequence:** set initial setpoint at current pose → stream OffboardControlMode +
+  TrajectorySetpoint at ≥10 Hz (we do 20 Hz) **before** arming → `VEHICLE_CMD_DO_SET_MODE(1,6)` then
+  `VEHICLE_CMD_COMPONENT_ARM_DISARM(1)` → confirm `arming_state==2` AND `nav_state==14` → stream NED
+  position setpoints (x=N, y=E, z=Down; alt_up → z=−alt) → `VEHICLE_CMD_NAV_LAND` → disarm.
+- VehicleCommand: `target_system=1, target_component=1, source_system=1, source_component=1, from_external=True`.
+
+**Sim/qualifier-only (do NOT use on the real drone):** anything binding MAVSDK to `udp:14540`
+(all `roboverse26/qualifs/*`, `drone_control_new.py`, `autonomous_explorer.py`, `runningv9.py`) or
+`serial:///dev/ttyS6` (`roboverse26/nav_controller.py` **and our own `controller.py`**). The Hula
+swarm is a third, separate path (pyhulax over WiFi) — unaffected by any PX4/XRCE concern.
+
+## 2. The blocker: px4_msgs ↔ firmware version mismatch
+
+`/fmu/*` decode fails with **"Fast CDR exception"** because the companion's `px4_msgs` doesn't
+byte-match the `.msg` definitions compiled into the flashed PX4 firmware (PX4 uses per-message
+versioning — `VehicleLocalPosition.msg` has `MESSAGE_VERSION = 1`). The extracted `ros2_ws/src/px4_msgs`
+is unusable (msg-only, no `package.xml`/`CMakeLists`, mixed MESSAGE_VERSIONs). **Fix, in order:**
+1. Find the exact firmware version (`ver all` in the PX4 shell, or the flashed build tag; `px4_ros_com`
+   here is pinned to release/1.15–1.16 → strong hint).
+2. On the drone: `git clone -b release/1.15 https://github.com/PX4/px4_msgs.git ~/ros2_ws/src/px4_msgs`
+   (match the version EXACTLY), replacing the msg-only dir.
+3. `colcon build --packages-select px4_msgs && source install/setup.bash`.
+4. Verify: `python3 -m mapping_drone.px4_mission --check --pose px4` must report a valid pose with no
+   CDR exception.
+
+**Workaround (mapping only):** `--pose uwb` uses `/uwb_tag` (standard `geometry_msgs/PoseStamped`,
+CDR-immune). But `--pose uwb` cannot drive autonomous `--fly` (no FC position estimate) — a scored
+autonomous run REQUIRES the matched px4_msgs build.
+
+## 3. UWB config (real values)
+
+- Topic **`/uwb_tag`**, type `geometry_msgs/PoseStamped`, published by **nlink `nlink_ros2_node`** (NOT by
+  any Python) on serial **`/dev/ttyS4` @921600** (Nooploop LinkTrack). QoS BEST_EFFORT depth 10.
+- **Axis mapping (load-bearing): NORTH = `pose.position.y`, EAST = `pose.position.x`, ALT = `pose.position.z`
+  (ENU z-up).** Our `uwb.py` does exactly this (now also reads z — fixed today). Do NOT "fix" the y→N/x→E swap.
+- `br_n`/`br_e` (nlink ROS params, default 0) re-zero the UWB origin onto your takeoff point:
+  `east = raw_x − br_e`, `north = raw_y − br_n`. `yaw_alignment_offset` aligns room axis to compass north.
+- **Field cal:** at the arena origin, read `/uwb_tag`, set `br_n`/`br_e` so takeoff reads (0,0); verify
+  N=+pose.y and E=+pose.x increase in the right physical directions.
+
+## 4. Finals-ready vs sim (verdict)
+
+| File / module | Status |
+|---|---|
+| `semifinal/mapping_drone/px4_ros.py` (Px4Ros2Flight) | **real-drone-ready** — correct offboard adapter; only needs matched px4_msgs |
+| `semifinal/mapping_drone/px4_mission.py` | **real-drone-ready** — `--check`/`--nofly`/`--fly`, `--pose px4\|uwb`; set dict + validity |
+| `semifinal/mapping_drone/{mapping,realsense,uwb,run_writer,validity}.py` | **platform-agnostic** — reuse as-is (validity rule + D450 IR fallback still stubs) |
+| `ros2_ws/src/nlink_parser` | **real-drone-ready** — the UWB→/uwb_tag + →/fmu/in/vehicle_visual_odometry bridge |
+| `ros2_ws/src/px4_msgs` (extracted) | **incomplete** — msg-only; replace with full checkout at firmware tag |
+| `px4_ros_com/.../offboard_control.py` | transport template only (arms blindly, climbs to z=−5) — superseded by our px4_ros.py |
+| `roboverse26/qualifs/v4_latest.py` (A* + guards) | **sim-only** — good *algorithm* to port onto Px4Ros2Flight for obstacle-aware waypoints |
+| `roboverse26/nav_controller.py` + our `controller.py` | **sim-only** (MAVSDK) — retire for the real drone |
+| `roboverse26/detection/robomaster_aruco_tagger.py` | reusable for Challenge-2 tag evidence |
+
+## 5. Challenge plans
+
+**Challenge 1:** fly with `px4_mission.py`. On the drone: `source ~/ros2_ws/install/setup.bash`; ONE
+`MicroXRCEAgent` (`/dev/ttyS1`); `start_uwb.sh` (→ `/uwb_tag`); do **not** run `start_rs.sh`. Then
+`--check --pose px4` (px4_msgs smoke test) → `--nofly --pose px4 --aruco-dict <announced>` (grounded full
+pass) → `--fly --aruco-dict <announced> --takeoff-alt 4.0 --waypoints-from-json <rectangle>`. Pose =
+`/fmu/out/vehicle_local_position` (EKF2 fuses UWB via nlink); fall back to `--pose uwb` if px4_msgs won't
+decode. MUST pass the judge dict and set the validity rule before scoring. Artifacts via `run_writer`.
+
+**Challenge 2 (Hula swarm):** separate platform (pyhulax/WiFi), planning brain built but **nothing wired
+to live hardware** (everything hits MockHula). Lower priority. Needs: live DroneAPI glue (huladola UDP
+discovery — verify port 8668 vs the 8688 in a docstring → connect → hand DroneAPI to
+`bayesian_search` + `collision_avoidance_v3`), fill `HULA_UWB_TAG_IDS` + `UWB_SERIAL_PORT`, measure Hula
+`move/move_to` units+frame, wire `safe_path_planner` (no flying over obstacles) + `robomaster_aruco_tagger`.
+
+## 6. Prioritized actions
+
+- **P0** Build `px4_msgs` against the exact flashed firmware; verify with `px4_mission --check --pose px4`.
+- **P0** Set the **validity rule** before any scored run (`MAPPING_DRONE_VALIDITY=...`); the default `even` mis-scores the (odd) announced IDs.
+- **P0** Pass the judge-announced **ArUco dict** (`--aruco-dict`; default 6X6_250, qualifier used 7X7_1000).
+- **P0** Check **RealSense model per handoff** — D435 (RGB, works) vs D450 (no RGB → zero ArUco; IR fallback unimplemented).
+- **P1** Field-calibrate UWB (`br_n`/`br_e`, axis signs, `yaw_alignment_offset`); confirm `gimbal_pitch=-90`.
+- **P1** Dry-run `--nofly` then a short low `--fly`; validate offboard engage/arm latch + camera→world transform.
+- **P1** Build the finals **waypoint rectangle** (~4.4×7.85 m; no shipped square config matches) at alt ≥4.0 m.
+- **P2** Challenge-2 live-hardware glue. **P2** Treat `semifinal/` as source of truth; `roboverse26` extract as reference.
+
+## 7. Open questions for the marshal
+Firmware version/tag · ArUco dict (pads vs robots) · validity rule + valid/invalid IDs + pad coords ·
+RealSense model per drone · is `/uwb_tag` (nlink) live on the assigned drone · arena dims/origin + takeoff
+NED origin + compass alignment · is autonomous offboard allowed + altitude ceiling (config caps 3.3/3.5 m
+but mapping wants 4.0 m) · Hula discovery port (8668 vs 8688) + per-drone UWB tag IDs/serial.

@@ -1,151 +1,141 @@
-# Start Here — Mapping Drone, explained for a beginner
+# Start Here — Mapping Drone (Challenge 1), for a beginner
 
 You don't need to understand the whole codebase. The code is **already written**. Your job is to
-**run it in the right order** and read the results. This guide walks you from zero.
+**run it in the right order** on the drone and read the results.
 
-> When you want the deep version (every flag, every edge case), read
-> [`MAPPING_DRONE_SETUP_GUIDE.md`](MAPPING_DRONE_SETUP_GUIDE.md). This file is the gentle on-ramp.
+> **Big truth (read this once):** the real finals drone's flight controller talks **PX4 over ROS2
+> (micro-XRCE-DDS)**, **not MAVLink**. So you do **NOT** use the old `controller.py` / MAVSDK stuff —
+> that's simulator-only. You use **`px4_mission`**. Full reasoning: [`DRONE_STACK_ANALYSIS.md`](DRONE_STACK_ANALYSIS.md).
+> The deep operator detail is in [`MAPPING_DRONE_SETUP_GUIDE.md`](MAPPING_DRONE_SETUP_GUIDE.md).
 
----
+## 1. What are we doing? (Challenge 1)
 
-## 1. What are we actually doing? (Challenge 1)
+The drone looks **straight down**, finds the **ArUco markers** (printed square barcodes) on the landing
+pads, works out **where** each one is, builds a **top-down map**, and saves one **folder of results** for
+the judges. All of that is coded — you run one command and a `run_<timestamp>/` folder appears.
 
-A drone flies over the arena looking **straight down**. It:
-1. spots the **ArUco markers** (printed square barcodes, like chunky QR codes) on the landing pads,
-2. works out **where** each marker is in the room,
-3. builds a **top-down map**, and
-4. saves one **folder of results** for the judges.
-
-Everything above is coded. You run one command and a `run_<timestamp>/` folder appears with all the outputs.
-
-## 2. A few words you'll keep seeing
+## 2. Words you'll see
 
 | Word | Plain meaning |
 |------|---------------|
-| **mapping drone** | the single drone you're setting up (not the little "Hula" swarm drones) |
-| **ArUco marker** | a printed black-and-white square the drone detects. Ours are dictionary **`7X7_1000`**, IDs 11/45/51/67/101 |
-| **UWB** | the indoor "GPS" — tells the drone its x/y position in the room |
-| **RealSense** | the depth camera on the drone (sees distance + picture) |
-| **MAVSDK** | the software that talks to the drone's flight controller. It reaches it over an **internal serial port** on the drone's onboard computer (`serial:///dev/ttyS6`) — via the Ethernet/NoMachine link to that computer, **NOT** a network IP. The `udp://` entries are pretend-drone (simulator) fallbacks only. |
-| **gimbal / camera angle** | the mapping drone's camera faces straight **down and is FIXED**. `--gimbal-pitch -90` only TELLS the mapping math the camera points down — it does **not** drive a motor. (The tiltable, software-commandable gimbal is on the Hula swarm drones, not this one.) |
-| **mock** | *pretend* hardware. Lets you run everything on a laptop with no drone |
-| **NoMachine** | remote-desktop app you use to control the drone's onboard computer |
+| **mapping drone** | the single PX4 drone (an Orange Pi computer + a PX4 flight controller) |
+| **ArUco marker** | printed black-and-white square the drone detects (dictionary announced by judges, e.g. `7X7_1000`) |
+| **PX4** | the flight-controller software that actually flies the drone |
+| **micro-XRCE agent** | the bridge that lets your ROS2 code talk to PX4 (`start_micro.sh`) — **must be running** |
+| **`/fmu/...` topics** | the ROS2 channels PX4 talks on (pose, status, commands) |
+| **px4_msgs** | the message definitions; **must match the PX4 firmware version** or nothing decodes (see §6) |
+| **UWB** | indoor "GPS"; publishes the drone's position on `/uwb_tag` (`start_uwb.sh`) |
+| **RealSense** | the depth camera (D435 = has colour; D450 = no colour — see troubleshooting) |
+| **offboard** | the PX4 mode where *your code* commands the drone's position |
 | **run folder** | `mapping_drone/runs/run_<date_time>/` — where results are saved |
 
-## 3. The 3 levels — always do them in this order
+## 3. The 3 modes (always go in this order)
 
-1. **Pretend flight on a laptop** (no drone) → proves the code runs and shows you the outputs.
-2. **Grounded drone test** (`--nofly`) → real camera/sensors, but it never leaves the ground.
-3. **Real flight** → the actual scored run (only with your team, once everything above passed).
+| Mode | Command | Arms? Flies? |
+|------|---------|-------------|
+| **Check** | `px4_mission --check` | no — just reads pose/status |
+| **No-Fly** | `px4_mission --nofly` | **no** — full detect/map, drone never moves |
+| **Fly** | `px4_mission --fly` | **yes** — autonomous offboard survey |
 
-Don't skip ahead. If level 1 fails, level 3 will definitely fail.
-
----
-
-## LEVEL 1 — Pretend flight on a laptop (no drone needed)
-
-**Step 1.** Open a terminal (the black text window).
-
-**Step 2.** Go into the project's `semifinal` folder. On this machine that's:
-```bash
-cd /home/jugaad/Downloads/ArtificiallyUnintelligent-main/semifinal
-```
-(On the competition laptop it'll be wherever you copied the code, e.g. `cd ~/brainhack/semifinal`.)
-
-**Step 3.** Check the basics are installed. Copy-paste this whole line:
-```bash
-python3 -c "import cv2, numpy; from mapping_drone.mapping import ALL_SUPPORTED_DICT_NAMES as D; print(len(D), '7X7_1000' in D)"
-```
-- ✅ Good: it prints `20 True`.
-- ❌ If you see `ModuleNotFoundError: cv2`: run `pip install opencv-contrib-python numpy` and try again.
-
-**Step 4.** Run a pretend flight. This invents a fake drone + fake camera and flies a fake mission:
-```bash
-python3 -m mapping_drone --mock-all --aruco-dict 6X6_250 --runs-dir /tmp/mocktest
-```
-- Why `6X6_250` here and not `7X7_1000`? In pretend mode the fake camera draws a `6X6` test marker, so
-  using `6X6_250` lets you actually *see* detections. (On the real drone you'll use `7X7_1000`.)
-- You'll see lines scroll by like `sighting id=148 ... valid=True` and finally `MockMavsdk: landed`.
-- This takes well under a minute.
-
-**Step 5.** Look at what it produced:
-```bash
-ls /tmp/mocktest/run_*/
-cat /tmp/mocktest/run_*/STATUS.txt
-```
-You should see files: `STATUS.txt`, `landing_pads.json`, `top_down.png`, `markers/`, `run_summary.json`.
-`STATUS.txt` should say `State : DONE`. **That's a full successful pipeline run.** 🎉
-
-If Level 1 works, the code is healthy. Move on when you have a drone.
+Each also takes `--pose px4` (uses PX4's own position) or `--pose uwb` (uses `/uwb_tag` directly).
 
 ---
 
-## LEVEL 2 — Grounded drone test (`--nofly`) (real sensors, never flies)
+## 4. Setup on the drone (every fresh boot)
 
-Use this when you can power the drone but it **must not take off**. It runs the real camera/UWB and the
-full detection pipeline, but **never arms, takes off, or moves**.
-
-**Step 1.** Get onto the drone's computer with **NoMachine** (your team will have the connection set up).
-
-**Step 2.** Open a terminal there and `cd` into `semifinal`.
-
-**Step 3.** Point the drone's camera at a **printed `7X7_1000` marker** (ID 11, 45, 51, 67, or 101).
-
-**Step 4.** Run the grounded test:
 ```bash
-python3 -m mapping_drone --nofly --aruco-dict 7X7_1000 --max-flight-time-s 60
+cd ~/AD/semifinal
+git pull                                            # get the latest code
+source ~/ros2_ws/install/setup.bash                 # REQUIRED — loads px4_msgs
+pkill -f MicroXRCEAgent; bash ~/start_micro.sh &    # exactly ONE agent (PX4 bridge)
+sleep 4
+bash ~/start_uwb.sh                                  # UWB → /uwb_tag; enter 0.0 then 0.0
 ```
-Press **Ctrl-C** to stop early. The drone will **not** move — that's the whole point of `--nofly`.
+Do **not** run `start_rs.sh` — `px4_mission` opens the RealSense camera itself.
 
-**Step 5.** Check the results folder (`mapping_drone/runs/run_<newest>/`):
+## 5. Check mode — confirm the link + pose (never arms)
+
 ```bash
-cat mapping_drone/runs/run_*/landing_pads.json
-ls  mapping_drone/runs/run_*/markers/
+python3 -m mapping_drone.px4_mission --check --pose px4
 ```
-- ✅ Good: you see the marker IDs you showed the camera (e.g. `11`), and a saved `.jpg` of each.
-- The x/y/z numbers won't be "correct" (the drone is on the ground, not flying) — **that's expected**.
-  Level 2 proves *detection works on real hardware*, not navigation.
+Expect lines like `pose n=… e=… down=… valid=True`. **Lift/tilt the drone** and watch the numbers change.
+- `valid=False` / no pose → almost always the **px4_msgs version mismatch** (see §6). Try `--check --pose uwb`
+  instead (uses `/uwb_tag`, which always works).
 
 ---
 
-## LEVEL 3 — Real flight (the scored run) — do this WITH your team
+## 6. ⚠️ The one gotcha — "Fast CDR exception" / pose never valid
 
-Only after Levels 1 and 2 pass. A crash means no second try, so don't rush this alone. Two things must be
-set first (your team lead / the marshal gives you the info — see the full guide §3 step 6):
-- a **waypoints** file for the real arena size, and
-- the **validity rule** (which marker IDs count as "valid").
-
-Then the real run looks like this (one long command):
+If `--pose px4` never shows `valid=True` and you see **`Fast CDR exception`**, the `px4_msgs` on the drone
+doesn't match the PX4 firmware version. Fix (one-time, on the drone):
 ```bash
-MAPPING_DRONE_VALIDITY=lookup \
-MAPPING_DRONE_VALIDITY_LOOKUP=configs/valid_ids_10jun.json \
-python3 -m mapping_drone \
-  --aruco-dict 7X7_1000 \
-  --waypoints-from-json configs/waypoints_10jun.json \
-  --gimbal-pitch -90 \
-  --mavsdk-addresses "serial:///dev/ttyS6:921600,serial:///dev/ttyACM0:115200,serial:///dev/ttyUSB0:57600"
+cd ~/ros2_ws/src && rm -rf px4_msgs
+git clone -b release/1.15 https://github.com/PX4/px4_msgs.git    # MATCH the firmware version exactly
+cd ~/ros2_ws && colcon build --packages-select px4_msgs && source install/setup.bash
 ```
-(These are **serial** ports on the drone's onboard computer — the flight controller is internal serial, not a
-network address. The full guide lists extra `udp://` entries; those are simulator/bench fallbacks that never
-reach the real drone, so serial-only is correct at the venue.)
-Run it inside `tmux` so it survives if NoMachine disconnects. `Ctrl-C` = emergency land.
-**For everything about this step, use [`MAPPING_DRONE_SETUP_GUIDE.md`](MAPPING_DRONE_SETUP_GUIDE.md).**
+(Find the firmware version with `ver all` in the PX4 shell. If you can't fix it in time, use **`--pose uwb`**
+for No-Fly mapping — but Fly mode needs `--pose px4` working.)
 
 ---
 
-## If something breaks — quick fixes
+## 7. NO-FLY MODE — full pipeline, drone stays on the ground 🛑
 
-| You see | What it means | Do this |
-|---------|---------------|---------|
-| `ModuleNotFoundError: cv2` | OpenCV not installed | `pip install opencv-contrib-python numpy` |
-| `cv2.aruco` not found | wrong OpenCV installed | `pip uninstall opencv-python` then `pip install opencv-contrib-python` |
-| It hangs at "connecting MAVSDK…" | wrong/blocked drone port | use `--mavsdk-addresses "..."` (the list above), never the bare default |
-| `No device connected` (camera) | RealSense unplugged / wrong USB | replug into a **blue USB-3** port |
-| Every pad shows `valid=False` | wrong validity rule | set `MAPPING_DRONE_VALIDITY` (ask the marshal for the rule) |
-| 0 markers detected on real drone | wrong dictionary, or no-RGB camera | confirm `--aruco-dict 7X7_1000`; if it's a **D450** camera see the full guide's camera section |
-| `waypoints list is empty` | used the wrong waypoints file | don't use `waypoints_unknown.json`; make a real one (full guide §3 step 6) |
+This runs the **complete Challenge-1 pipeline** (camera + ArUco + map + judge artifacts) using **real
+position**, but **never arms, takes off, or moves**. It's how you test everything safely, and it's the
+whole deliverable if the drone is flown **manually**.
 
-## Where to go next
-- Full detail on every step, flag, and risk: [`MAPPING_DRONE_SETUP_GUIDE.md`](MAPPING_DRONE_SETUP_GUIDE.md).
-- What the whole codebase contains: [`CODEBASE_ANALYSIS_10JUN.md`](CODEBASE_ANALYSIS_10JUN.md).
-- The organiser's own messages/rules we captured: [`downloaded stuff/`](downloaded%20stuff/).
+```bash
+python3 -m mapping_drone.px4_mission --nofly --pose px4 --aruco-dict 7X7_1000 --max-flight-time-s 90
+# if px4 pose won't decode, use UWB position instead:
+python3 -m mapping_drone.px4_mission --nofly --pose uwb --aruco-dict 7X7_1000 --max-flight-time-s 90
+```
+**Hand-carry** the drone ~0.5–1.5 m above the markers, camera down. Watch for `sighting id=… world=(…)`.
+Then check the results:
+```bash
+cat mapping_drone/runs/run_*/landing_pads.json     # marker IDs + world coords + valid/invalid
+ls  mapping_drone/runs/run_*/markers/              # a snapshot per marker
+```
+Because the position is real, the `world` coords should track where you held the drone. Props never spin in
+this mode — it's safe to hold (keep fingers clear as habit).
+
+⚠️ **Validity:** the real IDs (11/45/51/67/101) are all **odd**, and the default rule marks odd = invalid.
+For a scored run set the real rule first: `MAPPING_DRONE_VALIDITY=lookup MAPPING_DRONE_VALIDITY_LOOKUP=configs/valid_ids_10jun.json python3 -m mapping_drone.px4_mission ...`
+(or `MAPPING_DRONE_VALIDITY=all_valid` just to confirm detection works).
+
+---
+
+## 8. FLY MODE — autonomous offboard survey ✈️
+
+Only after Check + No-Fly look good, **with a human on a kill switch**, and `--pose px4` showing `valid=True`.
+Fly mode **arms the drone, takes off, flies the waypoints (scanning each), then lands and disarms**.
+
+```bash
+python3 -m mapping_drone.px4_mission --fly --aruco-dict 7X7_1000 \
+  --takeoff-alt 4.0 --waypoints-from-json configs/waypoints_10jun.json
+```
+What happens, in order: streams setpoints → engages **offboard** → **arms** → climbs to `--takeoff-alt` →
+flies each waypoint and scans → **lands + disarms**. `Ctrl-C` lands and disarms immediately.
+- `--fly` forces `--pose px4` (autonomous flight must use the flight controller's own position) — so the
+  px4_msgs fix in §6 must be done first.
+- Build the waypoints file for the real arena (markers span ~4.4 × 7.85 m): copy `configs/arena_8x8.json` to
+  `configs/waypoints_10jun.json` and edit it to a serpentine sweep at z = 4.0 m. **Untested in the air — treat
+  the first `--fly` as a real first flight: low, short, kill-switch ready.**
+
+---
+
+## 9. If something breaks
+
+| You see | Means | Do |
+|---------|-------|-----|
+| `Fast CDR exception` / pose `valid=False` | px4_msgs ≠ firmware | §6 fix, or use `--pose uwb` |
+| `px4_msgs/rclpy not importable` | env not sourced | `source ~/ros2_ws/install/setup.bash` |
+| `--pose uwb` pose `valid=False` | UWB not publishing | run `start_uwb.sh` (enter `0.0`/`0.0`); `ros2 topic echo /uwb_tag --once` |
+| 0 markers detected | wrong dict, or no-RGB camera | pass the announced `--aruco-dict`; if it's a **D450** (no colour) see [`D430_RGB_RISK.md`](D430_RGB_RISK.md) |
+| every pad `valid=False` | default `even` rule | set `MAPPING_DRONE_VALIDITY` (§7) |
+| `RealSense ... pipeline.start() failed` | D450 has no colour | get a D435, or apply the IR fallback patch |
+| many XRCE agents / weird behaviour | more than one `MicroXRCEAgent` | `pkill -f MicroXRCEAgent` then start ONE |
+
+## 10. Where to go next
+- Why the architecture is what it is + the finals plan: [`DRONE_STACK_ANALYSIS.md`](DRONE_STACK_ANALYSIS.md)
+- Every flag and operator detail: [`MAPPING_DRONE_SETUP_GUIDE.md`](MAPPING_DRONE_SETUP_GUIDE.md)
+- The actual flight code: [`mapping_drone/px4_ros.py`](mapping_drone/px4_ros.py) + [`mapping_drone/px4_mission.py`](mapping_drone/px4_mission.py)

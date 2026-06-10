@@ -101,7 +101,9 @@ class UwbPoseSource:
 
     def get_pose(self):
         n, e, ready = self._uwb.get_position()
-        return n, e, -self._alt, 0.0, ready
+        alt = self._uwb.get_altitude()        # real ENU z-up from /uwb_tag if present
+        down = -alt if alt is not None else -self._alt
+        return n, e, down, 0.0, ready
 
 
 class Px4Mission:
@@ -357,7 +359,8 @@ def _parse_args(argv=None) -> argparse.Namespace:
                    help="pose source: px4 (/fmu local position) or uwb (/uwb_tag). "
                         "Use uwb if px4 messages won't decode (px4_msgs version mismatch).")
     p.add_argument("--assumed-alt", type=float, default=1.0,
-                   help="camera height (m) used as altitude when --pose uwb (no z in /uwb_tag)")
+                   help="fallback camera height (m) for --pose uwb, used ONLY if /uwb_tag "
+                        "carries no z (nlink normally publishes ENU z-up altitude, which is used)")
     p.add_argument("--aruco-dict", default="6X6_250")
     p.add_argument("--waypoints", default=None)
     p.add_argument("--waypoints-from-json", default=None)
