@@ -1,3 +1,6 @@
+<!--OPDOC-BANNER-->
+> ⚠️ **SUPERSEDED — to run the mapping drone use [OP_DOC.md](OP_DOC.md).** This file is kept for historical detail only; the live decision-tree runbook is OP_DOC.md.
+
 # Org Tickets — First-Batch Drafts (Copy-Paste Ready)
 
 > **STATUS 2026-06-09 T-1: tickets path is dead** — ask the org marshal verbally at the venue Day-1 morning instead of filing into `#support-ticket`. This file is kept for the question text only (so we can read the prepared wording aloud or paraphrase it on the day). Do **not** treat the filing-batch plan below as live.

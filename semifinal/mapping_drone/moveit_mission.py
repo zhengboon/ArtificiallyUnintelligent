@@ -29,6 +29,7 @@ import asyncio
 import json
 import logging
 import math
+import os
 import signal
 import sys
 import time
@@ -68,6 +69,21 @@ WAYPOINT_SCAN_SETTLE_S = 2.0
 DEDUPE_RADIUS_M = 0.5
 DEFAULT_WAYPOINTS = [(2.0, 2.0), (3.0, 2.0), (4.0, 2.0), (5.0, 2.0)]  # (north, east), per move_it4 (alt = --takeoff-alt)
 
+# --- Pose + safety watchdog tuning (ported from controller.py) ---
+FC_POSE_STALE_S = 1.5         # FC telemetry older than this is considered stale
+BATTERY_LAND_FRAC = 0.15      # land if battery drops below 15%
+POSE_LOSS_LAND_S = 5.0        # airborne + no fresh fix this long -> abort/land
+POSE_NEVER_FIX_S = 10.0       # airborne this long with no fix ever -> abort/land
+STUCK_GRACE_S = 12.0          # ignore stuck check for the first N s airborne
+STUCK_WINDOW_S = 30.0         # window over which to measure movement
+STUCK_MIN_MOVE_M = 0.3        # < this movement over the window = stuck -> abort
+VEL_FAIL_ABORT = 5            # consecutive setpoint send failures -> abort
+
+# --- Arena bounds (confirmed 2026-06-10) for the waypoint sanity check ---
+ARENA_W_M = 5.5               # width  (east extent)
+ARENA_L_M = 11.0              # length (north extent)
+ARENA_MARGIN_M = 0.7          # required wall margin
+
 
 def _world_distance(a, b) -> float:
     return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
@@ -81,7 +97,7 @@ class MoveItMission:
         self.realsense = realsense
         self.run_writer = run_writer
         self.drone = drone                       # mavsdk System() or None (--nofly)
-        self.detector = ArucoDetector(dict_name=getattr(args, "aruco_dict", "6X6_250"))
+        self.detector = ArucoDetector(dict_name=getattr(args, "aruco_dict", "7X7_1000"))
         self.grid = OccupancyGrid(resolution_m=0.05, size_m=20.0)
         self.sightings: list[ArucoSighting] = []
         self._seq = 0
@@ -91,13 +107,37 @@ class MoveItMission:
         self.state = "INIT"
         self.started_at = 0.0
         self._tasks: list[asyncio.Task] = []
+        # FC fused-NED telemetry (authoritative, DDS-immune — see --pose).
+        self._fc_n = 0.0
+        self._fc_e = 0.0
+        self._fc_down = 0.0
+        self._fc_ts = 0.0
+        # Safety watchdog state (ported from controller.py).
+        self._battery_frac: Optional[float] = None
+        self._last_pose_ts = 0.0          # last time we had a fresh horizontal fix
+        self._pos_history: list[tuple[float, float, float]] = []  # (t, n, e)
+        self._vel_fail = 0
+        self._abort_reason: Optional[str] = None
 
-    # ---- pose (UWB n/e + alt + mavsdk yaw) -------------------------
+    # ---- pose -------------------------------------------------------
     def _pose(self):
-        n, e, ready = self.uwb.get_position()    # n=pose.y, e=pose.x (matches move_it4)
-        alt = self.uwb.get_altitude()
-        alt = alt if alt is not None else float(self.args.takeoff_alt)
-        return n, e, -alt, self._yaw_deg, ready
+        """Return (n, e, down, yaw_deg, ready).
+
+        Horizontal source per --pose: 'fc' = MAVSDK fused NED (default,
+        DDS-immune, the frame survey_box.py waypoints live in); 'uwb' = the
+        ROS /uwb_tag topic (arena frame, org-recommended but unreliable under
+        cross-team DDS). Altitude ALWAYS comes from the FC when available —
+        the UWB tag publishes N-E only, never a usable Z (org slide 9).
+        Yaw always from the FC attitude stream.
+        """
+        yaw = self._yaw_deg
+        fc_fresh = self._fc_ts > 0.0 and (time.monotonic() - self._fc_ts) < FC_POSE_STALE_S
+        if getattr(self.args, "pose", "fc") == "fc" and fc_fresh:
+            return self._fc_n, self._fc_e, self._fc_down, yaw, True
+        # UWB horizontal (or FC unavailable). Altitude from FC if fresh.
+        n, e, ready = self.uwb.get_position()
+        down = self._fc_down if fc_fresh else -float(self.args.takeoff_alt)
+        return n, e, down, yaw, ready
 
     # ---- scan / artifacts (shared with px4_mission) ----------------
     def _validity_for(self, aruco_id: int) -> Optional[bool]:
@@ -125,7 +165,7 @@ class MoveItMission:
                 "drone_pose_or_none": (n, e, -down, yaw),
                 "num_sightings": len(self.sightings),
                 "unique_pads": self._unique_pads(),
-                "battery_pct": float("nan"),
+                "battery_pct": (self._battery_frac * 100.0) if self._battery_frac is not None else float("nan"),
             })
         except Exception as exc:
             logger.warning("status write failed: %s", exc)
@@ -200,17 +240,92 @@ class MoveItMission:
         except Exception:
             return
 
+    async def _telem_loop(self) -> None:
+        """Stream the FC's fused NED position (authoritative pose source)."""
+        try:
+            async for p in self.drone.telemetry.position_velocity_ned():
+                self._fc_n = float(p.position.north_m)
+                self._fc_e = float(p.position.east_m)
+                self._fc_down = float(p.position.down_m)
+                self._fc_ts = time.monotonic()
+                if self._stop:
+                    return
+        except Exception:
+            return
+
+    async def _battery_loop(self) -> None:
+        """Track battery for the low-battery failsafe."""
+        try:
+            async for b in self.drone.telemetry.battery():
+                frac = float(b.remaining_percent)
+                # MAVSDK reports 0.0-1.0; some firmwares report 0-100.
+                self._battery_frac = frac / 100.0 if frac > 1.5 else frac
+                if self._stop:
+                    return
+        except Exception:
+            return
+
+    def _check_safety(self) -> Optional[str]:
+        """Return an abort reason if an in-flight safety limit is breached,
+        else None. Called before each waypoint while airborne."""
+        # Low battery
+        if self._battery_frac is not None and self._battery_frac < BATTERY_LAND_FRAC:
+            return f"battery {self._battery_frac*100:.0f}% < {BATTERY_LAND_FRAC*100:.0f}%"
+        airborne_s = time.monotonic() - self.started_at if self.started_at else 0.0
+        # Pose loss: never got a fix, or lost it mid-flight
+        if self._last_pose_ts == 0.0:
+            if airborne_s > POSE_NEVER_FIX_S:
+                return f"no position fix after {POSE_NEVER_FIX_S:.0f}s airborne"
+        else:
+            stale = time.monotonic() - self._last_pose_ts
+            if stale > POSE_LOSS_LAND_S:
+                return f"position fix stale {stale:.1f}s (> {POSE_LOSS_LAND_S:.0f}s)"
+        # Position-stuck: moved < STUCK_MIN_MOVE_M over the last STUCK_WINDOW_S
+        if airborne_s > STUCK_GRACE_S and len(self._pos_history) >= 2:
+            now = time.monotonic()
+            window = [(t, n, e) for (t, n, e) in self._pos_history if now - t <= STUCK_WINDOW_S]
+            if len(window) >= 2 and (now - window[0][0]) >= STUCK_WINDOW_S * 0.8:
+                ns = [n for _, n, _ in window]
+                es = [e for _, _, e in window]
+                span = math.hypot(max(ns) - min(ns), max(es) - min(es))
+                if span < STUCK_MIN_MOVE_M:
+                    return f"position-stuck ({span:.2f}m moved in {STUCK_WINDOW_S:.0f}s)"
+        return None
+
     # ---- waypoint nav (faithful to move_it4) ----------------------
+    async def _set_setpoint(self, n, e, alt, vn, ve) -> None:
+        """Send a position+velocity setpoint, counting consecutive failures
+        so a wedged offboard link aborts instead of silently looping."""
+        try:
+            await self.drone.offboard.set_position_velocity_ned(
+                PositionNedYaw(n, e, -alt, 0.0), VelocityNedYaw(vn, ve, 0.0, 0.0))
+            self._vel_fail = 0
+        except Exception as exc:
+            self._vel_fail += 1
+            logger.warning("setpoint send failed (%d/%d): %s", self._vel_fail, VEL_FAIL_ABORT, exc)
+            if self._vel_fail >= VEL_FAIL_ABORT:
+                self._abort_reason = "offboard setpoint failures"
+                self._stop = True
+
     async def _navigate_uwb(self, target_n: float, target_e: float, alt: float) -> bool:
         deadline = time.monotonic() + WAYPOINT_TIMEOUT_S
         while not self._stop:
-            n, e, ready = self.uwb.get_position()
+            reason = self._check_safety()
+            if reason:
+                self._abort_reason = reason
+                logger.error("SAFETY ABORT mid-waypoint: %s", reason)
+                self._stop = True
+                return False
+            n, e, down, _yaw, ready = self._pose()
             if not ready:
-                logger.warning("UWB lost — holding")
-                await self.drone.offboard.set_position_velocity_ned(
-                    PositionNedYaw(target_n, target_e, -alt, 0.0), VelocityNedYaw(0.0, 0.0, 0.0, 0.0))
-                await asyncio.sleep(0.5)
+                logger.warning("no fresh position fix — holding")
+                await self._set_setpoint(target_n, target_e, alt, 0.0, 0.0)
+                await asyncio.sleep(0.3)
                 continue
+            self._last_pose_ts = time.monotonic()
+            self._pos_history.append((self._last_pose_ts, n, e))
+            if len(self._pos_history) > 600:
+                self._pos_history = self._pos_history[-400:]
             err_n, err_e = target_n - n, target_e - e
             dist = math.hypot(err_n, err_e)
             if dist <= HORIZONTAL_TOLERANCE:
@@ -222,9 +337,7 @@ class MoveItMission:
                 speed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * (dist / SLOW_DOWN_RADIUS)
             vel_n = err_n / dist * speed
             vel_e = err_e / dist * speed
-            await self.drone.offboard.set_position_velocity_ned(
-                PositionNedYaw(target_n, target_e, -alt, 0.0),
-                VelocityNedYaw(vel_n, vel_e, 0.0, 0.0))
+            await self._set_setpoint(target_n, target_e, alt, vel_n, vel_e)
             if time.monotonic() > deadline:
                 logger.warning("wp timeout — scanning anyway")
                 return False
@@ -297,7 +410,11 @@ class MoveItMission:
                 logger.error("no local position estimate — refusing to fly")
                 return 2
 
+            # Background telemetry: yaw (camera->world), FC fused NED (pose),
+            # battery (failsafe). These feed _pose() and _check_safety().
             self._tasks.append(asyncio.create_task(self._yaw_loop()))
+            self._tasks.append(asyncio.create_task(self._telem_loop()))
+            self._tasks.append(asyncio.create_task(self._battery_loop()))
             try:
                 await drone.action.set_takeoff_altitude(alt)
             except Exception:
@@ -349,6 +466,8 @@ class MoveItMission:
             return 1
 
     async def _land_and_disarm(self, *, aborted: bool) -> int:
+        if self._abort_reason:
+            logger.error("landing due to ABORT: %s", self._abort_reason)
         logger.info("landing + disarming")
         try:
             await self.drone.offboard.stop()
@@ -388,12 +507,36 @@ def _load_waypoints(args):
     """Return [(north, east, alt_or_None), ...]. Accepts [n,e] or [n,e,alt] rows."""
     path = args.waypoints or args.waypoints_from_json
     if not path:
+        logger.warning("no --waypoints-from-json given — using tiny DEFAULT_WAYPOINTS demo, "
+                       "NOT a real %sx%s arena sweep. Generate one with tools/survey_box.py.",
+                       ARENA_W_M, ARENA_L_M)
         return [(n, e, None) for (n, e) in DEFAULT_WAYPOINTS]
     data = json.loads(Path(path).read_text())
     out = [(float(r[0]), float(r[1]), (float(r[2]) if len(r) > 2 else None)) for r in data]
     if not out:
         raise ValueError(f"{path}: waypoints list is empty")
+    _sanity_check_waypoints(out, path)
     return out
+
+
+def _sanity_check_waypoints(wps, path) -> None:
+    """Heuristic sanity check vs the 5.5x11 arena. Warnings only (the NED
+    frame origin/orientation is set by survey — bounds may be shifted)."""
+    ns = [n for (n, _e, _a) in wps]
+    es = [e for (_n, e, _a) in wps]
+    n_span, e_span = max(ns) - min(ns), max(es) - min(es)
+    usable_n, usable_e = ARENA_L_M - 2 * ARENA_MARGIN_M, ARENA_W_M - 2 * ARENA_MARGIN_M
+    logger.info("waypoints: %d pts, north %.2f..%.2f (span %.2f), east %.2f..%.2f (span %.2f)",
+                len(wps), min(ns), max(ns), n_span, min(es), max(es), e_span)
+    # Over-coverage: a span wider than the arena+margin risks flying into a wall.
+    if n_span > ARENA_L_M + 0.5 or e_span > ARENA_W_M + 0.5:
+        logger.warning("waypoints span (%.1fx%.1f) EXCEEDS arena (%.1fx%.1f) — wall-collision risk! "
+                       "Check the frame/scale in %s.", n_span, e_span, ARENA_L_M, ARENA_W_M, path)
+    # Under-coverage: too small to map the arena (e.g. the legacy 4.4x7.85 file).
+    if n_span < 0.6 * usable_n or e_span < 0.6 * usable_e:
+        logger.warning("waypoints span (%.1fx%.1f) covers < 60%% of usable arena (%.1fx%.1f) — "
+                       "may miss landing pads. Re-survey with tools/survey_box.py.",
+                       n_span, e_span, usable_n, usable_e)
 
 
 def _parse_args(argv=None) -> argparse.Namespace:
@@ -403,6 +546,12 @@ def _parse_args(argv=None) -> argparse.Namespace:
     mode.add_argument("--nofly", action="store_true", help="UWB+camera+artifacts, no arm")
     mode.add_argument("--check", action="store_true", help="connect + print pose, no arm")
     p.add_argument("--mavsdk-address", default="serial:///dev/ttyS6:921600")
+    p.add_argument("--pose", choices=["fc", "uwb"], default="fc",
+                   help="horizontal pose source: fc=MAVSDK fused NED (default, DDS-immune, "
+                        "matches survey_box waypoints); uwb=/uwb_tag arena frame (unreliable "
+                        "under cross-team DDS). Altitude always from FC.")
+    p.add_argument("--use-ir-for-aruco", action="store_true",
+                   help="D450 (no-RGB) cameras: read left IR + synth BGR for ArUco")
     p.add_argument("--aruco-dict", default="7X7_1000",
                    help="org landing-pad markers are DICT_7X7_1000 (default reflects that)")
     p.add_argument("--waypoints", default=None)
@@ -421,8 +570,14 @@ def _parse_args(argv=None) -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
+    # Isolate our ROS2 graph from other teams on the shared arena network.
+    # Everything ROS2 runs on this one Orange Pi, so localhost-only is safe
+    # and walls us off from cross-team DDS interference on ROS_DOMAIN_ID=0.
+    os.environ.setdefault("ROS_LOCALHOST_ONLY", "1")
     logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.INFO),
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logger_pre = logging.getLogger("mapping_drone.moveit_mission")
+    logger_pre.info("ROS_LOCALHOST_ONLY=%s | pose source=%s", os.environ.get("ROS_LOCALHOST_ONLY"), args.pose)
 
     run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = Path(args.runs_dir).resolve() / f"run_{run_ts}"
@@ -433,6 +588,9 @@ def main() -> int:
     logger.info("VALIDITY of org IDs %s -> %s", _org_ids, _cls)
     if all(v is False for v in _cls.values()):
         logger.warning("ALL FIVE org pads classify INVALID — set MAPPING_DRONE_VALIDITY before a scored run!")
+    elif all(v is None for v in _cls.values()):
+        logger.warning("ALL FIVE org pads classify UNKNOWN — validity lookup table not found; "
+                       "run from semifinal/ or set MAPPING_DRONE_VALIDITY_LOOKUP to the JSON path.")
 
     drone = None
     if args.fly or args.check:
@@ -443,7 +601,7 @@ def main() -> int:
         drone = System()
 
     uwb = UwbNode()
-    realsense = RealsenseNode()
+    realsense = RealsenseNode(use_ir_for_aruco=args.use_ir_for_aruco)
     run_writer = RunWriter(run_dir, run_ts)
 
     mission: Optional[MoveItMission] = None

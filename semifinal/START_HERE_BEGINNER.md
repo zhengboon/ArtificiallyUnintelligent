@@ -1,3 +1,6 @@
+<!--OPDOC-BANNER-->
+> ⚠️ **SUPERSEDED — to run the mapping drone use [OP_DOC.md](OP_DOC.md).** This file is kept for historical detail only; the live decision-tree runbook is OP_DOC.md.
+
 # Start Here — Mapping Drone (Challenge 1), for a beginner
 
 You don't need to understand the whole codebase. The code is **already written**. Your job is to

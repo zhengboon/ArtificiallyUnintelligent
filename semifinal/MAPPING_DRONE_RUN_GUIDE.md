@@ -1,3 +1,6 @@
+<!--OPDOC-BANNER-->
+> ⚠️ **SUPERSEDED — to run the mapping drone use [OP_DOC.md](OP_DOC.md).** This file is kept for historical detail only; the live decision-tree runbook is OP_DOC.md.
+
 # Mapping Drone — Run Guide (Non-Fly + Fly)
 
 **The single authoritative procedure for Challenge 1 on the real drone.** Covers ground testing

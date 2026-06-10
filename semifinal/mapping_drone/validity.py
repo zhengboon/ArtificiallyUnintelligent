@@ -53,8 +53,13 @@ logger = logging.getLogger(__name__)
 
 _ENV_VAR = "MAPPING_DRONE_VALIDITY"
 _ENV_VAR_LOOKUP = "MAPPING_DRONE_VALIDITY_LOOKUP"
-_DEFAULT_RULE = "even"
-_DEFAULT_LOOKUP_RELPATH = "configs/valid_ids_unknown.json"
+# Default is the finals lookup table (valid_ids_finals.json lists the org's
+# real landing-pad IDs 11/45/51/67/101). This is deliberately NOT 'even':
+# the org IDs are all ODD, so an 'even' default would mark every real pad
+# INVALID — a silent scoring catastrophe. Override at runtime with
+# MAPPING_DRONE_VALIDITY=<rule> if ever needed.
+_DEFAULT_RULE = "lookup"
+_DEFAULT_LOOKUP_RELPATH = "configs/valid_ids_finals.json"
 
 _RULES: dict[str, Callable[[int], bool]] = {
     "even": lambda aid: (aid % 2) == 0,
@@ -100,6 +105,19 @@ def _load_lookup(path: Path) -> dict[str, set[int]]:
     cached = _LOOKUP_CACHE.get(key)
     if cached is not None:
         return cached
+    if not path.exists():
+        # Tolerate a missing lookup file: every ID resolves to None (unknown)
+        # rather than crashing the detection pipeline. Loud warning so the
+        # operator knows the validity table was not found.
+        logger.warning(
+            "validity lookup file %s NOT FOUND — every pad will classify "
+            "UNKNOWN (None). Run from semifinal/ or set "
+            "MAPPING_DRONE_VALIDITY_LOOKUP=/abs/path/to/valid_ids_finals.json",
+            path,
+        )
+        bundle = {"valid": set(), "invalid": set()}
+        _LOOKUP_CACHE[key] = bundle
+        return bundle
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     valid = {int(x) for x in data.get("valid_ids", [])}

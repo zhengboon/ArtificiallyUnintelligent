@@ -1,3 +1,6 @@
+<!--OPDOC-BANNER-->
+> ⚠️ **SUPERSEDED — to run the mapping drone use [OP_DOC.md](OP_DOC.md).** This file is kept for historical detail only; the live decision-tree runbook is OP_DOC.md.
+
 # HANDOFF_C1_TO_C2
 
 > **IMPORTANT — C2A landing coords come from Discord, NOT this artifact.**

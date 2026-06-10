@@ -1,3 +1,6 @@
+<!--OPDOC-BANNER-->
+> ⚠️ **SUPERSEDED — to run the mapping drone use [OP_DOC.md](OP_DOC.md).** This file is kept for historical detail only; the live decision-tree runbook is OP_DOC.md.
+
 # semifinal/ — full-tree analysis (10 June 2026)
 
 Produced by a 10-agent fan-out audit of every file in `semifinal/` (~110 files), reconciled against the

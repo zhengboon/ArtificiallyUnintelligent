@@ -113,7 +113,7 @@ class Px4Mission:
         self.flight = flight             # Px4Ros2Flight or None (no autonomy)
         self.realsense = realsense
         self.run_writer = run_writer
-        self.detector = ArucoDetector(dict_name=getattr(args, "aruco_dict", "6X6_250"))
+        self.detector = ArucoDetector(dict_name=getattr(args, "aruco_dict", "7X7_1000"))
         self.grid = OccupancyGrid(resolution_m=0.05, size_m=20.0)
         self.sightings: list[ArucoSighting] = []
         self._seq = 0
@@ -380,6 +380,9 @@ def _parse_args(argv=None) -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
+    # Isolate our ROS2 graph from other teams (shared ROS_DOMAIN_ID=0 leaks).
+    import os
+    os.environ.setdefault("ROS_LOCALHOST_ONLY", "1")
     logging.basicConfig(level=getattr(logging, args.log_level.upper(), logging.INFO),
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 

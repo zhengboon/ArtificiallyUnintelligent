@@ -106,7 +106,7 @@ class ArucoDetector:
     """Wraps cv2.aruco. Uses the new ArucoDetector API when available,
     otherwise falls back to the legacy detectMarkers signature."""
 
-    def __init__(self, dict_name: str = "6X6_250") -> None:
+    def __init__(self, dict_name: str = "7X7_1000") -> None:
         key = _normalize_dict_name(dict_name)
         if key not in _ARUCO_DICTS:
             supported = sorted(_ARUCO_DICTS.keys())
@@ -264,8 +264,8 @@ def _deproject(intrinsics, u: float, v: float, depth_m: float) -> tuple[float, f
     elif isinstance(intrinsics, dict):
         fx = float(intrinsics["fx"])
         fy = float(intrinsics["fy"])
-        cx = float(intrinsics.get("ppx", intrinsics.get("cx")))
-        cy = float(intrinsics.get("ppy", intrinsics.get("cy")))
+        cx = float(intrinsics.get("ppx") if intrinsics.get("ppx") is not None else intrinsics.get("cx"))
+        cy = float(intrinsics.get("ppy") if intrinsics.get("ppy") is not None else intrinsics.get("cy"))
     else:
         raise TypeError(f"Unsupported intrinsics type: {type(intrinsics)!r}")
 
@@ -490,7 +490,7 @@ class OccupancyGrid:
                 float(intrinsics.ppy),
             )
         if isinstance(intrinsics, dict):
-            cx = float(intrinsics.get("ppx", intrinsics.get("cx")))
-            cy = float(intrinsics.get("ppy", intrinsics.get("cy")))
+            cx = float(intrinsics.get("ppx") if intrinsics.get("ppx") is not None else intrinsics.get("cx"))
+            cy = float(intrinsics.get("ppy") if intrinsics.get("ppy") is not None else intrinsics.get("cy"))
             return (float(intrinsics["fx"]), float(intrinsics["fy"]), cx, cy)
         raise TypeError(f"Unsupported intrinsics type: {type(intrinsics)!r}")
