@@ -1,13 +1,10 @@
-# A simple and short reference code of connecting to multiple hula drones in the wifi network.
-# Make sure your laptop is in that network of hula drones and make sure all hula drones are online in that network
-# This code uses pyhulax python library to connect to Hula Drone. 
-# Refer to https://pyhulax.xenops.ae to learn how to use library to control movements of Hula drone swarm
-# Ths code only shows you to get all video streams of all drones onto one computer so
-# you can do multiple drone detection from one computer.
-# You need pyhulax and dola.py
+# Swarm Controller for DSTA Brainhack RoboVerse 2026 — Challenge 2
+# 3 HULA drones simulate wall-following using UWB waypoints.
+# Phase A: fly to landing zones using UWB navigation.
+# Phase B: fly perimeter waypoints at varying margins, spin 360 at each waypoint.
 
 from pyhulax import DroneAPI
-from pyhulax.core import Direction
+from pyhulax.core import Direction, CameraPitchMode
 import cv2
 from dola import Dola
 from pyhulax.video import VideoStream, VideoDisplay
@@ -16,185 +13,106 @@ import time
 import math
 import os
 import threading
-from wall_following import (
-    make_wf_state,
-    wall_follower_tick,
-)
-from pyhulax.core import CameraPitchMode
+import tempfile
+import types
 import signal
 
 # ============================================================
-# Configuration
+# Arena Configuration
+# ============================================================
+
+# UWB origin offset — update on competition day
+CAGE_ORIGIN_X = 5.5   # Cage 1=0.0, Cage 2=5.5, Cage 3=5.5
+CAGE_ORIGIN_Y = 0.0   # Cage 1=0.0, Cage 2=0.0, Cage 3=5.5
+
+# Arena boundary corners (UWB metres)
+ARENA_X_MIN = 5.5
+ARENA_X_MAX = 11.0
+ARENA_Y_MIN = 0.0
+ARENA_Y_MAX = 11.0
+
+# Each drone follows a perimeter loop at a different margin
+# Drone 1: outer  (0.5m), CCW
+# Drone 2: middle (1.8m), CW
+# Drone 3: inner  (1.0m), CCW
+DRONE_MARGINS    = [0.5, 1.8, 1.0]
+DRONE_ORBIT_DIRS = [-1, 1, -1]   # -1=CCW, +1=CW (in UWB coordinates where y increases upward)
+
+# Waypoint spacing along perimeter
+WAYPOINT_SPACING = 2.0   # metres
+
+# ============================================================
+# Mission Configuration
 # ============================================================
 
 LANDING_ZONES = [
-    # (1.35, 4.4),  # ID 11: Landing (x,y) coordinates for drone 1 -- TO DO: change according to actual arena map (w.r.t. to the UWB origin)
-    (1.3, 7.85),  # ID 45: Landing (x,y) coordinates for drone 2 -- TO DO: change according to actual arena map (w.r.t. to the UWB origin)
-    (4.4, 4.4),  # ID 51: Landing (x,y) coordinates for drone 3 -- TO DO: change according to actual arena map (w.r.t. to the UWB origin)
-    (1.95, 8.7),  # ID 67 
-    # (4.4, 7.85)  # ID 101
-]   
+    (1.3, 7.85),   # drone 1 -- TO DO: update on competition day
+    (4.4, 4.4),    # drone 2 -- TO DO: update on competition day
+    (1.95, 8.7),   # drone 3 -- TO DO: update on competition day
+]
 
-FLIGHT_ALTITUDE_CM = 110  # Recommended height is 110cm (1.1m)
-POSITION_THRESHOLD_M = 0.3  # Distance to be considered close enough to a waypoint
-MAX_FLIGHT_SPEED = 500   # -1000 to +1000 range, 500 = 50% speed
-TOTAL_ROBOTS = 5  # Total number of RoboMasters
-SNAPSHOT_DIR = "snapshots"  # Directory where our captured images will be stored
-
-# ============================================================
-# Aruco Configuration
-# ============================================================
-
-ARUCO_DICT = cv2.aruco.DICT_7X7_1000
-ROBOMASTER_IDS = {11, 45, 51, 67, 101}  # IDs on RoboMaster robots  -- -- TO DO: Change according to the actual RoboMaster IDs (DONE)
+FLIGHT_ALTITUDE_CM   = 110
+POSITION_THRESHOLD_M = 0.3
+MAX_FLIGHT_SPEED     = 500   # Phase A navigation
+MAX_FORWARD_SPEED    = 300   # Phase B movement
+SPIN_SPEED           = 300   # yaw rate during 360 scan
+SPIN_EVERY_N         = 3     # spin at every Nth waypoint
+TOTAL_ROBOTS         = 5
+SNAPSHOT_DIR         = "snapshots"
+TAKEOFF_DELAY        = 1.0
+CLIMB_TIME           = 5.0   # seconds after non-blocking takeoff
+DRONE_REPEL_DIST     = 0.5   # metres — UWB avoidance trigger distance
 
 # ============================================================
-# Staggered Takeoff
+# ArUco Configuration
 # ============================================================
 
-TAKEOFF_DELAY = 1.0  # seconds between each drone's takeoff
+ARUCO_DICT     = cv2.aruco.DICT_7X7_1000
+ROBOMASTER_IDS = {11, 45, 51, 67, 101}  # DELETE 28
 
 # ============================================================
-# UWB Helpers
+# UWB Tag ID Mapping
+# Hardcoded — given by admin on competition day
+# Format: {drone_ip_str: uwb_block_id}
 # ============================================================
 
-def uwb_distance(pos1, pos2):
-    """Euclidean distance between two UWB (x, y) positions in metres."""
-    return math.sqrt((pos1[0]-pos2[0])**2 + (pos1[1]-pos2[1])**2)
-
-
-def measure_landing_zones(uwb, scan_range=30):  # assuming the block_id is within 1-30 (TO DO: change accordingly)
-    """
-    Measure landing zone coordinates directly from the UWB system.
-    Run this BEFORE the mission to fill LANDING_ZONES correctly.
-
-    This guarantees landing zone coordinates are in the same
-    UWB coordinate frame as drone positions — so auto_match_uwb_tags()
-    works correctly later.
-
-    How to use this function:
-    1. Place all drones on their landing zones (powered on)
-    2. Call this function
-    3. Copy the printed coordinates into LANDING_ZONES
-    4. Re-run the script to start the mission —
-    auto_match_uwb_tags() handles drone-to-zone matching
-    automatically after Phase A landing
-    """
-    print("\n[UWB MEASURE] Place all drones on their landing zones.")
-    print("[UWB MEASURE] Press Enter when ready...")
-    input()
-    print("\n[UWB MEASURE] Reading UWB positions...")
-    
-    found = []
-    for tag_id in range(scan_range):
-        x, y, _ = uwb.get_tag_position(tag_id)
-        if x is not None:
-            found.append((tag_id, x, y))
-    
-    if not found:
-        print("[UWB MEASURE] No UWB tags detected. Check UWB system.")
-        return
-    
-    print(f"\n[UWB MEASURE] Found {len(found)} UWB tag(s).")
-    print("[UWB MEASURE] Copy these into LANDING_ZONES at top of file:\n")
-    print("LANDING_ZONES = [")
-    for tag_id, x, y in found:
-        print(f"({x:.2f}, {y:.2f}), # block_id={tag_id}")
-    print("]\n")
-
-
-def auto_match_uwb_tags(drone_list, drone_landing_zones, uwb, scan_range=30, threshold_m=0.5):  # TO DO: Change scan_range accordingly based on block_id of uwb tags
-    """
-    Automatically match each drone IP to its UWB block_id by
-    comparing UWB tag positions to known landing zone positions.
-
-    Called after Phase A when all drones have landed on their
-    assigned zones — at that point each drone is sitting at a
-    known location so position matching is unambiguous.
-
-    Args:
-        drone_list         -- list of drone IP strings
-        drone_landing_zones -- dict of {ip_str: (x, y)} in metres
-        uwb                -- UWBParserThread object
-        scan_range         -- how many block_ids to scan (0 to scan_range-1)
-        threshold_m        -- max distance (metres) to accept a match
-
-    Populates UWB_TAG_IDS globally.
-    """
-    print("\n[UWB] Auto-matching drone IPs to UWB block_ids...")
-
-    for ip_str in drone_list:
-        zone = drone_landing_zones.get(ip_str)
-        if zone is None:
-            print(f"  [UWB] {ip_str} — no landing zone assigned, skipping.")
-            continue
-
-        best_tag = None
-        best_dist = 999.0
-
-        # Scan all possible block_ids and find closest to this landing zone
-        for tag_id in range(scan_range):
-            x, y, _ = uwb.get_tag_position(tag_id)
-            if x is None:
-                continue
-            d = uwb_distance((x, y), zone)
-            if d < best_dist:
-                best_dist = d
-                best_tag = tag_id
-
-        if best_tag is not None and best_dist < threshold_m:
-            UWB_TAG_IDS[ip_str] = best_tag
-            print(f"  [UWB] {ip_str} -> block_id={best_tag} "
-                  f"(dist={best_dist:.2f}m from landing zone {zone})")
-        else:
-            print(f"  [UWB] WARNING: {ip_str} — no UWB tag found within "
-                  f"{threshold_m}m of landing zone {zone}. "
-                  f"Phase B avoidance may not work correctly.")
-    
-    print(f"[UWB] Matching complete: {UWB_TAG_IDS}\n")
-
-
-# ============================================================
-# UWB TAG ID MAPPING
-# Maps drone IP address to its physical UWB block_id.
-# Filled automatically by auto_match_uwb_tags() after Phase A landing
-# No manual configuration needed.
-# ============================================================
-
-UWB_TAG_IDS = {}
+UWB_TAG_IDS = {
+    # EXAMPLE: (Need to get UWB id from admin)
+    "192.168.1.101": 3,    # drone 1 IP → UWB block_id
+    "192.168.1.102": 7,    # drone 2 IP → UWB block_id
+    "192.168.1.103": 12,   # drone 3 IP → UWB block_id
+}   # TO DO: fill in on competition day
 
 # ============================================================
 # Phase A State Definitions
 # ============================================================
 
-STATE_TAKEOFF_A = "STATE_TAKEOFF_A"
-STATE_FLY_TO_ZONE = "STATE_FLY_TO_ZONE"
-STATE_LAND = "STATE_LAND"
+STATE_TAKEOFF_A    = "STATE_TAKEOFF_A"
+STATE_TAKING_OFF_A = "STATE_TAKING_OFF_A"
+STATE_FLY_TO_ZONE  = "STATE_FLY_TO_ZONE"
+STATE_LAND         = "STATE_LAND"
 STATE_WAIT_PHASE_B = "STATE_WAIT_PHASE_B"
 
-# =================================================================================================
-# Phase B State Definitions (the other wall-following states are imported from wall_following.py)
-# =================================================================================================
+# ============================================================
+# Phase B State Definitions
+# ============================================================
 
-STATE_TAKEOFF_B = "STATE_TAKEOFF_B"
-STATE_WALL_FOLLOWING = "STATE_WALL_FOLLOWING"
-WF_AVOID_DRONE = "WF_AVOID_DRONE"
+STATE_TAKEOFF_B        = "STATE_TAKEOFF_B"
+STATE_TAKING_OFF_B     = "STATE_TAKING_OFF_B"
+STATE_FLY_TO_WAYPOINT  = "STATE_FLY_TO_WAYPOINT"
+STATE_SPIN_SCAN        = "STATE_SPIN_SCAN"
 STATE_MISSION_COMPLETE = "STATE_MISSION_COMPLETE"
 
 # ============================================================
 # Global Shared State
 # ============================================================
 
-robots_found = 0
-snapshotted_ids = set()
-phase_b_approved = False  # set True when operator presses Enter to start Phase B
+robots_found     = 0
+snapshotted_ids  = set()
+phase_b_approved = False
 
 def _wait_for_phase_b():
-    """
-    Runs in background thread — waits for operator to press Enter
-    before Phase B begins. Loop keeps running while waiting so
-    drones stay landed on their zones.
-    """
+    """Background thread — waits for operator Enter before Phase B."""
     global phase_b_approved
     input("\n[MISSION] All drones landed. Press Enter to start Phase B: ")
     phase_b_approved = True
@@ -202,120 +120,287 @@ def _wait_for_phase_b():
 
 
 # ============================================================
-# Aruco Detection
+# Helper Functions
+# ============================================================
+
+def wrap_to_pi(angle):
+    """Keep angle within -pi to +pi."""
+    while angle > math.pi:
+        angle -= 2 * math.pi
+    while angle < -math.pi:
+        angle += 2 * math.pi
+    return angle
+
+
+def uwb_distance(pos1, pos2):
+    """Euclidean distance between two UWB (x, y) positions in metres."""
+    return math.sqrt((pos1[0]-pos2[0])**2 + (pos1[1]-pos2[1])**2)
+
+
+def get_uwb_position(uwb, ip_str):
+    """Get drone UWB position. Returns (x, y) or None."""
+    tag_id = UWB_TAG_IDS.get(ip_str)
+    if tag_id is None:
+        return None
+    x, y, _ = uwb.get_tag_position(tag_id)
+    return (x, y) if x is not None else None
+
+
+def read_sensors(drone):
+    """Read IR sensors. Returns (front, left, right) booleans."""
+    obstacles = drone.get_obstacles()
+    return obstacles.forward, obstacles.left, obstacles.right
+
+
+# ============================================================
+# Waypoint Generation
+# ============================================================
+
+def generate_perimeter_waypoints(margin, orbit_dir, spacing=WAYPOINT_SPACING):
+    """
+    Generate waypoints along the perimeter rectangle at given margin.
+    Simulates wall-following using UWB waypoints instead of IR sensors.
+
+    Args:
+        margin    -- distance from arena boundary in metres
+        orbit_dir -- -1=CCW, +1=CW (UWB coordinates, y increases upward)
+        spacing   -- distance between waypoints in metres
+
+    Returns list of (x, y) tuples.
+    """
+    x_min = ARENA_X_MIN + margin
+    x_max = ARENA_X_MAX - margin
+    y_min = ARENA_Y_MIN + margin
+    y_max = ARENA_Y_MAX - margin
+
+    waypoints = []
+
+    # Bottom edge: left to right
+    x = x_min
+    while x <= x_max + 0.01:
+        waypoints.append((round(x, 2), round(y_min, 2)))
+        x += spacing
+
+    # Right edge: bottom to top
+    y = y_min + spacing
+    while y <= y_max + 0.01:
+        waypoints.append((round(x_max, 2), round(y, 2)))
+        y += spacing
+
+    # Top edge: right to left
+    x = x_max - spacing
+    while x >= x_min - 0.01:
+        waypoints.append((round(x, 2), round(y_max, 2)))
+        x -= spacing
+
+    # Left edge: top to bottom
+    y = y_max - spacing
+    while y >= y_min + spacing - 0.01:
+        waypoints.append((round(x_min, 2), round(y, 2)))
+        y -= spacing
+
+    # Reverse for CCW orbit
+    if orbit_dir == 1:
+        waypoints = list(reversed(waypoints))
+
+    return waypoints
+
+
+# ============================================================
+# Obstacle Avoidance (IR-based, reactive)
+# ============================================================
+
+def compute_avoidance(front, left, right, orbit_dir):
+    """
+    Compute avoidance velocity based on IR sensor readings.
+    Only used for unexpected obstacles — waypoints handle navigation.
+
+    orbit_dir: -1=CCW (strafe left when front blocked)
+               +1=CW  (strafe right when front blocked)
+
+    Returns (x_cmd, y_cmd) or (None, None) if no obstacle.
+    """
+    if front and left and right:
+        return -MAX_FORWARD_SPEED, 0        # boxed in — back up
+
+    elif front and left:
+        return 0, MAX_FORWARD_SPEED         # strafe right
+
+    elif front and right:
+        return 0, -MAX_FORWARD_SPEED        # strafe left
+
+    elif front:
+        # CCW (+1) → strafe left (-y)
+        # CW  (-1) → strafe right (+y)
+        return 0, -orbit_dir * MAX_FORWARD_SPEED
+
+    elif left and right:
+        return MAX_FORWARD_SPEED, 0         # fly forward
+
+    elif left:
+        return 0, MAX_FORWARD_SPEED         # strafe right
+
+    elif right:
+        return 0, -MAX_FORWARD_SPEED        # strafe left
+
+    else:
+        return None, None                   # no obstacle
+
+
+# ============================================================
+# Inter-Drone Avoidance
+# ============================================================
+
+def check_drone_avoidance(ip_str, drone_id, current_pos,
+                           drone_list, drone_ids, uwb, states):
+    """
+    Check if a higher-priority drone is too close.
+    Higher priority = lower drone_id.
+    Returns True if avoidance triggered.
+    """
+    if current_pos is None:
+        return False
+
+    for other_ip in drone_list:
+        if other_ip == ip_str:
+            continue
+        other_id  = drone_ids[other_ip]
+        other_pos = get_uwb_position(uwb, other_ip)
+        if other_pos is None:
+            continue
+        d = uwb_distance(current_pos, other_pos)
+        if d < DRONE_REPEL_DIST and drone_id > other_id:
+            print(f"[Drone {drone_id+1}] Too close to Drone "
+                  f"{other_id+1} ({d:.2f}m). Hovering.")
+            return True
+    return False
+
+
+# ============================================================
+# UWB Navigation
+# ============================================================
+
+def navigate_to(drone, current_pos, target, max_speed):
+    """
+    Navigate toward target using UWB position.
+    Returns True if arrived, False if still navigating.
+    """
+    if current_pos is None:
+        return False
+
+    dx   = target[0] - current_pos[0]
+    dy   = target[1] - current_pos[1]
+    dist = math.sqrt(dx**2 + dy**2)
+
+    if dist < POSITION_THRESHOLD_M:
+        drone.send_manual_control(x=0, y=0)
+        return True
+
+    # Rotate global UWB vector into drone body frame
+    # Negate heading because HULA yaw is clockwise positive
+    heading = -math.radians(drone.get_orientation().yaw)
+    vx_g    = dx / dist
+    vy_g    = dy / dist
+    x_cmd   = int(min(max_speed, dist * 1000) *
+                  ( vx_g * math.cos(heading) + vy_g * math.sin(heading)))
+    y_cmd   = int(min(max_speed, dist * 1000) *
+                  (-vx_g * math.sin(heading) + vy_g * math.cos(heading)))
+    drone.send_manual_control(x=x_cmd, y=y_cmd)
+    return False
+
+
+# ============================================================
+# ArUco Detection
 # ============================================================
 
 def make_aruco_detector():
-    """Create Aruco detector once at startup and reuse every frame."""
+    """Create ArUco detector. Supports old and new OpenCV."""
     aruco_dict = cv2.aruco.getPredefinedDictionary(ARUCO_DICT)
-    parameters = cv2.aruco.DetectorParameters()
-    return cv2.aruco.ArucoDetector(aruco_dict, parameters)
+    if hasattr(cv2.aruco, 'DetectorParameters_create'):
+        parameters = cv2.aruco.DetectorParameters_create()
+    else:
+        parameters = cv2.aruco.DetectorParameters()
+    if hasattr(cv2.aruco, 'ArucoDetector'):
+        return cv2.aruco.ArucoDetector(aruco_dict, parameters)
+    else:
+        return (aruco_dict, parameters)
 
 
 def detect_aruco(frame, detector):
-    """
-    Detect ArUco markers in a frame.
-    Returns list of dicts: [{ 'id': int, 'center': (cx, cy) }]
-    Only returns markers in ROBOMASTER_IDS.
-    """
+    """Detect ArUco markers. Returns list of {'id', 'center'} dicts."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    corners, ids, _ = detector.detectMarkers(gray)
+    if isinstance(detector, tuple):
+        aruco_dict, parameters = detector
+        corners, ids, _ = cv2.aruco.detectMarkers(
+            gray, aruco_dict, parameters=parameters)
+    else:
+        corners, ids, _ = detector.detectMarkers(gray)
     detections = []
     if ids is None:
         return detections
     for marker_corners, marker_id in zip(corners, ids.flatten()):
+        print(f"[DEBUG] Detected marker ID: {marker_id}")
         if int(marker_id) not in ROBOMASTER_IDS:
             continue
         pts = marker_corners.reshape((4, 2))
-        cx = int((pts[0][0] + pts[2][0]) / 2.0)
-        cy = int((pts[0][1] + pts[2][1]) / 2.0)
+        cx  = int((pts[0][0] + pts[2][0]) / 2.0)
+        cy  = int((pts[0][1] + pts[2][1]) / 2.0)
         detections.append({'id': int(marker_id), 'center': (cx, cy)})
     return detections
 
 
-# ============================================================
-# Snapshot
-# ============================================================
 def save_snapshot(drone_id, frame, marker_id, detector):
-    """Draw a green border around each detected marker and save with ArUco ID in filename."""
+    """Save snapshot with ArUco markers drawn."""
     os.makedirs(SNAPSHOT_DIR, exist_ok=True)
     display = frame.copy()
-    gray = cv2.cvtColor(display, cv2.COLOR_BGR2GRAY)
-    c, i, _ = detector.detectMarkers(gray)
-    
+    gray    = cv2.cvtColor(display, cv2.COLOR_BGR2GRAY)
+    if isinstance(detector, tuple):
+        aruco_dict, parameters = detector
+        c, i, _ = cv2.aruco.detectMarkers(
+            gray, aruco_dict, parameters=parameters)
+    else:
+        c, i, _ = detector.detectMarkers(gray)
     if i is not None:
         cv2.aruco.drawDetectedMarkers(display, c, i)
-    
     timestamp = int(time.time())
-    filename = (f"{SNAPSHOT_DIR}/"
-                f"robot_aruco{marker_id}_drone{drone_id+1}_{timestamp}.jpg")
+    filename  = (f"{SNAPSHOT_DIR}/"
+                 f"robot_aruco{marker_id}_drone{drone_id+1}_{timestamp}.jpg")
     cv2.imwrite(filename, display)
     print(f"[SNAPSHOT] Aruco ID {marker_id} -> {filename}")
     return filename
 
 
 # ============================================================
-# Helpers
+# Video Stream Fix
 # ============================================================
 
-def get_uwb_position(uwb, ip_str):
-    """
-    Get drone UWB position in metres.
+def create_video_stream_fixed(drone, drone_id_num):
+    """Create video stream with correct SDP format matching Hula.cpp."""
+    v = drone.create_video_stream()
 
-    Translates drone IP address to its physical UWB block_id
-    using UWB_TAG_IDS — populated automatically by
-    auto_match_uwb_tags() after Phase A landing.
+    def _create_sdp_file_fixed(self):
+        videoport   = 9000 + drone_id_num * 2
+        sdp_content = (
+            f"m=video {videoport} RTP/AVP 98\n"
+            f"a=rtpmap:98 H264/90000\n"
+            f"a=framerate=30 packetization-mode=1\n"
+            f"c=IN IP4 0\n"
+        )
+        fd, path = tempfile.mkstemp(suffix=".sdp", prefix="drone_video_")
+        with os.fdopen(fd, 'w') as f:
+            f.write(sdp_content)
+        self._sdp_path = path
+        return path
 
-    Returns (x, y) or None if not available.
-    """
-    tag_id = UWB_TAG_IDS.get(ip_str)
-    if tag_id is None:
-        print(f"[UWB] WARNING: No UWB tag mapping for {ip_str}. "
-              f"Update UWB_TAG_IDS.")
-        return None
-    x, y, _ = uwb.get_tag_position(tag_id)
-    return (x, y) if x is not None else None
-    
+    v._create_sdp_file = types.MethodType(_create_sdp_file_fixed, v)
+    return v
 
-# =====================================================================
-# Inter-Drone Avoidance Configuration (Using UWB data from each drone)
-# =====================================================================
-# Distance within which drones repel each other (metres)
 
-DRONE_REPEL_DIST = 1.0
+# ============================================================
+# Emergency Landing
+# ============================================================
 
-def check_drone_avoidance(ip_str, drone_id, current_pos, drone_list, drone_ids, uwb, states):
-    """
-    Check if a higher-priority drone is too close via UWB.
-    If so transition this drone to WF_AVOID_DRONE (hover).
-
-    Only the lower-priority drone (higher ID) yields —
-    prevents deadlock where both drones avoid simultaneously.
-
-    Returns True if avoidance was triggered.
-    """
-    if current_pos is None:
-        return False
-    
-    for other_ip in drone_list:
-        if other_ip == ip_str:
-            continue
-        other_id = drone_ids[other_ip]
-        other_pos = get_uwb_position(uwb, other_ip)
-        if other_pos is None:
-            continue
-        d = uwb_distance(current_pos, other_pos)
-        if d < DRONE_REPEL_DIST:
-            # Priority rule: higher ID yields to lower ID
-            if drone_id > other_id:
-                print(f"[Drone {drone_id+1}] Too close to Drone "
-                      f"{other_id+1} ({d:.2f}m). Hovering.")
-                states[ip_str] = WF_AVOID_DRONE
-                return True
-    return False
-        
-
-drones = {}   # populated in main(). Used to store all drones object for control (# ip_str -> DroneAPI)
+drones = {}
 
 def emergency_land(sig, frame):
     global drones
@@ -342,109 +427,105 @@ def main():
         detector = make_aruco_detector()
 
         # Start UWB Parser
-        uwb = UWBParserThread()
+        uwb = UWBParserThread(x_origin=CAGE_ORIGIN_X, y_origin=CAGE_ORIGIN_Y)
         if uwb.serial_port:
             uwb.start()
-            time.sleep(2.0)   # wait for first frames
-            print("Measure landing zones now? (y / Enter to skip): ", end="")
-            if input().strip().lower() == "y":
-                measure_landing_zones(uwb)
-                print("Update LANDING_ZONES then re-run.")
-                return
+            time.sleep(2.0)
+
         else:
             print("No UWB device detected.")
 
         # Discover drones
         dola = Dola()
         dola.start()
-
         try:
             print("Searching for all drones")
-            d = dola.get_all_ips( # Dola is drone explorer. Find all drones in the network
-                listen_seconds=5
-            )
+            d = dola.get_all_ips(listen_seconds=5)
         finally:
             dola.stop()
 
-        streams = {}  # store all video object for live straam access (# ip_str -> VideoStream)
-        drone_list = []  # ordered list of ip_str
+        streams    = {}
+        drone_list = []
 
         for plane_id, ip in d.items():
             print(f"Plane {plane_id}: {ip}")
             ip_str = str(ip)
             drones[ip_str] = DroneAPI()
-            drones[ip_str].connect(ip) # connect to ip address to gain control of drone
+            drones[ip_str].connect(ip)
             drones[ip_str].set_barrier_mode(enabled=True)
-            drones[ip_str].set_camera_angle(CameraPitchMode.DOWN_ABSOLUTE, 45)  # set gimbal camera of HULA drones to point 45 degrees downwards
+            drones[ip_str].set_camera_angle(CameraPitchMode.DOWN_ABSOLUTE, 45)
             drone_list.append(ip_str)
-            v = drones[ip_str].create_video_stream() # Get VideoStream object
-            drones[ip_str].set_video_stream(True) # Turn on video stream
+            v = create_video_stream_fixed(drones[ip_str], plane_id)
+            drones[ip_str].set_video_stream(True)
             if v is not None:
-                streams[ip_str] = v # Store Videostream into a dict for future use
-                streams[ip_str].start() #start video
+                streams[ip_str] = v
+                streams[ip_str].start()
 
-        # YAW + UWB CONVENTION TEST -- run once on competition day, then remove
-        print("\nRun yaw/UWB convention test? (y / Enter to skip): ", end="")
-        if input().strip().lower() == "y":
-            test_drone = drones[drone_list[0]]
+        # Uncomment to run yaw/UWB convention test on competition day:
+        # print("\nRun yaw/UWB convention test? (y / Enter to skip): ", end="")
+        # if input().strip().lower() == "y":
+        #     test_drone = drones[drone_list[0]]
+        #     print("\n[TEST] Pick up drone. Press Enter to read. q+Enter to stop.\n")
+        #     while True:
+        #         user = input()
+        #         if user.strip().lower() == 'q':
+        #             break
+        #         yaw = test_drone.get_orientation().yaw
+        #         positions = []
+        #         for tag_id in range(30):
+        #             x, y, _ = uwb.get_tag_position(tag_id)
+        #             if x is not None:
+        #                 positions.append(f"block_id={tag_id}: ({x:.2f}, {y:.2f})")
+        #         print(f"[TEST] yaw={yaw:.1f}° | UWB: {positions}")
 
-            print("\n[TEST] Pick up the drone.")
-            print("[TEST] Press Enter to read yaw + UWB position. Type q + Enter to stop.\n")
-
-            while True:
-                user = input()
-                if user.strip().lower() == 'q':
-                    break
-                yaw = test_drone.get_orientation().yaw
-                # Scan all visible UWB tags and print their positions
-                # since UWB_TAG_IDS not populated yet
-                positions = []
-                for tag_id in range(30):
-                    x, y, _ = uwb.get_tag_position(tag_id)
-                    if x is not None:
-                        positions.append(f"block_id={tag_id}: ({x:.2f}, {y:.2f})")
-                print(f"[TEST] yaw={yaw:.1f} degrees | UWB: {positions}")
-                
-        # Assign landing zones and wall-following direction
-        drone_ids = {ip: idx for idx, ip in enumerate(drone_list)}
+        # Assign landing zones, orbit directions and waypoints per drone
+        drone_ids           = {ip: idx for idx, ip in enumerate(drone_list)}
         drone_landing_zones = {}
-        drone_wf_direction = {}  # +1 = left wall, -1 = right wall
+        drone_orbit_dir     = {}
+        drone_waypoints     = {}
 
         for idx, ip_str in enumerate(drone_list):
             if idx < len(LANDING_ZONES):
                 drone_landing_zones[ip_str] = LANDING_ZONES[idx]
-            drone_wf_direction[ip_str] = -1 if idx % 2 != 0 else 1  # Drones 1 and 3 will follow left wall, Drone 2 follows right wall.
-        
+
+            margin    = DRONE_MARGINS[idx % len(DRONE_MARGINS)]
+            orbit_dir = DRONE_ORBIT_DIRS[idx % len(DRONE_ORBIT_DIRS)]
+            drone_orbit_dir[ip_str] = orbit_dir
+            drone_waypoints[ip_str] = generate_perimeter_waypoints(
+                margin, orbit_dir)
+
+            print(f"Drone {idx+1} ({ip_str}): margin={margin}m | "
+                  f"{'CW' if orbit_dir==1 else 'CCW'} | "
+                  f"{len(drone_waypoints[ip_str])} waypoints")
+
         # Per-drone state initialisation
-        states = {ip: STATE_TAKEOFF_A for ip in drone_list}
-        takeoff_trigger = {ip: time.time() + drone_ids[ip] * TAKEOFF_DELAY
-                        for ip in drone_list}
-        wf_states = {ip: make_wf_state() for ip in drone_list}
+        states               = {ip: STATE_TAKEOFF_A for ip in drone_list}
+        takeoff_trigger      = {ip: time.time() + drone_ids[ip] * TAKEOFF_DELAY
+                                for ip in drone_list}
+        climb_until          = {ip: None for ip in drone_list}
+        current_wp_idx       = {ip: 0 for ip in drone_list}
+        spin_total_rotation  = {ip: 0.0 for ip in drone_list}
+        spin_prev_yaw        = {ip: 0.0 for ip in drone_list}
 
         # Main control loop (20 Hz)
-        while True: # just to keep looping . Add your drone commands for each respective drones in this loop.
+        print("Starting main loop...")
+        while True:
             now = time.time()
-            for ip_str in drone_list:
-                drone = drones[ip_str]
-                drone_id = drone_ids[ip_str]
 
-                # Speed monitoring -- remove once MAX_FORWARD_SPEED and MAX_FLIGHT_SPEED tuned
+            for ip_str in drone_list:
+                drone       = drones[ip_str]
+                drone_id    = drone_ids[ip_str]
+                state       = states[ip_str]
+                current_pos = get_uwb_position(uwb, ip_str)
+
+                # Speed monitoring — remove once speeds tuned
                 try:
                     v        = drone.get_velocity()
                     speed_ms = math.sqrt(v.x**2 + v.y**2) / 100
-                    print(f"[Drone {drone_id+1}] speed={speed_ms:.2f} m/s")
+                    print(f"[Drone {drone_id+1}] speed={speed_ms:.2f}m/s "
+                          f"state={state}")
                 except:
-                    pass   # TelemetryUnavailable -- skip if no data yet
-                state = states[ip_str]
-
-                current_pos = get_uwb_position(uwb, ip_str)
-
-                # write your control code here. For example, you can make the drone takeoff by calling d.takeoff() or move forward by d.move(Direction.FORWARD, 0.5) and etc. Refer to pyhulax documentation for more details on drone control commands.
-                # IMPORTANT CONCEPT: Break your plan into states and use if else statement to control the flow of the drone. 
-                # For example, you can have a state variable for each drone that starts at 0. When state is 0, you can make the drone takeoff and then set state to 1. 
-                # When state is 1, you can make the drone move forward for 2 seconds and then set state to 2. 
-                # This way you can have a sequence of commands for your drone and control the flow of the commands by changing the state variable.
-                #  You can also use timers to change states after certain amount of time.
+                    pass
 
                 # -----------------------------------------------
                 # PHASE A
@@ -452,56 +533,39 @@ def main():
 
                 if state == STATE_TAKEOFF_A:
                     if takeoff_trigger[ip_str] <= now:
-                        drone.takeoff(height_cm=FLIGHT_ALTITUDE_CM, blocking=True)
+                        drone.takeoff(height_cm=FLIGHT_ALTITUDE_CM,
+                                      blocking=False)
+                        climb_until[ip_str] = now + CLIMB_TIME
+                        states[ip_str]      = STATE_TAKING_OFF_A
+
+                elif state == STATE_TAKING_OFF_A:
+                    if now >= climb_until[ip_str]:
                         states[ip_str] = STATE_FLY_TO_ZONE
-                
+
                 elif state == STATE_FLY_TO_ZONE:
                     zone = drone_landing_zones.get(ip_str)
                     if zone is None or current_pos is None:
-                        continue
-                    dx = zone[0] - current_pos[0]
-                    dy = zone[1] - current_pos[1]
-                    dist = math.sqrt(dx**2 + dy**2)
-                    if dist < POSITION_THRESHOLD_M:
-                        drone.send_manual_control(x=0, y=0)  # stop
-                        states[ip_str] = STATE_LAND
+                        pass   # no UWB — wait
                     else:
-                        # Rotate global UWB velocity into drone body frame
-                        # using current heading so forward/right are correct
-                        heading = math.radians(drone.get_orientation().yaw)
-                        vx_g = (dx / dist)  # unit vector East
-                        vy_g = (dy / dist)  # unit vector North
-
-                        # Rotation Matrix (verify on actual day) 
-                        # Currently, this rotation matrix assumes yaw = 0 when drone faces the UWB x-axis direction (EAST))
-                        # 2ND assumption: Positive yaw = counterclockwise rotation
-                        # Rotate into drone body frame then scale to -1000/+1000
-                        x_cmd = int(min(MAX_FLIGHT_SPEED, dist * 1000) *
-                                    ( vx_g * math.cos(heading) + vy_g * math.sin(heading)))
-                        y_cmd = int(min(MAX_FLIGHT_SPEED, dist * 1000) *
-                                    (-vx_g * math.sin(heading) + vy_g * math.cos(heading)))
-                        drone.send_manual_control(x=x_cmd, y=y_cmd)
+                        arrived = navigate_to(
+                            drone, current_pos, zone, MAX_FLIGHT_SPEED)
+                        if arrived:
+                            states[ip_str] = STATE_LAND
 
                 elif state == STATE_LAND:
                     drone.land()
                     states[ip_str] = STATE_WAIT_PHASE_B
 
                 elif state == STATE_WAIT_PHASE_B:
-                    phase_a_active = {STATE_TAKEOFF_A, STATE_FLY_TO_ZONE, STATE_LAND}
+                    phase_a_active = {STATE_TAKEOFF_A, STATE_TAKING_OFF_A,
+                                      STATE_FLY_TO_ZONE, STATE_LAND}
                     all_done = not any(
                         states[ip] in phase_a_active for ip in drone_list
                     )
                     if all_done:
-                        # Run UWB matching once when all drones first land
-                        if not UWB_TAG_IDS:
-                            auto_match_uwb_tags(drone_list, drone_landing_zones, uwb)
-                        # Start approval thread once — waits for operator
-                        # to press Enter before Phase B begins.
-                        # Thread runs in background so drones stay landed.
                         if not phase_b_approved:
-                            # Only start the thread once (check if already started)
                             active = [t for t in threading.enumerate()
-                                    if t.name == "phase_b_approval"]
+                                      if t.name == "phase_b_approval"]
                             if not active:
                                 t = threading.Thread(
                                     target=_wait_for_phase_b,
@@ -509,92 +573,135 @@ def main():
                                     daemon=True
                                 )
                                 t.start()
-                        # Only transition when operator has approved
                         if phase_b_approved:
-                            takeoff_trigger[ip_str] = (now + drone_ids[ip_str] * TAKEOFF_DELAY)
+                            takeoff_trigger[ip_str] = (now +
+                                drone_ids[ip_str] * TAKEOFF_DELAY)
                             states[ip_str] = STATE_TAKEOFF_B
 
                 # -----------------------------------------------
                 # PHASE B
                 # -----------------------------------------------
-                
+
                 elif state == STATE_TAKEOFF_B:
                     if takeoff_trigger[ip_str] <= now:
-                        drone.takeoff(height_cm=FLIGHT_ALTITUDE_CM, blocking=True)
-                        wf_states[ip_str] = make_wf_state()
-                        states[ip_str] = STATE_WALL_FOLLOWING
+                        drone.takeoff(height_cm=FLIGHT_ALTITUDE_CM,
+                                      blocking=False)
+                        climb_until[ip_str] = now + CLIMB_TIME
+                        states[ip_str]      = STATE_TAKING_OFF_B
 
-                elif state == STATE_WALL_FOLLOWING:
+                elif state == STATE_TAKING_OFF_B:
+                    if now >= climb_until[ip_str]:
+                        current_wp_idx[ip_str] = 0
+                        states[ip_str]         = STATE_FLY_TO_WAYPOINT
+
+                elif state == STATE_FLY_TO_WAYPOINT:
                     if robots_found >= TOTAL_ROBOTS:
                         states[ip_str] = STATE_MISSION_COMPLETE
-                        continue
-
-                    avoided = check_drone_avoidance(
-                        ip_str, drone_id, current_pos, drone_list, drone_ids, uwb, states
-                    )
-                    if avoided:
-                        continue
-
-                    direction = drone_wf_direction[ip_str]
-                    x_cmd, y_cmd, r_cmd = wall_follower_tick(
-                        drone, wf_states[ip_str], direction, now
-                    )
-                    drone.send_manual_control(x=int(x_cmd), y=int(y_cmd), r=int(r_cmd))  # Send velocity
-                
-                elif state == WF_AVOID_DRONE:
-                    still_too_close = False
-                    for other_ip in drone_list:
-                        if other_ip == ip_str:
-                            continue
-                        other_pos = get_uwb_position(uwb, other_ip)
-                        if other_pos is None or current_pos is None:
-                            continue
-                        if uwb_distance(current_pos, other_pos) < DRONE_REPEL_DIST:
-                            still_too_close = True
-                            break
-                    if not still_too_close:
-                        states[ip_str] = STATE_WALL_FOLLOWING
                     else:
-                        drone.send_manual_control(x=0, y=0, r=0)  # hover
+                        waypoints = drone_waypoints[ip_str]
+                        idx       = current_wp_idx[ip_str] % len(waypoints)
+                        target    = waypoints[idx]
+                        orbit_dir = drone_orbit_dir[ip_str]
+
+                        # Check inter-drone avoidance first
+                        avoided = check_drone_avoidance(
+                            ip_str, drone_id, current_pos,
+                            drone_list, drone_ids, uwb, states
+                        )
+                        if avoided:
+                            drone.send_manual_control(x=0, y=0, r=0)
+                        else:
+                            # Check IR sensors for unexpected obstacles
+                            front, left, right = read_sensors(drone)
+                            x_av, y_av = compute_avoidance(
+                                front, left, right, orbit_dir)
+
+                            if x_av is not None:
+                                # Unexpected obstacle — avoid reactively
+                                drone.send_manual_control(x=x_av, y=y_av, r=0)
+                            else:
+                                # No obstacle — navigate to waypoint
+                                arrived = navigate_to(
+                                    drone, current_pos, target,
+                                    MAX_FORWARD_SPEED)
+                                if arrived:
+                                    # Only spin every Nth waypoint
+                                    if current_wp_idx[ip_str] % SPIN_EVERY_N == 0:
+                                        spin_total_rotation[ip_str] = 0.0
+                                        spin_prev_yaw[ip_str] = (
+                                            drone.get_orientation().yaw)
+                                        states[ip_str] = STATE_SPIN_SCAN
+                                    else:
+                                        current_wp_idx[ip_str] += 1
+                                        # stay in STATE_FLY_TO_WAYPOINT
+
+                elif state == STATE_SPIN_SCAN:
+                    if robots_found >= TOTAL_ROBOTS:
+                        states[ip_str] = STATE_MISSION_COMPLETE
+                    else:
+                        current_yaw = drone.get_orientation().yaw
+                        delta = abs(wrap_to_pi(
+                            math.radians(current_yaw) -
+                            math.radians(spin_prev_yaw[ip_str])
+                        ))
+                        spin_total_rotation[ip_str] += delta
+                        spin_prev_yaw[ip_str]        = current_yaw
+
+                        if spin_total_rotation[ip_str] >= 2 * math.pi:
+                            # Full 360° done — move to next waypoint
+                            drone.send_manual_control(x=0, y=0, r=0)
+                            current_wp_idx[ip_str] += 1
+                            states[ip_str] = STATE_FLY_TO_WAYPOINT
+                        else:
+                            drone.send_manual_control(x=0, y=0, r=SPIN_SPEED)
 
                 elif state == STATE_MISSION_COMPLETE:
                     drone.land()
                     drone_list.remove(ip_str)
                     break
-            
-                # ArUco detection on live frame
+
+                # -----------------------------------------------
+                # ArUco detection + live display
+                # Runs every tick regardless of state
+                # -----------------------------------------------
                 s = streams.get(ip_str)
-                if s is None:
-                    continue
-                f = s.latest_frame
-                if f is not None:
-                    frame = f.to_rgb()
+                if s is not None and s.latest_frame is not None:
+                    # Convert RGB to BGR for correct colours
+                    frame      = cv2.cvtColor(
+                        s.latest_frame.to_rgb(), cv2.COLOR_RGB2BGR)
                     detections = detect_aruco(frame, detector)
                     new_ids    = [det['id'] for det in detections
-                                if det['id'] in ROBOMASTER_IDS
-                                and det['id'] not in snapshotted_ids]
+                                  if det['id'] in ROBOMASTER_IDS
+                                  and det['id'] not in snapshotted_ids]
                     for marker_id in new_ids:
                         snapshotted_ids.add(marker_id)
                         robots_found += 1
                         save_snapshot(drone_id, frame, marker_id, detector)
+                        print(f"[Drone {drone_id+1}] Robots found: "
+                              f"{robots_found}/{TOTAL_ROBOTS} "
+                              f"| IDs: {snapshotted_ids}")
                     # Display with markers drawn
                     display = frame.copy()
-                    gray = cv2.cvtColor(display, cv2.COLOR_BGR2GRAY)
-                    c, i, _ = detector.detectMarkers(gray)
+                    gray    = cv2.cvtColor(display, cv2.COLOR_BGR2GRAY)
+                    if isinstance(detector, tuple):
+                        ad, pd = detector
+                        c, i, _ = cv2.aruco.detectMarkers(
+                            gray, ad, parameters=pd)
+                    else:
+                        c, i, _ = detector.detectMarkers(gray)
                     if i is not None:
                         cv2.aruco.drawDetectedMarkers(display, c, i)
-                    cv2.imshow(str(ip_str), display)  # live display of each drone
-            
+                    cv2.imshow(str(ip_str), display)
+
             if len(drone_list) == 0:
                 break
-            
+
             cv2.waitKey(1)
-            time.sleep(0.05)   # 20Hz (every 50ms): matches send_manual_control recommended rate to ensure smooth flight
-        
+            time.sleep(0.05)   # 20Hz
+
         cv2.destroyAllWindows()
-    
+
     finally:
-        # Runs even if an exception occurs
         print("\n[CLEANUP] Landing all drones...")
         for drone in drones.values():
             try:
@@ -602,8 +709,7 @@ def main():
             except:
                 pass
         cv2.destroyAllWindows()
-        
+
 
 if __name__ == "__main__":
     main()
-    
