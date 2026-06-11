@@ -28,24 +28,44 @@ Then YOU type these by hand:
   (Terminal 2 — pick ONE)
     cd ~/ArtificiallyUnintelligent/searchctl
 
-    # Recommended for qualifier: K's wall-following (8-min cap, auto-lands)
-    python3 controller.py --pattern wall
+    # PRIMARY (proven 350 pts in sim earlier today):
+    # K's wall-follow + FSM stuck-escape + bonus 4:20 hard-land + slow
+    # gated periodic 360 scan + lower altitude + lower YOLO threshold.
+    python3 controller.py --bonus --altitude 2.0 --conf 0.5
 
-    # Alternative: hover at spawn, yaw 360 in 4 steps (good for detection probe)
-    python3 controller.py --pattern scan
+    # Fallback A — same as primary but higher altitude (3.0m default).
+    # Try if 2.0m altitude is hitting low obstacles.
+    python3 controller.py --bonus --conf 0.5
 
-    # Smoke test only (drone flies tiny square, no detection / no map):
+    # Fallback B — Hail-Mary: very low altitude + very aggressive YOLO.
+    # Use if both primary + Fallback A failed to find yellow.
+    python3 controller.py --bonus --altitude 1.5 --conf 0.35
+
+    # Smoke test only (no detect / no map / no fake-GCS): just flight
     python3 controller.py --no-detect --no-map --no-fake-gcs
 
 DETECTION MODEL: K's best.pt is the default (3 classes — yellow/red/toxic
-oil-drums, toxic filtered out at output, label names remapped to underscores
-to match the org's example image: 'yellow_barrel' / 'red_barrel').
-Confidence threshold = 0.35 (org confirmed no penalty for false positives).
+barrels; toxic filtered out at output, label names remapped to underscores
+to match org's example image: 'yellow_barrel' / 'red_barrel').
+Default confidence threshold = 0.70 (K's tuning). Org confirmed no
+penalty for incorrect detections, so feel free to drop --conf at venue.
 
 Outputs land at: ~/ArtificiallyUnintelligent/searchctl/run_<ts>/
-  map.png            <- show the judge
+  STATUS.txt         <- live status: eligibility + bonus countdown + base score
+  map.png            <- show the judge (now has detection markers!)
   detections/*.jpg   <- show the judge (bbox images)
-  run_summary.json   <- has total flight time + detection count
+  run_summary.json   <- has total flight time + unique counts + per-pose
+
+After all runs, pick the best:
+  cd ~/ArtificiallyUnintelligent/searchctl
+  python3 slot_summary.py   <- estimates scores across all runs, shows winner
+
+At-venue tuning (no code edits needed):
+  --altitude 2.0    closer to floor — catches floor-level yellow targets
+  --altitude 3.5    higher cruise if locker barrels look high
+  --conf 0.5        lower confidence if K's model isn't firing
+  --conf 0.35       even more aggressive (no penalty for false positives)
+  --bonus           4:20 hard-land + early-exit on dual-colour detected
 
 DISK HYGIENE (if you see "no space left" or VM is >90% full):
   rm -rf ~/PX4-Autopilot/build/px4_sitl_default/rootfs/log/*
@@ -59,6 +79,9 @@ IF SOMETHING BREAKS:
   - QGC needed -> our fake-GCS heartbeat should make PX4 happy without it
   - Camera missing -> python3 controller.py --no-detect (still flies + maps)
   - Map crash -> python3 controller.py --no-map (still flies + detects)
+  - Drone stuck at a wall -> wait ~3s; FSM stuck-escape will kick in
+                             (rotates 80° CCW in place, then re-acquires
+                             wall — no translation, EKF-safe)
   - Everything else -> python3 controller.py --no-detect --no-map --no-fake-gcs
 
   Per org 18/5: judges will NOT help with setup. We're on our own.

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Variant of _vm_run_sim.sh — runs --pattern wall in the ctl window.
+# Variant of _vm_run_sim.sh — runs <default wall-follow> in the ctl window.
 set +e
 SESS=au
 tmux kill-session -t $SESS 2>/dev/null
@@ -29,7 +29,7 @@ sleep 3
 
 tmux new-window -t $SESS -n ctl
 sleep 1
-tmux send-keys -t $SESS:ctl 'cd ~/ArtificiallyUnintelligent/searchctl && python3 controller.py --pattern wall' C-m
+tmux send-keys -t $SESS:ctl 'cd ~/ArtificiallyUnintelligent/searchctl && python3 controller.py' C-m
 
-echo "tmux session '$SESS' running with --pattern wall."
+echo "tmux session '$SESS' running with <default wall-follow>."
 echo "Attach: tmux attach -t $SESS"

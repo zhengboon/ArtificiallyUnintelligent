@@ -1,0 +1,71 @@
+﻿The workshop hands-on activities uses the following software:
+* Ubuntu 22.04 with build essentials (python and c++)
+* PX4 Autopilot with Gazebo Harmonic
+* Python3
+* QGroundControl
+* MAVSDK-python and MAVSDK-c++
+* python libraries:
+   * Python3-opencv
+   * libgz-msgs10-dev 
+   * python3-gz-transport13
+   * Python3-gz-msgs10
+   * pynput==1.6.1
+   * Ultralytics
+   * pytorch
+* Other c++ libraries
+   * libeigen3-dev 
+   * libboost-all-dev 
+   * libceres-dev 
+   * libgz-transport13-dev
+   * Libgz-msgs10-dev
+* OpenVINS
+
+
+
+
+There are two options to get the software onto a laptop:
+1. Download a VMWare virtual machine that has all the above installed in it, and install and use VMWare Workstation Pro or Fusion to run the VMWare machine. 
+OR
+2. BUILD YOUR OWN - Install your own Ubuntu 22.04 OS into a laptop and install all the above software on your own after you have installed Ubuntu 22.04 OS.
+
+
+Option A requires less time to get all software needed and works on MacOS, Windows and Linux, whereas Option B requires more time and troubleshooting efforts. 
+
+
+We provide online tech support via discord server for both options.
+Requirements of Computers to be provided by students
+
+
+Teams are recommended to use a machine with at least 16GB of ram with at least 50GB remaining disk space. The workshop provides a VMware virtual machine image that is installed with the software mentioned above. The VMware virtual machine image requires VMware Workstation Pro 17 (for Windows and Linux) or VMWare Fusion (for Mac). VMware Workstation Pro 17 and VMWare Fusion are free software. 
+
+
+Option A. Use VMWare virtual machine
+Steps to setup the virtual machines
+
+
+Step 1: Download and install VMware Workstation Pro 17 if the machine is a Windows or Linux, or VMWare Fusion Pro if the machine is Mac, on the machines using the instructions in the following link:
+
+
+* Windows: https://knowledge.broadcom.com/external/article/344595/downloading-and-installing-vmware-workst.html
+* Mac: https://knowledge.broadcom.com/external/article/315638/download-and-install-vmware-fusion.html
+
+
+Step 2: After you have installed the VMWare workstation Pro or Fusion Pro, please download the virtual machine image from: 
+https://drive.google.com/file/d/1P8E7flFDi5FE0WGT8RZxtZdo-8WUj6GX/view?usp=drive_link
+
+
+
+
+Step 3: Unzip the virtual machine image and import the virtual machine by:
+ To import a virtual machine (VM) in VMware Workstation or Fusion, use the File > Open or File > Import option to select an .ova or .ovf file. Browse to the file location, choose a name for the new VM, and click "Import" to complete the process.
+
+
+To logon to the Virtual Machine:
+USERNAME: drone
+Password: password
+
+
+Option B. BUILD YOUR OWN
+
+
+Raise a ticket via #support-ticket channel in the official discord server. Our coordinator will provide you with the guide, and advise when you face issues.

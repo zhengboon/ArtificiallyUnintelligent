@@ -11,6 +11,14 @@ discord_watcher/logs/
 discord_watcher/server_state.json
 info_*/
 
+# Transient host-side helper scripts and VM inspect outputs (zb session)
+/_inspect_out.log
+/_state.log
+/_validate_grid_vm.sh
+/_validate_out.log
+/_vm_inspect.sh
+/_ctl_show.log
+
 # Maze generator output (regenerable from seed)
 maze_gen/output/*.sdf
 maze_gen/output/*.json
@@ -41,3 +49,20 @@ runs/
 Thumbs.db
 .vscode/
 .idea/
+
+# Scratch logs and helper scripts (leading-underscore convention, zb session)
+/_chk.log
+/_chkdet.log
+/_end.log
+/_pose.log
+/_run.log
+/_t.log
+/_chk.sh
+/_chkdet.sh
+
+# Laptop-side capture logs (Realsense smoketests, self-tests)
+laptop_logs/*.log
+
+# Semifinal review scratch and runtime artifacts
+semifinal/.review/
+semifinal/mapping_drone/runs/

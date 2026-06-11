@@ -7,6 +7,156 @@ and commit hashes where they exist. Skim-able when looking back later.
 
 ---
 
+## 2026-05-22 (Fri, T-5h) — K-merge + backup behaviours + --backup nav algo
+
+K pushed `62feaba "Update with my working code"` to `ks` branch overnight.
+His new controller.py is a clean velocity-mode wall-follow rewrite that
+traverses the full Roboverse map in ~10 min and returns to start. Took
+his work as the new base on `zb`, layered our improvements back on top.
+
+K's commit (origin/ks):
+- `searchctl/controller.py` — full rewrite, velocity-mode wall-follow
+- `searchctl/wall_following.py` — tuned TURN_SPEED, CORNER_PHASE ticks,
+  front-clearance threshold
+- `codes/Codes/Detector.py` — default conf 0.5 → 0.70
+
+Layered on top in `zb` (commits 1819838 → b517374):
+- Fixed K's detection callback bug: was bumping detection_count but never
+  appending DetectionRecord to state.detections, so dedup + STATUS.txt
+  + bonus early-exit all saw 0 forever even with 29+ raw detections
+- Class-name remap "yellow barrel" → "yellow_barrel" (org example format)
+- `wait_until_armable` accepts vision-drone armable state (home_ok+local_ok
+  without is_armable being True — x500_vision never reports is_armable)
+- `arm_and_takeoff` accepts in_air=True AND >=1m climbed AND >=15s elapsed
+  as fallback (covers EKF-drift / sim-stale cases)
+- `--bonus` flag (4:20 hard-land + dual-colour early-exit + plateau exit)
+- `--altitude` and `--conf` CLI tuning levers
+- Backup A: stuck-escape (drift <1m in 20s → back+yaw+fwd maneuver)
+- Backup B: periodic 360° scan station every 75s (multi-angle coverage)
+- Backup C: detect-and-approach yaw nudge when bbox near frame edge
+- **`--backup` flag**: scan-and-walk explorer (alternative nav algo)
+  — hover, yaw 360, walk forward 10s in most-clear direction, repeat.
+  Covers arena INTERIOR where K's wall-follow never goes (yellow lives
+  on floor, may be in interior, not along walls).
+- Detection dedup radius 1.5 → 3.0 m (1.5 m mis-counted 1 real barrel
+  as 4 unique because drone moves past it over 37s)
+- Live STATUS.txt every 5s with ELIGIBLE flag + score estimate + hint
+- `slot_summary.py` post-slot helper (scores all run_*/run_summary.json
+  by qualifier rubric, picks best, writes slot_summary.txt for judge)
+
+Sim test results today:
+- Bonus run #1 (07:54, before K-merge): 298s flight, 0 unique (callback bug)
+- Bonus run #2 (08:14, post-fixes): 277s flight, 32 raw dets, 4 unique
+  red (1 real barrel, dedup-radius fixed afterwards), 0 yellow
+- Bonus run #3 (08:26, with speed-bump): EKF blew up D=+877m, reverted
+- All later runs hit EKF-stale-between-runs / Gazebo renderer issues —
+  not code bugs, just VM state from multiple cumulative sim runs
+
+Thumbdrive scripts + runbook + QUICKSTART updated for the new CLI
+(b517374): all old --pattern wall/grid/scan/square refs removed, new
+--backup script added, sim-restart-between-runs warning prominent.
+
+State at commit time (b517374): code parsed-OK, K's wall-follow validated
+end-to-end in sim (with bonus mode), backup behaviours A/B/C + --backup
+nav algo deployed to VM but not yet sim-tested. Strategy for the slot
+documented in dumpcontext/06_REVIEW_AND_HANDOFF.md.
+
+---
+
+## 2026-05-22 (Fri, T-14h) — Max-marks strategy on `zb`
+
+Found and read the actual qualifier PDF (
+[info_2026-05-21/RoboVerse_2026_Qualifier.pdf](info_2026-05-21/RoboVerse_2026_Qualifier.pdf)
+). Real scoring formula:
+- Eligibility: ≥1 red + ≥1 yellow detected (else score = 0)
+- 50 pts per unique yellow, 100 pts per unique red (each only counts once)
+- Bonus: +20 pts per 30 s under 5 min for finding ALL of a colour
+- Top 26 teams advance to the Final (10-11 June, MBS)
+
+Implications: an 8-min `--pattern wall` run lands AFTER the 5-min bonus
+deadline. With nothing else changed we forfeit both bonuses regardless of
+detection quality.
+
+What landed on `zb` to address this:
+
+- **`--bonus` CLI flag** + `bonus_mode` threaded through `run()` →
+  `planner()` and `planner_wall()`.
+- **`planner_wall` bonus tuning**:
+  - Budget capped at `BONUS_HARD_LAND_S = 260 s` (~4:20, ~40 s of land
+    headroom before the 5-min deadline).
+  - K's `WallFollower` overridden at instance level: `LINEAR_SPEED 0.7→1.0`,
+    `STRAFE_SPEED 0.4→0.5`, `CORNER_TURN 0.35→0.45`. K's file untouched.
+  - Periodic 360° scan interval shortened 30s→25s (more angular coverage
+    inside the smaller window).
+- **Detection-driven early-exit** (both planners): once ≥1 yellow + ≥1
+  red have been detected, hold for `BONUS_DUAL_COLOUR_HOLD_S = 25 s`
+  (bonus) or watch for a `BONUS_PLATEAU_S = 30 s` / `PLATEAU_S_DEFAULT
+  = 60 s` plateau (default), then land. Heuristic — we don't know
+  N_yellow / N_red, but if YOLO has gone quiet AND we have both colours,
+  more flying probably doesn't help.
+- **`thumbdrive/_vm_run_bonus.sh`** — VM helper that launches the
+  bonus-mode wall-follow run. Mirrors `_vm_run_wall.sh` but adds `--bonus`.
+- **Runbook + QUICKSTART updated** with the two-stage strategy: bonus run
+  first → defensive long run if first didn't bank ≥1 of each colour.
+
+Strategy for the 40-min slot:
+
+1. **T+12 min** smoke test (`--no-detect --no-map`, ~30 s).
+2. **T+14 min** first scored run: `--pattern wall --bonus` (≤4:20).
+   If both colours found → bank base 150 + however much bonus.
+3. **T+22 min** second scored run: `--pattern wall` (defensive 8 min).
+   If first run didn't bank both colours, this is the eligibility shot.
+4. **T+34 min** third run if time: swap to `verylousymodel.pt` if K's
+   model isn't firing, OR repeat best-performing pattern.
+
+Still NOT flight-tested. The bonus mode in particular is logic-only —
+no sim runs since the WallFollower speed bump may interact with K's
+stuck-escape heuristics. Smoke test (`_smoke.sh`) at venue will catch
+gross regressions.
+
+---
+
+## 2026-05-21 (Thu, very late) — Post-call audit & polish on `zb` branch
+
+Team video call wrapped ~23:50. K is tuning his YOLO model overnight on
+the `ks` branch and will PR a new `best.pt` before Fri morning. Z opened
+a `zb` branch off `main@750b1ff` for the audit + new-plans pass.
+
+What landed on `zb` tonight (no flight-test yet — sim was acting flaky
+after multiple cumulative runs):
+
+- **arm + begin_offboard retry (×3 with backoff)** in `Drone.arm_and_takeoff`
+  and `Drone.begin_offboard`. Targets the same transient mavsdk gRPC blips
+  the `750b1ff` YOLO pre-load mitigates, but as defence-in-depth: if the
+  pre-load isn't enough, retries soak up one or two more failures before
+  giving up.
+- **Detection dedup by NED position** (Phase 4 lite): `compute_unique_detections()`
+  clusters detection records within 1.5 m of each other (same class) as
+  one physical barrel. `run_summary.json` gains a `unique_detections`
+  block (`yellow_barrel` / `red_barrel` / `toxic_barrel` / `total`). The
+  per-frame `detections` list still ships for full audit.
+- **Incremental run_summary.json + STATUS.txt** written every 5 s
+  during flight, not just at teardown. Crash-robust (if mavsdk dies
+  mid-run we still have the most recent snapshot on disk) AND judge-
+  friendly (plain-text STATUS.txt is `cat`-able without a terminal).
+- **`thumbdrive/_smoke.sh`** — ~90 s end-to-end smoke that boots
+  PX4+sim, runs `--pattern square`, then asserts run_summary.json,
+  STATUS.txt, map.png, detections/ all exist. Run this before
+  committing to a real qualifier slot run.
+
+Outstanding (knowingly carried into tomorrow):
+
+- ⚠ Flight-test the `zb` changes on the org VM at venue before the
+  scored run. They're parse-clean but no sim-tested yet.
+- ⓘ Plan 4 (live `cv2.imshow` map window) deferred — judges already
+  see `map.png` regenerated every second, which is enough signal.
+
+Branches: `main@750b1ff` (stable, what's on the thumbdrive), `ks` (K's
+model tune), `zb` (this session's audit pass — will rebase + ship if
+flight-tested, otherwise stays available as a fallback).
+
+---
+
 ## 2026-05-21 (Thu, night before qualifier) — Wall-follow integrated end-to-end
 
 T-15h sprint. K's `wall_following.py` (merged via PR #9) now wired into

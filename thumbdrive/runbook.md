@@ -98,40 +98,81 @@
 - [ ] **If this works, controller + sim are healthy. Move to Step 6.**
 - [ ] **If it crashes** — go to "Step 5 failed" in cheatsheet below.
 
-### Step 6 (T+14–24 min): First REAL run
-- [ ] Keyboard (Terminal 2) — **recommended: wall-follow mode for coverage**:
+### Step 6 (T+14–24 min): First REAL run — BONUS-MODE attempt
+- [ ] Keyboard (Terminal 2) — **bonus mode first** (target the 5-min bonus window):
   ```bash
-  python3 controller.py --pattern wall
+  python3 controller.py --bonus
   ```
-- [ ] OR if wall-follow misbehaves, fall back to scan (yaw 360° at spawn):
+  Runs K's wall-follow with bonus-window hard-land at ~4:20. Backup
+  behaviours (stuck-escape + periodic 360° scan + detection nudge)
+  are always on.
+- [ ] Runtime: ≤4:20 hard cap. Auto-lands earlier when both yellow + red detected
+      (plus a short hold for additional barrels), OR when detection plateaus.
+- [ ] Per qualifier PDF: bonus = +20 pts per 30 s under the 5-min mark for
+      finding ALL of a colour. We can't know "all" so the heuristic exit
+      triggers on dual-colour-found OR detection-rate plateau.
+- [ ] Screen-watcher: call out every `detection: ... boxes=N total=...`
+      line. Open `STATUS.txt` in the run dir (updated every 5 s) for
+      live unique counts + eligibility flag.
+
+### Step 6b — Fallback if bonus mode fails
+- [ ] **Fallback A** — same proven config but higher altitude (3.0m default).
+      Use if 2.0m altitude is hitting low obstacles or red barrel is on top
+      of a locker (org clarified red lives in a locker).
   ```bash
-  python3 controller.py --pattern scan
+  python3 controller.py --bonus --conf 0.5
   ```
-- [ ] All features ON: detection + map + fake-GCS + planner.
-- [ ] Runtime: `wall` = up to 8 min then auto-lands. `scan` = ~120 sec.
-- [ ] Screen-watcher: call out every `[ctl] detection: class=yellow_barrel ...` or `red_barrel ...` line. Note the count.
+- [ ] **Fallback B** — Hail-Mary: very low altitude + very aggressive YOLO
+      threshold. Use if both PRIMARY + Fallback A failed to find yellow.
+  ```bash
+  python3 controller.py --bonus --altitude 1.5 --conf 0.35
+  ```
+  Lower altitude (1.5 m) brings camera even closer to floor-level
+  yellow. Lower confidence threshold (0.35 vs 0.7 default) lets K's
+  model fire on weaker signals. Org confirmed no penalty for
+  incorrect detections.
+- [ ] **Fallback C** — defensive long run (no bonus cap), e.g. if you've
+      already banked one good run and just want to extend coverage:
+  ```bash
+  python3 controller.py --altitude 2.0 --conf 0.5
+  ```
+  Same algorithm, runs until plateau (60s with both colours found) or
+  Ctrl-C. Max coverage of the perimeter K's algo follows.
+- [ ] All features ON by default: detection + map + fake-GCS.
+- [ ] Screen-watcher: open `STATUS.txt` of latest run, watch ELIGIBLE
+      flag flip to YES and unique counts increase.
 - [ ] Open `~/ArtificiallyUnintelligent/searchctl/run_*/map.png` in an image viewer with auto-refresh. Map updates every ~1 sec.
 - [ ] For wall: log lines `wall: state=follow_wall front=2.34 right=1.18 ...` print every 5 sec so judge sees the FSM in action.
 
 ### Step 7 (T+24–34 min): Re-run if needed
 - [ ] If first run found both `yellow_barrel` AND `red_barrel`: STOP, save artifacts. Go to Step 8.
-- [ ] If only one or zero: re-run with different starting yaw:
-  ```bash
-  python3 controller.py --pattern square
-  ```
-  or try the actual wall-follow if it's working:
-  ```bash
-  python3 controller.py --pattern wall    # if integrated by Thu
-  ```
+- [ ] If only one colour found or zero: try one of the fallbacks from
+      Step 6b. Fallback B (lower altitude + lower threshold) is the
+      highest-value retry when yellow is missing.
 - [ ] Per org: drone restarts at takeoff after each run. State doesn't persist.
+- [ ] **Sim restart between runs**: in Terminal 1, Ctrl-C the PX4
+      session, re-run `~/start_px4.sh` + `1` + `1` + `2` +
+      `commander set_ekf_origin 47.397742 8.545594 488.0`. Without
+      this, the EKF can carry drift from the previous landing and
+      the next takeoff will fail / stay on the ground.
 
 ### Step 8 (T+34–38 min): Show the judge
-- [ ] Judge-talker opens `~/ArtificiallyUnintelligent/searchctl/run_<latest>/`
+- [ ] Judge-talker runs the slot summary first:
+  ```bash
+  cd ~/ArtificiallyUnintelligent/searchctl
+  python3 slot_summary.py
+  ```
+  This scans every run we did and identifies the best by estimated score.
+  Output also lands in `slot_summary.txt` — show that to the judge.
+- [ ] Open `~/ArtificiallyUnintelligent/searchctl/run_<latest>/`
 - [ ] Show:
+  - `STATUS.txt` — plain-text live status, includes ELIGIBLE / base score / next-action
   - `detections/*.jpg` — bbox images with `yellow_barrel` / `red_barrel` labels
-  - `map.png` — the top-down obstacle map (proves "mapping is being done")
-  - `run_summary.json` — flight time + detection count + per-detection poses
-- [ ] Say: "We detected N barrels (X yellow, Y red), built a map of the arena, total flight time was Z seconds across N runs."
+  - `map.png` — top-down obstacle map WITH colored detection markers
+    (yellow circles = yellow_barrel finds, red squares = red_barrel finds)
+  - `run_summary.json` — flight time + per-detection poses + unique counts
+- [ ] Say: "We detected N unique barrels (X yellow, Y red), built a map of
+  the arena with marker positions, total best-attempt flight time was Z s."
 
 ### Step 9 (T+38–40 min): Pack up
 - [ ] Keyboard: copy outputs to USB:

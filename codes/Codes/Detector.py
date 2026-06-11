@@ -11,7 +11,7 @@ class Detector:
     def __init__(
         self,
         model_path: str = "yolov8n.pt",
-        confidence_threshold: float = 0.5,
+        confidence_threshold: float = 0.70,
         callback: Optional[Callable[[List[Dict[str, Any]], np.ndarray, Optional[Any]], None]] = None,
         num_workers: int = 1,
         device: str = "cpu",

@@ -1,0 +1,302 @@
+RoboVerse Supplementary 1
+
+                                                                                                                                                                                                         1
+AGENDA                         1. Coordinate Frames
+
+ Main goal: To cover terms or  1. Mapping and point cloud for path
+ concepts that are briefly
+ covered in other workshops.        finding
+
+                                                                    2
+Coordinate Frames
+
+                                                                                                                                                                                                3
+XXX
+
+WTIThyLECoordinates Frames matter?
+
+SUBTITLE
+1
+     Different sensors (such as an IMU or a camera)
+  ·
+
+     output data in x, y, z coordinates. However, the
+
+     meaning of these axes depends on the sensor's
+
+     own coordinate frame, so the same x, y, z values
+
+     can correspond to very different directions of
+
+     movement.
+
+· We need to integrate the data from these
+    different sensors and use it to control the
+    quadcopter.
+
+· We need a way to transform the data across the
+    different reference of X,Y, Z so that we could
+    create an Occupancy Grid from depth camera.
+    That requires to align these frames:
+
+     · Depth Camera Image -> Drone Body Frame -
+         > NED Frame -> Grid Map
+
+· VIO estimates position and orientation in its own
+
+     coordinate frame. To use this data correctly, you
+
+     must transform it into the target coordinate
+
+     system. Wrong transformations cause
+
+     misalignment and infinite drift.                   4
+Slide 4
+
+1        I've tweaked the phrasing to make it clearer.
+
+         Terry Sim, 27/4/2026
+XXX
+
+CTIoToLrEdinates Frames
+
+SUBTITLE
+
+· A 3D coordinate frames consists 3 axes
+    perpendicular to each other and intersect
+    at a common point.
+      · X-axis, Y-axis and Z-axis
+
+· Different components might use the 3
+    axes to describe different direction of
+    motions and rotations.
+
+· Right-hand is often used to describe the
+    orientation of the 3 axes, using thumb,
+    index finger and middle finger.
+
+· It is often important to find out what does
+    X-axis, Y-axis and Z-axis for different
+    components and context.
+      · E.g. NED means X is describing
+          forward/backward, Y is right/left, Z is
+          down/up.
+
+                                                                                                                                                                                                              5
+XXX
+
+RTIoTtLaEtion
+
+SUBTITLE
+
+· Rotation are often describe using Euler angles
+     which are roll, pitch and yaw.
+
+                                                                                                                                                                                                              6
+XXX
+
+TCIoTmLmE on Coordinate Frames
+
+SUBTITLE
+
+· World coordinate frame:
+      · global reference point for all robots,
+           drones and objects in a given
+           environment.
+
+· Body frame:
+      · Reference point attached to center of an
+           object. The object can be center of drone,
+           center of a sensor, etc.
+
+· World coordinate frame is like the "ground
+     truth" of the environment.
+
+· All other coordinate frames are ultimately
+     referenced back to world frame, allowing all
+     drones and its sensors (camera and IMU) to
+     understand each other's positions and
+     coordinate actions.
+
+                                                                                                                                                                                                              7
+XXX
+
+Representing coordinates
+TITLE
+
+SUBTITLE
+
+· Points are often represented as or
+
+· Matrices are used to represent points as
+     column vectors and coordinate frames.
+
+· Now, let's say we know that object A is x, y, z
+     (red arrow) from object B. Object B is 10,10,10
+     in the world coordinate frame. If we wish to
+     know what is the coordinate of Object B in
+     world coordinate frame, we need to
+     understand coordinate transformation.
+      · See video to understand more:
+           https://www.youtube.com/watch?v=H_9
+           4DTWd8ck
+      · Or this hack video (go to time 5:44):
+           https://youtu.be/tAu8-
+           gkxAcE?si=Nl2MaA65g14miRVL
+
+· The Hack video is useful to grasp the
+    technique to create transformation matrix
+    which will come in handy when configuring VIO
+    tools like openvins.
+
+                                                                                                                                                                                                              8
+XXX
+
+Transforming coordinates in
+TpIyTtLhEon
+
+SUBTITLE
+
+ · Coordinate transformation can be easily handled in
+       python using numpy. This is coding example.
+       Sometimes you need to calculate manually.
+
+ · Explanation of codes:
+        · Homogeneous Coordinates: To combine
+             rotation (multiplication) and translation
+             (addition) into one operation, we use 3x3
+             matrices instead of 2x2. This requires adding a
+             3rd dimension to the points (a column of ones).
+
+        · Transformation Matrix (T): The matrix defines
+             the rotation and translation simultaneously.
+             The upper-left 2x2 part is for rotation, and the
+             top-right 2x1 column is for translation.
+
+        · Matrix Multiplication (T @ points_h.T): applies
+             the transformation matrix to all points at once.
+             Using the @ operator is the preferred method
+             for matrix multiplication in NumPy.
+
+        · Efficiency: Instead of looping through each
+             point, we represent all points as a single array
+             (N, 2) and use NumPy broadcasting and linear
+             algebra routines for high performance.
+
+                                                                                                                                                                                                              9
+1. Mapping and point
+ cloud for path finding
+
+                                                                                                                                                                                            10
+XXX
+
+TGIeTnLeErating global map for
+path SUBTITLE finding
+
+· Turn depth image at each drone position into a
+     local obstacle map.
+
+· Then combine many local maps into a global
+     map.
+
+                                                                                                                                                                                                             11
+XPXLXEASE refer to top_down.py
+
+Using depth image to generate a
+TtoITpL-dEown local map
+
+SUBTITLE
+
+· Leverage depth image to remember the
+     position of obstacles, using a top-down local
+     map.
+
+· A local map that describes from the
+     perspective of drone's current position.
+
+· The function depth_to_xy_map in
+     top_down.py process the depth image and
+     output top down map using the camera
+     intrinsic to determine the distance of
+     obstacle.
+
+· As the drone avoid the obstacles, repeatedly
+     call this function and combine the map output
+     into a global map.
+
+                                                                                                                                                                                                             12
+XPXLXEASE refer to GlobalMapper.py
+
+ETxITtLeEnding the depth_to_xy_map
+fSUuBTnITLcE tion into a global mapper
+
+· Globalmapper.py uses depth_to_xy_map to
+    combine local maps into a global map.
+
+· First, GlobalMapper transform the
+    coordinates of obstacles in a local map into
+    global NED frame. Then add that local map to
+    the global_map.
+
+· Within the drone control loop, call get_frame
+    to get depth_image and then call
+    update_frame with that depth_image.
+
+                                                                                                                                                                                                             13
+XPXLXEASE refer to PointCloudMapper.py
+
+BTIeTfLoEre building a path finder
+
+SUBTITLE
+
+· Now, your code would have able to map the
+    area and make the unknown known. It's time
+    to use the known area map to guide drones to
+    go from point A to point B using a path finder.
+
+· The purpose of path finder is to find a series
+    of waypoints to travel between two points
+    without colliding into any obstacle.
+
+· But our GlobalPlanner do not mark "free
+    space". With free space, our drone can hop
+    through the free space towards the target.
+
+· We need something that uses the Global map
+    to check if a point is near (< safety margin) or
+    is an obstacle point. That's
+    PointCloudMapper.py. It simply uses
+    scipy.spatial.KDTree for O(log N) collision
+    queries.
+
+· See screenshot on how to use GlobalMapper
+    and PointCloudPlanner.
+
+                                                                                                                                                                                                             14
+XPXLXEASE refer to RRTStarPlanner.py
+
+ATITPLatEh Finder
+
+SUBTITLE
+
+· With GlobalMapper and PointCloudPlanner,
+    you can build your own path finder using
+    popular path finding algorithm like RRT,
+    shortest path and etc.
+
+· Keep using PointCloudPlanner's
+    is_collision_free to check for every possible
+    point generated by your path finding
+    algorithm.
+
+· RRTStarPlanner.py is one such Path Finder
+    implementation.
+
+· See right on how to integrate GlobalMapper
+    and RRTStarPlanner.
+
+                                                                                                                                                                                                             15
+THANK YOU
+
+                                                                                                                                 16
+
