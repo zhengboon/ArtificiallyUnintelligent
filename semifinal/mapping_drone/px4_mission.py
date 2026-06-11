@@ -63,7 +63,7 @@ from .uwb import UwbNode
 
 logger = logging.getLogger("mapping_drone.px4_mission")
 
-TAKEOFF_ALT_DEFAULT = 4.0
+TAKEOFF_ALT_DEFAULT = 2.5   # ~1 m below the 3.5 m cage ceiling (use 3.0 for higher)
 REACH_XY_M = 0.30
 REACH_Z_M = 0.30
 FLY_TO_TIMEOUT_S = 40.0

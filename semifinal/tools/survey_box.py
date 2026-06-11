@@ -107,7 +107,7 @@ async def main() -> int:
     ap.add_argument("--margin", type=float, default=0.7, help="wall margin (m)")
     ap.add_argument("--lanes", type=int, default=3, help="lanes across the 5.5 m width")
     ap.add_argument("--lane-step", type=float, default=1.5, help="scan-point spacing along a lane (m)")
-    ap.add_argument("--alt", type=float, default=4.0, help="flight altitude written to waypoints (m, +up)")
+    ap.add_argument("--alt", type=float, default=2.5, help="flight altitude written to waypoints (m, +up). Cage is 3.5 m; max 3.0")
     ap.add_argument("--out", default="configs/waypoints_surveyed.json")
     args = ap.parse_args()
 

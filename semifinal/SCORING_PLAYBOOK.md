@@ -26,7 +26,7 @@ Pre-Uni split (for reference): 44% C2A + 44% C2B + 4% CUAS + 8% concept = 100% (
 - **C2A (30%) — land within hoop.** Priority is landings, then timing. Conservative speed (0.3-0.4 m/s on Hula even though cap is 0.5), UWB pre-position, and ArUco visual aid for final descent (ArUco markers sit beside the Hula landing pads per 2026-06-06 clarification). Don't sacrifice a landing for seconds.
 - **C2B (30%) — maximise ArUco detections.** Priority is detections, then timing. Finding all 5 RoboMasters beats finishing fast with 3. Take 2-3 frames per sighting; blurry/clipped frames likely don't count.
 - **CUAS bonus (4%) — non-trivial.** Assign A to walk to the Counter UAS booth ("Above & Beyond: Skies & Space" zone, MBS L4) during a testing-window slot. Bring the drone for the photo, complete the BrainHack Frontier Exploration System task, screenshot the zone-explored page. 4% can be the gap between podium places.
-- **Concept explanation (7%) — prepare a 3-min talk track.** Cover: team architecture (mapping → C1 artifacts → C2A coords from Discord → C2B hunt), what we built (MAVSDK offboard mission, ArUco detector, occupancy grid, UWB sniffer fallback), what trade-offs we made (safe-first runs, IR fallback if no RGB on D430/D450, 4 m altitude above 3.5 m floor). Z owns the script, K and A rehearse.
+- **Concept explanation (7%) — prepare a 3-min talk track.** Cover: team architecture (mapping → C1 artifacts → C2A coords from Discord → C2B hunt), what we built (MAVSDK offboard mission, ArUco detector, occupancy grid, UWB sniffer fallback), what trade-offs we made (safe-first runs, IR fallback if no RGB on D430/D450, 2.5 m altitude (cage ceiling is 3.5 m)). Z owns the script, K and A rehearse.
 
 ---
 
@@ -47,7 +47,7 @@ Pre-Uni split (for reference): 44% C2A + 44% C2B + 4% CUAS + 8% concept = 100% (
 
 A safe-first run that completes banks at minimum the dimension-1 partial credit on every scored S/N: 15% (some C1 detection) + 15% (some depth accuracy) + 30% (some C2A landings) + 30% (some C2B detections). Aggressive runs only happen after a safe score is already banked.
 
-- **Run 1 = SAFE.** Bank a confirmed score. Conservative altitude — **4.0 m default** for the mapping drone (above the 3.5 m floor org set on 2026-06-08 12:18; the older 1.5-2.0 m guidance is dead). Mapping speed **0.3 m/s** (clamped to cap). Hula at **1.1 m** recommended altitude, **0.3-0.4 m/s** even though cap is 0.5. Short waypoint list, full arena coverage for C1. Pick the closest pre-staged template at venue: `configs/arena_3x3.json`, `arena_4x4.json`, `arena_6x6.json`, or `arena_8x8.json` (all bumped to 4.0 m). Fallback if none match: `waypoints_2x2_default.json`. Goal: bank S/N 1-4 partial points.
+- **Run 1 = SAFE.** Bank a confirmed score. Conservative altitude — **2.5 m default** (cage ceiling 3.5 m; code hard-caps at 3.2 m; use --takeoff-alt 3.0 for higher). Mapping speed **0.3 m/s** (clamped to cap). Hula at **1.1 m** recommended altitude, **0.3-0.4 m/s** even though cap is 0.5. Short waypoint list, full arena coverage for C1. Pick the closest pre-staged template at venue: `configs/arena_3x3.json`, `arena_4x4.json`, `arena_6x6.json`, or `arena_8x8.json` (altitude now clamped to <=3.2 m; cage 3.5 m). Fallback if none match: `waypoints_2x2_default.json`. Goal: bank S/N 1-4 partial points.
 - **Run 2+ = AGGRESSIVE.** Tune based on run-1 deductions:
   - Mapping drone speed already at 0.3 m/s cap — gain time by trimming waypoints to **known pad neighbourhoods**, not by going faster.
   - Higher mapping altitude only if detection still works (verify with a mock dry-run on the captured top-down).
@@ -61,7 +61,7 @@ A safe-first run that completes banks at minimum the dimension-1 partial credit 
 
 - `--max-flight-time-s`: **420** default (sits ~60 s under the 480 s / 8-min org cap so the per-attempt timeout never elbows the org's clock). Lower for short scored slots; never raise above battery margin.
 - **Consecutive setpoint-send failures**: 5. `moveit_mission` aborts (and lands) after 5 back-to-back `_set_setpoint` failures — `VEL_FAIL_ABORT = 5`, the offboard-setpoint-failure watchdog committed for this slot.
-- **Altitude floor**: **3.5 m minimum** (org 2026-06-08 12:18). All pre-staged templates default to **4.0 m** (3.5 m floor + 0.5 m margin); `ALTITUDE_TARGET_DEFAULT = 4.0`, override via `--takeoff-alt`. Do NOT use the older 1.5-2.0 m guidance — those altitudes are below the floor and the run will be rejected/unsafe.
+- **Altitude CEILING**: the cage net is **3.5 m** (confirmed 2026-06-11 — this is a CEILING, not a floor; the old "3.5 m floor / fly 4.0 m" note was WRONG and would hit the net). Default `ALTITUDE_TARGET_DEFAULT = 2.5`; use `--takeoff-alt 3.0` for the higher option. Code HARD-CAPS any altitude at 3.2 m. Lower = sharper ArUco = more accuracy points.
 - **Battery cutoff**: in-code watchdog auto-lands at **<15%** (`BATTERY_LAND_FRAC = 0.15`). Operator margin: ground at <20% and do not arm a drone below 30% for a scored run. Other watchdogs (pose-loss, position-stuck, offboard-setpoint-failure) also auto-land; disarm only fires after `in_air=False`.
 - **Geofence**: rely on Hula's own — we do not enforce in code. Confirm with org during setup that geofence is active for our slot.
 

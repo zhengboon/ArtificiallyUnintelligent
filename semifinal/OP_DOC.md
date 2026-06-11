@@ -160,11 +160,14 @@ timeout 10 ros2 topic echo /uwb_tag --qos-reliability best_effort   # watch ~10s
 - **Empty/erratic → use the FC frame.** Path **3-FC**.
 
 ### Path 3-UWB (preferred when /uwb_tag is clean)
-`/uwb_tag` is the **arena frame** once `br_n/br_e` is calibrated (Step 1). So:
-1. Ask the marshal the arena origin; calibrate `br_n/br_e` in Terminal B.
-2. Read the drone's position on the floor: `ros2 topic echo /uwb_tag --qos-reliability best_effort --once`. Confirm it matches where it physically sits (e.g. near a corner reads near (0,0)).
-3. Waypoints are then **arena coordinates** (with 0.7 m margin). Use `--pose uwb` in Step 5.
-4. Build the lawnmower in arena coords (3 lanes along the 11 m length): see **Appendix B**.
+`/uwb_tag` gives the **absolute UWB/arena frame**, so the drone flies to absolute
+coords no matter where it launches. ⚠️ **The origin (0,0) is the arena CENTRE, not a
+corner** (observed 2026-06-11 — entering `0.0/0.0` at `start_uwb` leaves the anchor
+centroid at the middle). So waypoints span **negative→positive**, centred on (0,0):
+1. Read the floor position: `ros2 topic echo /uwb_tag --qos-reliability best_effort --once`. Note the value — near the centre it reads near (0,0); near a wall it reads ≈ ±2.75 (width) / ±5.5 (length).
+2. **Confirm which axis is which** by moving the drone toward the long wall and watching which number grows — that axis is the 11 m length.
+3. Waypoints are **centred** (0.7 m margin): width lanes at ≈ {−2.05, 0, +2.05}, sweep length −4.8 ↔ +4.8, at 2.5 m. Use `configs/waypoints_centered.json` (edit if the axes are swapped) with `--pose uwb` in Step 5.
+4. No `br_n/br_e` shift is needed for a centred sweep — leave `start_uwb` at `0.0/0.0`. (Only calibrate `br` if the marshal wants a corner-origin convention.)
 
 ### Path 3-FC (when /uwb_tag is unreliable)
 The FC's NED origin is the **takeoff point**, NED-North is the FC's fixed heading reference. So waypoints are **relative to where you launch**.
@@ -198,13 +201,12 @@ Artifacts land in `mapping_drone/runs/run_<timestamp>/` — check `landing_pads.
 
 ## STEP 5 — `--fly` (autonomous sweep) — the scored run
 
-**Altitude:** there is **no org-published altitude** — it's our choice (`--takeoff-alt`,
-metres, default **4.0**; per-waypoint alt is the 3rd column of the waypoints JSON).
-The org sample used 2.0 m. Trade-off: **higher = wider camera footprint (fewer lanes,
-faster) but smaller, lower-res markers**; **lower = sharper ArUco (better valid/invalid
-accuracy, which is scored) but more lanes**. D455 footprint ≈ `1.9·h × 1.1·h` (so 4 m ≈
-7.6×4.4 m; 3 m ≈ 5.7×3.3 m). Recommendation: **3–4 m**, and **confirm the arena's
-vertical clearance (net/ceiling height) with the marshal before flying higher.**
+**Altitude:** the **cage ceiling (net) is 3.5 m**, so the default is **2.5 m** and the
+code **hard-caps any altitude at 3.2 m** (the `--takeoff-alt` value, per-waypoint `z`,
+and typos all clamp) — it will never fly into the net. Use **`--takeoff-alt 3.0`** for
+the higher option. Trade-off: **higher = wider footprint (fewer lanes, faster) but
+smaller markers**; **lower = sharper ArUco (better valid/invalid accuracy = points) but
+more lanes**. D455 footprint ≈ `1.9·h × 1.1·h` (2.5 m ≈ 4.75×2.75 m; 3 m ≈ 5.7×3.3 m).
 
 Pre-flight: battery charged, props clear, **RC kill-switch in hand**, marshal go.
 ```bash
@@ -216,7 +218,7 @@ source ~/ros2_ws/install/setup.bash
 # camera auto-falls back color->IR, so no camera flag is needed:
 python3 -m mapping_drone.moveit_mission --fly \
     --waypoints-from-json configs/waypoints_surveyed.json \
-    --takeoff-alt 4.0 --max-flight-time-s 420
+    --takeoff-alt 2.5 --max-flight-time-s 420
 
 # Force a single pose source if needed:
 #   --pose uwb   (waypoints are ARENA coords, Path 3-UWB)
@@ -243,7 +245,7 @@ Expected: connects → local position OK → arms → offboard → takeoff → f
 **→ 5z (MAVSDK dead — XRCE fallback):** needs `px4_msgs` matching FC firmware (fingerprint Step 0).
 ```bash
 python3 -m mapping_drone.px4_mission --fly --pose px4 \
-    --waypoints-from-json configs/waypoints_surveyed.json --takeoff-alt 4.0
+    --waypoints-from-json configs/waypoints_surveyed.json --takeoff-alt 2.5
 ```
 If you see "Fast CDR exception", `px4_msgs` is the wrong version — rebuild it against the FC firmware (ask marshal). Otherwise `--pose uwb --assumed-alt 4.0` for a grounded test only.
 
@@ -273,7 +275,7 @@ source ~/ros2_ws/install/setup.bash                                             
 # check / nofly / fly
 python3 -m mapping_drone.moveit_mission --check
 python3 -m mapping_drone.moveit_mission --nofly --max-flight-time-s 60
-python3 -m mapping_drone.moveit_mission --fly --waypoints-from-json configs/waypoints_surveyed.json --takeoff-alt 4.0   # --pose auto + auto-IR (default)
+python3 -m mapping_drone.moveit_mission --fly --waypoints-from-json configs/waypoints_surveyed.json --takeoff-alt 2.5   # --pose auto + auto-IR (default)
 #   force a path:  --pose fc | --pose uwb   |   force IR cam: --use-ir-for-aruco
 #   scan more dicts: --aruco-dict 7X7_1000,6X6_250,5X5_250
 
@@ -286,11 +288,11 @@ ros2 topic info -v /uwb_tag
 python3 /tmp/fc.py            # read-only FC NED (no arm)
 
 # XRCE fallback
-python3 -m mapping_drone.px4_mission --fly --pose px4 --waypoints-from-json configs/waypoints_surveyed.json --takeoff-alt 4.0
+python3 -m mapping_drone.px4_mission --fly --pose px4 --waypoints-from-json configs/waypoints_surveyed.json --takeoff-alt 2.5
 ```
 
 ## Appendix B — lawnmower layout (5.5 × 11 m, 0.7 m margin)
-Usable interior ≈ 4.1 m (east) × 9.6 m (north). 3 lanes along the 11 m length at east ≈ {0.7, 2.75, 4.8}, sweeping north 0.7↔10.3, serpentine, at 3–4 m altitude (lower alt = sharper markers but needs more lanes; D455 footprint ≈ 1.9·h × 1.1·h). `survey_box.py` generates this in the measured frame.
+Usable interior ≈ 4.1 m (width) × 9.6 m (length), at **2.5 m** altitude (cage 3.5 m; lower alt = sharper markers but needs more lanes; D455 footprint ≈ 1.9·h × 1.1·h). **The UWB origin (0,0) is the arena CENTRE, not a corner** (see Step 3), so in the UWB frame the lanes are centred: e.g. 3 lanes at width ≈ {−2.05, 0, +2.05}, sweeping length −4.8 ↔ +4.8. `survey_box.py`/`waypoints_centered.json` produce this.
 
 ## Appendix C — confirm with the marshal on the day
 1. **Validity split** — which marker IDs are valid vs invalid → edit `configs/valid_ids_finals.json`.

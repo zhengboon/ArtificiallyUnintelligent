@@ -190,7 +190,7 @@ python3 -m mapping_drone --fly \
 
 ## 6. After takeoff — what to watch (in `runs/run_<ts>/log.txt`)
 
-- `MAVSDK connected via <addr>` → health gate → `arm` → `set_takeoff_altitude(<--takeoff-alt>, default 4.0)`
+- `MAVSDK connected via <addr>` → health gate → `arm` → `set_takeoff_altitude(<--takeoff-alt>, default 2.5; cage 3.5 m, hard-capped 3.2 m)`
   → pre-stream a setpoint → `offboard.start()` OK → climb → waypoint tracking (`set_position_velocity_ned`).
 - Watchdogs that abort+land (`moveit_mission`): pose-loss (fix stale >5 s), never-fix >10 s airborne,
   position-stuck (<0.3 m moved over a 30 s window, 12 s grace), battery <15%, and offboard-setpoint-failure.

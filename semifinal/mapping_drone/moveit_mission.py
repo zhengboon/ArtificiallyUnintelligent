@@ -56,7 +56,9 @@ except Exception as _exc:  # mavsdk not installed (laptop dev / --nofly)
     _MAVSDK_IMPORT_ERROR = _exc
 
 # --- Tuning, matching the organiser's move_it4.py ---
-ALTITUDE_TARGET_DEFAULT = 4.0      # above the 3.5 m floor + matches configs (org move_it4 used 2.0; override via --takeoff-alt)
+CAGE_HEIGHT_M = 3.5                 # arena cage ceiling/net height (confirmed 2026-06-11)
+MAX_SAFE_ALT_M = 3.2               # hard cap: keep >=0.3 m clearance below the net
+ALTITUDE_TARGET_DEFAULT = 2.5      # default ~1 m below the 3.5 m cage; use --takeoff-alt 3.0 for the higher option
 ALTITUDE_TOLERANCE = 0.10
 HORIZONTAL_TOLERANCE = 0.20
 MAX_SPEED = 1.5
@@ -461,6 +463,9 @@ class MoveItMission:
                     logger.warning("stop/time-limit before wp %d", idx)
                     break
                 alt_wp = wz if wz is not None else alt
+                if alt_wp > MAX_SAFE_ALT_M:
+                    logger.warning("wp %d alt %.1f > safe max %.1f — clamping", idx, alt_wp, MAX_SAFE_ALT_M)
+                    alt_wp = MAX_SAFE_ALT_M
                 self.state = f"FLY_WP_{idx}"
                 logger.info("WAYPOINT %d/%d -> N=%.2f E=%.2f alt=%.2f", idx, len(waypoints), wn, we, alt_wp)
                 await self._navigate_uwb(wn, we, alt_wp)
@@ -597,7 +602,9 @@ def _parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--waypoints", default=None)
     p.add_argument("--waypoints-from-json", default=None)
     p.add_argument("--takeoff-alt", type=float, default=ALTITUDE_TARGET_DEFAULT,
-                   help="metres (org move_it4 uses 2.0; raise if the arena floor is higher)")
+                   help=f"flight altitude (m). Default {ALTITUDE_TARGET_DEFAULT}; cage ceiling is "
+                        f"{CAGE_HEIGHT_M} m so values are hard-capped at {MAX_SAFE_ALT_M}. "
+                        f"Use --takeoff-alt 3.0 for the higher option.")
     p.add_argument("--gimbal-pitch", type=float, default=-90.0)
     p.add_argument("--max-flight-time-s", type=int, default=420)
     p.add_argument("--runs-dir", default="mapping_drone/runs")
@@ -618,6 +625,11 @@ def main() -> int:
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logger_pre = logging.getLogger("mapping_drone.moveit_mission")
     logger_pre.info("ROS_LOCALHOST_ONLY=%s | pose source=%s", os.environ.get("ROS_LOCALHOST_ONLY"), args.pose)
+    # Hard altitude cap: the cage ceiling is CAGE_HEIGHT_M; never fly into the net.
+    if args.takeoff_alt > MAX_SAFE_ALT_M:
+        logger_pre.warning("--takeoff-alt %.1f m exceeds safe max %.1f m (cage %.1f m) — CLAMPING to %.1f",
+                           args.takeoff_alt, MAX_SAFE_ALT_M, CAGE_HEIGHT_M, MAX_SAFE_ALT_M)
+        args.takeoff_alt = MAX_SAFE_ALT_M
 
     run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = Path(args.runs_dir).resolve() / f"run_{run_ts}"

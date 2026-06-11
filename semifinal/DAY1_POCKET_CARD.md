@@ -43,7 +43,7 @@ Pose defaults to `--pose auto` (MAVSDK FC fused NED, auto-fallback to `/uwb_tag`
 
 `--aruco-dict` default is **`7X7_1000,6X6_250`** — BOTH dicts scanned every frame (we only guessed 7X7 from Discord). Org markers assumed `DICT_7X7_1000`, IDs 11/45/51/67/101 — **CONFIRM with marshal**. Pass `--aruco-dict <DICT>` (case-insensitive) only to override.
 
-`--max-flight-time-s` default is **420 s** (60 s under the 480 s org cap) — no override needed. Pick the pre-staged `configs/arena_<N>x<N>.json` (3x3 / 4x4 / 6x6 / 8x8) closest to the announced arena size; all are pre-staged at **4.0 m** (`--takeoff-alt` default 4.0; 3-4 m recommended, confirm ceiling with marshal). Confirm `alt_m` in the JSON before launch.
+`--max-flight-time-s` default is **420 s** (60 s under the 480 s org cap) — no override needed. Pick the pre-staged `configs/arena_<N>x<N>.json` (3x3 / 4x4 / 6x6 / 8x8) closest to the announced arena size; altitude default **2.5 m** (cage ceiling 3.5 m; code hard-caps 3.2 m; use `--takeoff-alt 3.0` for higher). Confirm `alt_m` in the JSON before launch.
 
 ---
 

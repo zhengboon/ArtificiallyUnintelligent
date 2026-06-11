@@ -53,7 +53,7 @@ Single command per check (`export ROS_LOCALHOST_ONLY=1` first in this terminal).
   - Validity split (which IDs are valid vs invalid).
   - Arena dimensions (we assume 5.5 m wide × 11 m long, 0.7 m wall margin) + arena origin for the UWB `br_n/br_e` calibration + ceiling/net height.
 - [ ] **Validity:** the default rule is `lookup` → `configs/valid_ids_finals.json`. Edit that file with the marshal's real valid/invalid split (move INVALID ids into `invalid_ids`). Env override if needed: `MAPPING_DRONE_VALIDITY` / `MAPPING_DRONE_VALIDITY_LOOKUP`.
-- [ ] **Waypoints:** build the survey box for the measured frame — `python3 tools/survey_box.py --margin 0.7 --lanes 3 --alt 4.0 --out configs/waypoints_surveyed.json`, then launch with `--waypoints-from-json configs/waypoints_surveyed.json`. (NOTE: survey_box's corner-walk mode is UNUSABLE if you can't touch the drone.) Frame measurement (Path 3-UWB vs 3-FC) and the run command live in **OP_DOC.md Step 3 / Step 5** — go there for the procedure, don't duplicate it here.
+- [ ] **Waypoints:** build the survey box for the measured frame — `python3 tools/survey_box.py --margin 0.7 --lanes 3 --alt 2.5 --out configs/waypoints_surveyed.json`, then launch with `--waypoints-from-json configs/waypoints_surveyed.json`. (NOTE: survey_box's corner-walk mode is UNUSABLE if you can't touch the drone.) Frame measurement (Path 3-UWB vs 3-FC) and the run command live in **OP_DOC.md Step 3 / Step 5** — go there for the procedure, don't duplicate it here.
 
 ---
 
