@@ -89,6 +89,11 @@ Both stages share the **same arena UWB frame** (origin = centre). The C1 → C2 
 | **K** | Challenge 2 Hula swarm controller · on-day pilot |
 | **A** | Operations · concept submission · judge interface |
 
+<p align="center">
+<img src="images/team.jpg" alt="ArtificiallyUnintelligent team in DSTA BrainHack jackets standing in front of the Counter-UAS demo station at MBS Expo Level 4, with a leaderboard screen and a SPOTTED SUSPICIOUS DRONE alert visible behind them" width="540">
+<br><sub><i>The team at the Counter-UAS demo station — DSTA Tech Showcase, MBS Expo Level 4</i></sub>
+</p>
+
 ---
 
 <p align="center">

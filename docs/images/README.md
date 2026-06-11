@@ -5,6 +5,7 @@ Photos used by the GitHub Pages site. All shot at BrainHack 2026 RoboVerse Drone
 | File | Where it's used | What it shows |
 |---|---|---|
 | `hero-venue.jpg` | `index.md` (hero) | Day 1 morning — approaching the BRAINHACK arch at MBS Expo Level 4 |
+| `team.jpg` | `index.md` (team) | Team at the DSTA Counter-UAS demo station (converted from IMG_1705.HEIC) |
 | `swarm-controller-live.jpg` | `architecture.md`, `c2-swarm.md` | Day 2 — VS Code + swarm_controller.py terminal output + live ArUco detection on a RoboMaster body |
 | `convoy-robomasters.jpg` | `c1-mapping.md` | Day 1 morning — three RoboMaster ground robots with ArUco markers, against the see-through cage net |
 | `aruco-marker-printed.jpg` | `c1-mapping.md` (perception section) | The org's printed 20cm × 20cm marker — DICT_7X7_1000 |
