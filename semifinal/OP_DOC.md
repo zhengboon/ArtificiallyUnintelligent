@@ -70,8 +70,12 @@ Drones are **not identical** (different camera, packages, paths). The moment you
 ```bash
 ls ~                                  # find the repo: AD / ad / roboverse26
 cd ~/AD/semifinal                     # adjust to whatever you found
-bash tools/drone_fingerprint.sh       # ~30s, read-only, NEVER arms
+bash requirements.sh                  # verify+install deps; prints READY / NOT READY
+bash tools/drone_fingerprint.sh       # ~30s, read-only, NEVER arms (hardware readiness)
 ```
+`requirements.sh` checks/installs the Python + ROS deps and confirms the package
+imports; `drone_fingerprint.sh` checks the hardware (camera, FC, serial, UWB).
+Both are read-only re: flight (never arm).
 Read the output:
 - **Everything `ok`** → go to Step 1.
 - **Any `MISSING` in section 2/3 (px4_msgs, nlink_parser, mavsdk, pyrealsense2)** → this drone has a setup problem, NOT interference → **`→ 0a`**.
