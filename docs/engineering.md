@@ -1,13 +1,20 @@
 ---
 layout: default
 title: Engineering log
+description: Trade-offs made on purpose, prep-week surprises, and lessons for next year.
 ---
 
 # Engineering log
 
-> Trade-offs we made on purpose, surprises we hit, and things we'd do differently next time.
+<p align="center">
+<a href="{{ '/' | relative_url }}">← Home</a> &nbsp;·&nbsp;
+<a href="#decisions-and-trade-offs">Trade-offs</a> &nbsp;·&nbsp;
+<a href="#surprises-during-prep">Surprises</a> &nbsp;·&nbsp;
+<a href="#things-wed-do-differently">Lessons</a> &nbsp;·&nbsp;
+<a href="#stats">Stats</a>
+</p>
 
-[← Back to home]({{ '/' | relative_url }})
+> Trade-offs we made on purpose, surprises we hit, and things we'd do differently next time.
 
 ---
 
@@ -29,35 +36,44 @@ title: Engineering log
 
 ## Surprises during prep
 
-### The mapping drones don't all have RGB
+### 🎥 The mapping drones don't all have RGB
 
 The org confirmed late (2026-06-08) that the mapping drone fleet includes Realsense **D430** and **D450** modules. Neither has an integrated RGB sensor. Our dev camera (D435) does.
 
-This would have broken our color-frame ArUco pipeline silently — there would have been no error, just zero detections.
+> ⚠️ This would have broken our color-frame ArUco pipeline **silently** — there would have been no error, just zero detections.
 
-Fix: `realsense.py` auto-detects the available streams at startup and, if no RGB sensor is exposed, synthesises a BGR frame from the IR stream with the IR emitter toggled off (so the projector's dot pattern doesn't corrupt the marker). The ArUco pipeline downstream sees the same `RealsenseFrame` interface either way.
+**Fix:** `realsense.py` auto-detects the available streams at startup and, if no RGB sensor is exposed, synthesises a BGR frame from the IR stream with the IR emitter toggled off (so the projector's dot pattern doesn't corrupt the marker). The ArUco pipeline downstream sees the same `RealsenseFrame` interface either way.
 
-### The ArUco dictionary was announced *on the day*
+### 📚 The ArUco dictionary was announced *on the day*
 
 We assumed `DICT_6X6_250` based on the org's sample code. They announced `DICT_7X7_1000` at the briefing.
 
-Fix: we'd already broadened the runtime dict registry to all 20 standard variants with case-insensitive lookup, and the mapping pipeline scans **two** dictionaries every frame as a hedge. Configuration was a `--aruco-dict` flag change; no code edit at venue.
+**Fix:** we'd already broadened the runtime dict registry to all 20 standard variants with case-insensitive lookup, and the mapping pipeline scans **two** dictionaries every frame as a hedge. Configuration was a `--aruco-dict` flag change; no code edit at venue.
 
-### The altitude floor and our defaults
+### 📏 The altitude floor and our defaults
 
 Org confirmed a 3.5 m minimum altitude on 2026-06-08. Our defaults were 1.5 m / 2.5 m — well below.
 
-Fix: bumped every pre-staged waypoint template to 4.0 m, and made the alt clamp a *runtime* value (not a constant) so we could revise it again on the day. (We later revised down to 2.5 m default with 3.2 m hard cap once we learned the cage net height.)
+**Fix:** bumped every pre-staged waypoint template to 4.0 m, and made the alt clamp a *runtime* value (not a constant) so we could revise it again on the day. (We later revised down to 2.5 m default with 3.2 m hard cap once we learned the cage net height.)
 
-### A documented flag that didn't exist
+### 🪤 A documented flag that didn't exist
 
-During a deep doc audit on the night before, we caught that `--use-ir-for-aruco` was referenced in three different runbook files as if it were a real CLI flag — but it had never been wired into argparse. An operator following the docs would have hit "unrecognized argument" mid-prep.
+During a deep doc audit on the night before, we caught that `--use-ir-for-aruco` was referenced in three different runbook files as if it were a real CLI flag — but it had never been wired into argparse. An operator following the docs would have hit `unrecognized argument` mid-prep.
 
-Fix: replaced every reference with "escalate to org marshal" guidance, since the underlying IR fallback is the auto-detect path, not a flag.
+**Fix:** replaced every reference with "escalate to org marshal" guidance, since the underlying IR fallback is the auto-detect path, not a flag.
 
-### Tickets stopped being useful
+### 🎫 Tickets stopped being useful
 
 We drafted 11 support-ticket questions for the org over the prep week. By T-1 evening it was clear that org responses were slow enough that filing more tickets had negative expected value — better to ask the on-site marshal verbally on the day. The drafted file is preserved in the repo for completeness but reframed as "verbal asks" in the day-of runbook.
+
+### 🛰 The bonus side-quest: DSTA Tech Showcase
+
+Slide 10 of the brief: a 4 % bonus for completing the *Brainhack Frontier Exploration System* — a gamified tour of the DSTA tech showcase next to the arena. Three zones (Above & Beyond: Skies & Space · Machines at the Edge: Land & Sea · Truth & Trust: Digital Defence). We checked all three off between scored slots.
+
+<p align="center">
+<img src="images/frontier-exploration-bonus.jpg" alt="Phone screenshot of the Brainhack Frontier Exploration System showing 3/3 zones explored: Above and Beyond Skies and Space, Machines at the Edge Land and Sea, Truth and Trust Digital Defence, all marked EXPLORED with a Complete Mission button at the bottom" width="360">
+<br><sub><i>3 / 3 zones explored — the 4 % bonus collected between slots</i></sub>
+</p>
 
 ---
 
@@ -77,18 +93,31 @@ Our dev camera was a Realsense D435 plugged directly into a development laptop v
 
 ### Adversarial reviews work
 
-Multiple passes of multi-agent review (one author, multiple skeptical reviewers in parallel) caught silent killers — a validity rule that marked every real pad invalid because of an `Optional[bool] → bool` coercion, a broken no-RGB camera path, the wrong altitude default, the fake `--use-ir-for-aruco` flag. Every one of those would have surfaced live, in the assessment slot.
+Multiple passes of multi-agent review (one author, multiple skeptical reviewers in parallel) caught **silent killers**:
 
-We'd run more of them next time.
+- A validity rule that marked every real pad invalid because of an `Optional[bool] → bool` coercion
+- A broken no-RGB camera path
+- The wrong altitude default
+- The fake `--use-ir-for-aruco` flag
+
+Every one of those would have surfaced live, in the assessment slot. **We'd run more of them next time.**
 
 ---
 
 ## Stats
 
-- **Total commits during prep (5 days):** ~140 on the working branch
-- **Stand-up files:** README, CHALLENGE_BREAKDOWN, FINALS_PLAN, runbook, DAY1_RUNBOOK, DAY1_POCKET_CARD, DAY1_SETUP_SEQUENCE, SCORING_PLAYBOOK, HANDOFF_C1_TO_C2, CONVOY_OPPONENT_ROLE, D430_RGB_RISK, ORG_TICKETS_DRAFT, CONCEPT_PLAN, OP_DOC
-- **Smoke tests on the C1 stack:** end-to-end multi-tag, mid-run abort, kill-mid-run, stationary depth-zero rate, multi-dict normalisation
-- **Lines of code, C1 pipeline:** ~3,500 (excluding tests, mocks, docs)
-- **Org Discord drops handled live (during prep):** 11 separate clarifications
+| Metric | Count |
+|---|---|
+| Total commits during prep (5 days) | ~140 |
+| Stand-up files | 14 (`README`, `CHALLENGE_BREAKDOWN`, `FINALS_PLAN`, `runbook`, `DAY1_RUNBOOK`, `DAY1_POCKET_CARD`, `DAY1_SETUP_SEQUENCE`, `SCORING_PLAYBOOK`, `HANDOFF_C1_TO_C2`, `CONVOY_OPPONENT_ROLE`, `D430_RGB_RISK`, `ORG_TICKETS_DRAFT`, `CONCEPT_PLAN`, `OP_DOC`) |
+| Smoke tests on the C1 stack | 5 (end-to-end multi-tag, mid-run abort, kill-mid-run, stationary depth-zero rate, multi-dict normalisation) |
+| Lines of code, C1 pipeline | ~3,500 (excluding tests, mocks, docs) |
+| Org Discord drops handled live | 11 |
 
-[← Back to home]({{ '/' | relative_url }})
+---
+
+<p align="center">
+<a href="{{ '/' | relative_url }}">← Home</a>
+&nbsp;·&nbsp;
+<a href="{{ '/principles' | relative_url }}">← Design principles</a>
+</p>

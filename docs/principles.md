@@ -1,13 +1,29 @@
 ---
 layout: default
 title: Design principles
+description: The five rules that drove every architectural decision — and the specific failure modes each one prevented.
 ---
 
 # Design principles
 
+<p align="center">
+<a href="{{ '/' | relative_url }}">← Home</a> &nbsp;·&nbsp;
+<a href="#1-intelligence-drives-the-strike">1. Intelligence</a> &nbsp;·&nbsp;
+<a href="#2-coverage-over-cleverness">2. Coverage</a> &nbsp;·&nbsp;
+<a href="#3-degrade-dont-fail">3. Degrade</a> &nbsp;·&nbsp;
+<a href="#4-safe-first">4. Safe-first</a> &nbsp;·&nbsp;
+<a href="#5-frame-discipline">5. Frame</a>
+</p>
+
 > Five rules drove every architectural decision. Together they explain why the system looks the way it does — and why it survived contact with hardware.
 
-[← Back to home]({{ '/' | relative_url }})
+| # | Principle | The failure it prevents |
+|---|---|---|
+| 1 | Intelligence drives the strike | Building C1 and C2 independently and re-surveying twice |
+| 2 | Coverage over cleverness | Reactive-sensing failures from see-through netting |
+| 3 | Degrade, don't fail | Single-point hardware drops ending the run |
+| 4 | Safe-first | Crash → zero points → no recovery |
+| 5 | Frame discipline | Silent axis errors that look like "everything is wrong" |
 
 ---
 
@@ -34,10 +50,14 @@ The arena cage has see-through netting. Depth sensors return random fragments th
 
 We therefore picked **deterministic full-coverage search** everywhere:
 
-- **C1 mapping:** a pre-planned boustrophedon (lawnmower) sweep at controlled altitude. Geometry guarantees full coverage.
-- **C2B hunt:** wall-following perimeter + 360° spin-scan at each corner.
+| Stage | Strategy | Why |
+|---|---|---|
+| **C1 mapping** | Pre-planned boustrophedon (lawnmower) sweep at controlled altitude | Geometry guarantees full coverage |
+| **C2B hunt** | Wall-following perimeter + 360° spin-scan at each corner | Predictable, multi-angle ArUco coverage |
 
-Both are predictable, debuggable, and *immune to the see-through netting that defeats depth-based obstacle sensing*. SLAM and reactive exploration look better in a paper. Deterministic sweeps survive the venue.
+Both are predictable, debuggable, and **immune to the see-through netting that defeats depth-based obstacle sensing**.
+
+> SLAM and reactive exploration look better in a paper. Deterministic sweeps survive the venue.
 
 ---
 
@@ -53,7 +73,7 @@ Every critical path has a fallback so a single sensor or link problem *downgrade
 | **Transport** | MAVSDK (`serial:///dev/ttyS6:921600`) | PX4-ROS2 via micro-XRCE-DDS | Operator runs `px4_mission.py` instead of the default |
 | **MAVSDK address** | `serial:///dev/ttyS6:921600` | 4 other addresses pre-baked | Controller tries each with 5 s timeout |
 
-Each fallback is tested either by smoke tests (camera RGB↔IR, multi-dict) or by explicit operator action (alternate transport). None are speculative.
+> Each fallback is tested either by smoke tests (camera RGB↔IR, multi-dict) or by explicit operator action (alternate transport). **None are speculative.**
 
 ---
 
@@ -63,27 +83,30 @@ Each fallback is tested either by smoke tests (camera RGB↔IR, multi-dict) or b
 
 A crash equals zero points for the run, with no recovery. Safety is therefore *the* primary constraint, not a secondary one. It lives **inside the control loop**:
 
-- **Hard altitude cap** (3.2 m) below the cage net (≈3.5 m). The clamp is applied at every velocity step, not on init.
-- **Speed cap** 0.3 m/s for the mapping drone, applied at construction time.
-- **Five run-time watchdogs** — battery, pose-loss, position-stuck, setpoint-failure, max-flight-time — every one of which auto-lands the drone.
-- **Stuck-watchdog tuning:** widened to 30 s window after the 0.3 m/s cap landed (a slow drone is legitimately motionless during scan dwells; the original 20 s window caught false stalls).
-
-No-arm modes (`--check`, `--nofly`) exist so an operator can validate every subsystem on the drone in less than a minute before committing to flight.
+| Defence | Detail |
+|---|---|
+| **Hard altitude cap** (3.2 m) | Below the cage net (≈3.5 m). Clamp applied at every velocity step, not on init. |
+| **Speed cap** (0.3 m/s) | Applied at construction time. Operator request above the cap is silently floored with a warning. |
+| **5 run-time watchdogs** | Battery · pose-loss · position-stuck · setpoint-failure · max-flight-time. Every one auto-lands the drone. |
+| **Stuck-watchdog tuning** | Widened to 30 s window after the 0.3 m/s cap landed — a slow drone is legitimately motionless during scan dwells. |
+| **No-arm modes** | `--check` and `--nofly` exist so an operator can validate every subsystem on the drone in under a minute before committing to flight. |
 
 ---
 
 ## 5. Frame discipline
 
-Indoor UWB-frame ambiguity is the number-one failure mode of indoor missions. You can lose a competition to a silent ENU↔NED axis swap.
+Indoor UWB-frame ambiguity is the **number-one failure mode** of indoor missions. You can lose a competition to a silent ENU↔NED axis swap.
 
 Our defence:
 
-- **One coordinate world** for both challenges — arena UWB centred origin, axes locked to the cage corners.
-- **`uwb.py` does the ENU→NED swap** in one well-tested place (`n = pose.y`, `e = pose.x`, `alt = -pose.z`). Nothing else in the codebase touches the swap.
-- **`survey_box.py`** *measures* the arena-to-NED frame mapping at venue setup by hand-flying a known fly-path and watching the telemetry. We never assume which way north points.
-- **Frame callout in code comments** — every module that touches world coordinates has an explicit ENU vs NED note in its docstring.
+| Practice | Detail |
+|---|---|
+| **One coordinate world** | Arena UWB centred origin, axes locked to the cage corners. Both challenges share it. |
+| **One swap point** | `uwb.py` does the ENU→NED swap (`n = pose.y`, `e = pose.x`, `alt = -pose.z`). Nothing else in the codebase touches it. |
+| **Measure, don't assume** | `survey_box.py` *measures* the arena-to-NED frame mapping at venue setup by hand-flying a known fly-path and watching the telemetry. |
+| **Callouts in code** | Every module that touches world coordinates has an explicit ENU vs NED note in its docstring. |
 
-The cost is one operator step (~2 min) before the first scored run. The benefit is that we never had to debug "the drone flew the wrong way" mid-run.
+> The cost is one operator step (~2 min) before the first scored run. The benefit is that we **never** had to debug "the drone flew the wrong way" mid-run.
 
 ---
 
@@ -94,9 +117,17 @@ These aren't generic principles — each one is a direct response to a specific 
 | Principle | The failure it prevents |
 |---|---|
 | Intelligence drives the strike | Building C1 and C2 independently and re-surveying twice |
-| Coverage over cleverness | Reactive sensing failures from see-through netting |
+| Coverage over cleverness | Reactive-sensing failures from see-through netting |
 | Degrade, don't fail | Single-point hardware drops ending the run |
 | Safe-first | Crash → zero points → no recovery |
 | Frame discipline | Silent axis errors that look like "everything is wrong" |
 
-[Engineering log →]({{ '/engineering' | relative_url }})
+---
+
+<p align="center">
+<a href="{{ '/' | relative_url }}">← Home</a>
+&nbsp;·&nbsp;
+<a href="{{ '/architecture' | relative_url }}">← Architecture</a>
+&nbsp;·&nbsp;
+<a href="{{ '/engineering' | relative_url }}">Engineering log →</a>
+</p>

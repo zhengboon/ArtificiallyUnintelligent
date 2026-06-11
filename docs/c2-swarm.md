@@ -1,13 +1,21 @@
 ---
 layout: default
 title: Challenge 2 — Swarm
+description: Hula swarm deep dive. Deploy phase, hunt phase, central video detection, and the convoy operator role.
 ---
 
 # Challenge 2 — Hula swarm
 
-> Two halves. **2A — Deployment:** land three Hula drones on three valid pads. **2B — Ambush:** hunt five RoboMaster ground robots and tag each with a snapshot of its on-body ArUco marker.
+<p align="center">
+<a href="{{ '/' | relative_url }}">← Home</a> &nbsp;·&nbsp;
+<a href="#what-we-knew-vs-what-was-clarified-late">Late drops</a> &nbsp;·&nbsp;
+<a href="#architecture-overview">Architecture</a> &nbsp;·&nbsp;
+<a href="#phase-a--deployment-challenge-2a">Deploy</a> &nbsp;·&nbsp;
+<a href="#phase-b--hunt-challenge-2b">Hunt</a> &nbsp;·&nbsp;
+<a href="#convoy-operator-role-slot-24">Convoy</a>
+</p>
 
-[← Back to home]({{ '/' | relative_url }})
+> Two halves. **2A — Deployment:** land three Hula drones on three valid pads. **2B — Ambush:** hunt five RoboMaster ground robots and tag each with a snapshot of its on-body ArUco marker.
 
 ---
 
@@ -15,17 +23,24 @@ title: Challenge 2 — Swarm
 
 Challenge 2 had several late-breaking surprises from the org's Discord:
 
-- The 5 RoboMaster targets carry **ArUco markers**, not coloured silhouettes. Detection is `cv2.aruco`, not a custom YOLO. *(2026-06-06)*
-- An ArUco marker is also placed *beside* every Hula landing pad (mirroring Challenge 1). The Hula can use it as a final visual landing aid. *(2026-06-06)*
-- **The map layout is not provided.** Arena dimensions must be discovered live. *(2026-06-06)*
-- All 5 RoboMasters' marker size is **20 cm × 20 cm**. Exact dictionary announced on the day. *(2026-06-06)*
-- Of the 5 ground robots, **2 are driven by another team** as adversarial convoy operators; we drive 2 convoy bots for THE WIENERS in their slot. *(slide 14)*
+| Drop | Date | Impact |
+|---|---|---|
+| RoboMasters carry **ArUco markers**, not coloured silhouettes — `cv2.aruco`, not custom YOLO | 2026-06-06 | A's YOLO track demoted to insurance only |
+| ArUco markers placed *beside* every Hula landing pad too (mirroring C1) — usable as visual landing aid | 2026-06-06 | Same `cv2.aruco` path reused for landing confirmation |
+| **Map layout not provided** — arena dimensions discovered live | 2026-06-06 | Coverage strategies must not depend on a-priori dimensions |
+| Markers are **20 cm × 20 cm**; exact dictionary announced on the day | 2026-06-06 | Multi-dict scan path planted as hedge |
+| **2 of 5 ground robots driven by another team** as adversarial convoy operators; we drive 2 in their slot | Slide 14 | New role: Convoy operator |
 
 Our swarm design accommodates all of these — ArUco-first detection, UWB-positioned landing with visual confirmation, no hard dependence on arena dimensions.
 
 ---
 
 ## Architecture overview
+
+<p align="center">
+<img src="images/swarm-controller-live.jpg" alt="Live screen of the swarm controller during Day 2 — the per-drone state machine printing STATE_FLY_TO_ZONE for Drone 1 in the terminal pane and an opened detection JPEG showing a green-bbox ArUco marker captured by the Hula's down-camera mid-hunt" width="720">
+<br><sub><i>The swarm controller live on Day 2 · per-drone state in the terminal · fresh ArUco hit on a RoboMaster body in the image pane</i></sub>
+</p>
 
 ```
  dola.py (UDP discovery: plane_id → IP)
@@ -40,7 +55,7 @@ Our swarm design accommodates all of these — ArUco-first detection, UWB-positi
    central video: all drones' streams aggregated → ArUco detection
 ```
 
-Why a single central detector? Multi-stream from one machine simplifies dedup (one detection table, not three), and lets us add expensive visual sanity checks (multi-frame confirmation) cheaply.
+> 💡 **Why a single central detector?** Multi-stream from one machine simplifies dedup (one detection table, not three), and lets us add expensive visual sanity checks (multi-frame confirmation) cheaply.
 
 ---
 
@@ -48,8 +63,11 @@ Why a single central detector? Multi-stream from one machine simplifies dedup (o
 
 ### Inputs
 
-- **From the org:** the Discord-published landing-pad coordinates (5 points). The validity split (which 3 of the 5 are valid) is announced on the day.
-- **From C1:** `landing_pads.json` cross-checks the validity split against what our mapping drone saw. Same coordinate frame (arena UWB centred origin), so it's a lookup.
+| Source | What it provides |
+|---|---|
+| **Org Discord** | The 5 landing-pad coordinates |
+| **Org briefing** | The validity split — which 3 of the 5 are valid |
+| **From C1** | `landing_pads.json` — cross-check of the validity split + world coords (same UWB frame) |
 
 ### Per-drone state machine
 
@@ -59,12 +77,14 @@ IDLE → TAKEOFF → CRUISE_TO_ZONE → APPROACH → ARUCO_VISUAL_LOCK → DESCE
                                        └── timeout / no lock ──► HOLD ──┘
 ```
 
-- **CRUISE_TO_ZONE:** UWB-driven `send_manual_control` velocity vectors toward the landing-pad coordinate at 0.5 m/s cap (org rule, slide 6). Recommended altitude 1.1 m (slide 6) — well below the cage net.
-- **APPROACH:** slow profile into the final 1 m horizontally with altitude held.
-- **ARUCO_VISUAL_LOCK:** confirm we see the pad's own ArUco marker in the down-facing camera before committing to descent.
-- **DESCEND:** controlled descent with horizontal hold; pyhula handles the touchdown.
+| State | What happens |
+|---|---|
+| `CRUISE_TO_ZONE` | UWB-driven `send_manual_control` velocity vectors toward the landing-pad coordinate @ **0.5 m/s** cap (org rule). Altitude **1.1 m** (org-recommended) — well below the cage net. |
+| `APPROACH` | Slow profile into the final 1 m horizontally with altitude held. |
+| `ARUCO_VISUAL_LOCK` | Confirm we see the pad's own ArUco marker in the down-facing camera before committing to descent. |
+| `DESCEND` | Controlled descent with horizontal hold; pyhula handles the touchdown. |
 
-Strict rule from the org: **no flying over obstacles** (slide 6). Our waypoint planner therefore keeps every drone over open floor — the deployment path is a direct UWB-frame straight line from takeoff to each zone, never over a pad or the convoy.
+> ⚠️ **No flying over obstacles** (slide 6). Waypoint planner keeps every drone over open floor — the deployment path is a direct UWB-frame straight line from takeoff to each zone.
 
 ### Coordination across 3 drones
 
@@ -76,12 +96,16 @@ Drones launch staggered to avoid mid-air conflict; each operates an independent 
 
 ### Inputs
 
-- The 5 RoboMasters loiter in the cage. 3 follow an autonomous patrol; 2 are adversarial operators (another team driving with the same intent — evade us, harass us).
-- Each RoboMaster carries an ArUco marker on its top surface.
+| Type | Count | Notes |
+|---|---|---|
+| Autonomous RoboMasters | 3 | Follow an autonomous patrol |
+| Adversarial RoboMasters | 2 | Another team driving with intent to evade us |
+
+Each carries an ArUco marker on its top surface.
 
 ### Strategy
 
-Each Hula drone runs the same coverage routine:
+Per drone:
 
 1. **Perimeter waypoints** at 1.1 m altitude trace the cage interior just inside the obstacle ring.
 2. **360° spin-scan** at each corner — a slow yaw rotation with the down-camera streaming continuously to the central detector.
@@ -104,6 +128,8 @@ All saved to the run directory, copied to USB, presented to the judge.
 
 ## Convoy operator role (slot #24)
 
+> 🎮 **Operationally the *fun* slot of the day.**
+
 Our schedule includes a second responsibility on Day 2: at slot #24 we operate two convoy RoboMasters *against* THE WIENERS. The same role STD plays against us at our slot #3.
 
 Our convoy strategy:
@@ -113,17 +139,23 @@ Our convoy strategy:
 - Stay near obstacles where Hulas can't approach from above (no flying over obstacles, slide 6).
 - Track the opposing Hula's perimeter waypoints by ear (Hula motor pitch) and zig away from its sweep.
 
-This is operationally the *fun* slot of the day.
-
 ---
 
 ## Speed + altitude caps (Hula)
 
-- **Max speed:** 0.5 m/s (slide 6)
-- **Recommended altitude:** 1.1 m (slide 6)
-- **No flying over obstacles** (slide 6) — hard rule. Path planning respects obstacle footprints, not just altitude.
-- **Per-attempt cap:** 8 minutes (slide 6)
+| Constraint | Value | Source |
+|---|---|---|
+| Max speed | **0.5 m/s** | Org slide 6 |
+| Recommended altitude | **1.1 m** | Org slide 6 |
+| No flying over obstacles | **Hard rule** | Org slide 6 — path planning respects obstacle footprints |
+| Per-attempt cap | **8 min** | Org slide 6 |
 
-[← Challenge 1]({{ '/c1-mapping' | relative_url }})
-&nbsp; · &nbsp;
-[Design principles →]({{ '/principles' | relative_url }})
+---
+
+<p align="center">
+<a href="{{ '/' | relative_url }}">← Home</a>
+&nbsp;·&nbsp;
+<a href="{{ '/c1-mapping' | relative_url }}">← Challenge 1</a>
+&nbsp;·&nbsp;
+<a href="{{ '/principles' | relative_url }}">Design principles →</a>
+</p>

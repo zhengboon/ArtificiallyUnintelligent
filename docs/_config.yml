@@ -1,29 +1,22 @@
-title: ArtificiallyUnintelligent — RoboVerse Drone Challenge
-description: How we built a two-stage autonomous drone mission for BrainHack 2026 — mapping drone reconnaissance + Hula swarm deployment & ambush.
+title: ArtificiallyUnintelligent
+description: BrainHack 2026 RoboVerse Drone Challenge — University Finals, Marina Bay Sands, 10–11 June 2026.
 theme: jekyll-theme-cayman
-show_downloads: false
 
-# Cayman theme footer + header tuning
-google_analytics:
+# Pretty URLs
+permalink: pretty
 
-# Navigation
-nav:
-  - title: Home
-    url: /
-  - title: Architecture
-    url: /architecture
-  - title: Challenge 1 — Mapping
-    url: /c1-mapping
-  - title: Challenge 2 — Swarm
-    url: /c2-swarm
-  - title: Design principles
-    url: /principles
-  - title: Engineering log
-    url: /engineering
+# Markdown
+markdown: kramdown
+kramdown:
+  input: GFM
+  hard_wrap: false
+  syntax_highlighter: rouge
+  toc_levels: 2..3
 
-# Plugins enabled by default on GitHub Pages
+# Plugins (whitelisted on GitHub Pages)
 plugins:
   - jekyll-relative-links
+  - jekyll-seo-tag
 
 relative_links:
   enabled: true
@@ -31,3 +24,23 @@ relative_links:
 
 include:
   - CONCEPT_PLAN.md
+
+exclude:
+  - LINKEDIN_POST_DRAFT.md
+  - images/README.md
+  - vendor
+  - Gemfile
+  - Gemfile.lock
+
+# SEO defaults
+url: "https://zhengboon.github.io"
+baseurl: "/ArtificiallyUnintelligent"
+github:
+  repository_url: https://github.com/zhengboon/ArtificiallyUnintelligent
+
+defaults:
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: default

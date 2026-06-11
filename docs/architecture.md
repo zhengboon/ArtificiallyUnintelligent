@@ -1,19 +1,27 @@
 ---
 layout: default
 title: Architecture
+description: System architecture of the mapping drone + Hula swarm. Module-by-module module roles and the C1 → C2 handoff.
 ---
 
 # System architecture
 
-> Both halves share the **same arena UWB frame** (origin = centre). Code is organised as one repository with a strict adapter boundary at every hardware dependency, so every module has a mock that lets the whole pipeline run laptop-only.
+<p align="center">
+<a href="{{ '/' | relative_url }}">← Home</a> &nbsp;·&nbsp;
+<a href="#challenge-1--mapping-drone">C1 mapping</a> &nbsp;·&nbsp;
+<a href="#challenge-2--hula-swarm">C2 swarm</a> &nbsp;·&nbsp;
+<a href="#the-c1--c2-handoff">Handoff</a> &nbsp;·&nbsp;
+<a href="#development-boundary">Dev boundary</a>
+</p>
 
-[← Back to home]({{ '/' | relative_url }})
+> Both halves share the **same arena UWB frame** (origin = centre). Every hardware dependency sits behind a small adapter interface with a mock — so the whole pipeline runs on a laptop, no drone required.
 
 ---
 
 ## Challenge 1 — Mapping drone
 
 `mapping_drone/` runs on the drone's onboard Orange Pi (Ubuntu 22.04 + ROS2 + MAVSDK over `serial:///dev/ttyS6:921600`).
+
 
 ```
                  ┌──────────── moveit_mission.py (ORCHESTRATOR, MAVSDK ttyS6) ───────────┐
@@ -37,20 +45,31 @@ title: Architecture
    Tools: survey_box.py (measure frame), drone_fingerprint.sh, requirements.sh.
 ```
 
-**Module roles:**
+### Module roles
 
-- **`moveit_mission.py`** — the orchestrator: MAVSDK offboard, the closed-loop velocity-profiled waypoint controller, per-waypoint scan, safety watchdogs, altitude clamp. `px4_mission.py` is its MAVSDK-free twin over micro-XRCE-DDS (`px4_ros.py` reads `/fmu/out/vehicle_local_position` and drives offboard via `/fmu/in/*`).
-- **Pose** is abstracted so the mission consumes one `(n, e, down, yaw, ready)` tuple regardless of source. `--pose auto` prefers FC fused NED and auto-falls-back to UWB. `uwb.py` does the ENU→NED axis swap.
-- **`realsense.py`** delivers frames, auto-falling back from RGB to synthesised IR-BGR for no-RGB cameras.
-- **`mapping.py`** is the vision core: scans *two* ArUco dictionaries per frame, deprojects each marker + depth pixel into the world frame, and accumulates a tri-state top-down occupancy grid.
-- **`validity.py`** classifies each pad via a lookup table populated from the marshal's announcement.
-- **`run_writer.py`** owns the run directory and persists judge artifacts atomically on every update (`landing_pads.json`, `top_down.png`, `top_down.npy`, `STATUS.txt`, `run_summary.json`, marker JPEGs).
+| Module | Responsibility |
+|---|---|
+| `moveit_mission.py` | Orchestrator — MAVSDK offboard, closed-loop velocity-profiled waypoint controller, per-waypoint scan, safety watchdogs, altitude clamp. |
+| `px4_mission.py` | MAVSDK-free twin over micro-XRCE-DDS — same vision stack, PX4-ROS2 flight only. |
+| `px4_ros.py` | Reads `/fmu/out/vehicle_local_position` and drives offboard via `/fmu/in/*`. |
+| `uwb.py` | UWB adapter — ROS2 subscriber on `/uwb_tag`; ENU → NED axis swap (single source of truth). |
+| `realsense.py` | RealSense adapter — auto-fallback from RGB to synthesised BGR-from-IR for no-RGB cameras. |
+| `mapping.py` | Vision core — multi-dict ArUco, camera→world transform, occupancy grid. |
+| `validity.py` | Pad classifier — lookup table populated from the marshal's announcement. |
+| `run_writer.py` | Run-directory writer — atomic writes of `landing_pads.json`, `top_down.png/.npy`, `STATUS.txt`, `run_summary.json`, marker JPEGs. |
+
+> 💡 **`--pose auto` is the killer feature.** The mission consumes one `(n, e, down, yaw, ready)` tuple regardless of source. The adapter prefers FC fused NED, auto-falls-back to UWB when the FC stream degrades, and holds position if both go stale.
 
 ---
 
 ## Challenge 2 — Hula swarm
 
 Runs on the C2 Terminal (Windows host + Ubuntu VM) talking to three Hula drones over Wi-Fi via `pyhula`.
+
+<p align="center">
+<img src="images/swarm-controller-live.jpg" alt="Laptop screen during Day 2 — VS Code with swarm_controller.py open, the per-drone state machine printing STATE_FLY_TO_ZONE in the terminal, and an opened detection JPEG showing a green-bbox ArUco marker pinned to the side of a RoboMaster captured by the Hula's down-camera" width="720">
+<br><sub><i>Day 2 · live: the swarm controller's per-drone state machine (terminal) and a fresh ArUco detection on a RoboMaster body (image preview)</i></sub>
+</p>
 
 ```
  dola.py (UDP discovery: plane_id → IP)
@@ -66,12 +85,16 @@ Runs on the C2 Terminal (Windows host + Ubuntu VM) talking to three Hula drones 
    detection of the RoboMaster markers (huladola.py is the multi-stream pattern)
 ```
 
-**Module roles:**
+### Module roles
 
-- **`dola.py`** — UDP beacon listener resolving each plane's ID to its IP before connecting.
-- **`swarm_controller.py`** — the swarm brain: connects N drones, runs a per-drone state machine (deploy → hunt), and drives motion via `pyhula`.
-- **`UWBParserThread.py`** — background serial thread parsing UWB packets into a `tag_id → (x, y, t)` table for arena positioning.
-- **`huladola.py`** — the reference pattern for pulling every drone's video onto one machine so detection runs centrally.
+| Module | Responsibility |
+|---|---|
+| `dola.py` | UDP beacon listener resolving each Hula's plane-ID to its IP before connect. |
+| `swarm_controller.py` | Swarm brain — connects N drones, per-drone state machine (deploy → hunt), motion via `pyhula`. |
+| `UWBParserThread.py` | Background serial thread, parses UWB packets into `tag_id → (x, y, t)` table. |
+| `huladola.py` | Reference pattern for pulling every drone's video onto one machine. |
+
+> 💡 **Why a single central detector?** Multi-stream from one machine simplifies dedup (one detection table, not three) and lets us add expensive visual sanity checks (multi-frame confirmation) cheaply.
 
 ---
 
@@ -79,20 +102,26 @@ Runs on the C2 Terminal (Windows host + Ubuntu VM) talking to three Hula drones 
 
 C1 writes `landing_pads.json` (ArUco ID, world XYZ, valid / invalid). C2A takes the org's published landing coordinates as ground truth and uses the recon artifact as the cross-check (which IDs were valid, and where).
 
-**Both stages live in the arena UWB frame (origin = centre)** so the handoff is a coordinate lookup, not a re-survey.
+> **Both stages live in the arena UWB frame (origin = centre)** so the handoff is a coordinate lookup, not a re-survey.
 
 ---
 
 ## Development boundary
 
-Every hardware dependency sits behind a small interface (`UwbAdapter`, `RealsenseAdapter`, a flight layer), each with a mock (`MockUwbNode`, `MockRealsenseNode`). The entire C1 pipeline runs and is regression-tested on a laptop with no drone attached, via:
+Every hardware dependency sits behind a small interface (`UwbAdapter`, `RealsenseAdapter`, a flight layer), each with a mock (`MockUwbNode`, `MockRealsenseNode`). The entire C1 pipeline runs and is regression-tested on a laptop with no drone attached:
 
-```
+```bash
 python -m mapping_drone --mock --max-flight-time-s 30
 ```
 
-Smoke tests exercise the end-to-end paths (multi-tag detection, mid-run abort, kill-mid-run finalisation) so we catch regressions off-hardware.
+Smoke tests exercise the end-to-end paths — multi-tag detection, mid-run abort, kill-mid-run finalisation — so we catch regressions off-hardware.
 
-[Challenge 1 deep dive →]({{ '/c1-mapping' | relative_url }})
-&nbsp; · &nbsp;
-[Challenge 2 deep dive →]({{ '/c2-swarm' | relative_url }})
+---
+
+<p align="center">
+<a href="{{ '/' | relative_url }}">← Home</a>
+&nbsp;·&nbsp;
+<a href="{{ '/c1-mapping' | relative_url }}">Challenge 1 deep dive →</a>
+&nbsp;·&nbsp;
+<a href="{{ '/c2-swarm' | relative_url }}">Challenge 2 deep dive →</a>
+</p>
