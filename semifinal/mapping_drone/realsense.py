@@ -13,12 +13,13 @@ Camera fleet (org confirmed 2026-06-10, see semifinal/D430_RGB_RISK.md):
     --use-ir-for-aruco CLI flag). When True:
       * _build_config() enables rs.stream.infrared index 1 (Y8) instead of
         rs.stream.color.
-      * start() aligns to rs.stream.infrared and grabs the depth sensor so
-        the emitter can be toggled.
+      * start() reads the left-IR stream intrinsics (NO align — raw IR+depth
+        are already co-registered) and grabs the depth sensor so the emitter
+        can be toggled.
       * grab() turns the IR projector OFF (its dot pattern would corrupt
-        ArUco), pulls infrared_frame(1) + depth, and synthesises a 3-channel
-        BGR from the IR grayscale so ArucoDetector and the rest of the
-        pipeline keep working with NO change to mapping.py.
+        ArUco), pulls the RAW infrared_frame(1) + depth (same pixel grid),
+        and synthesises a 3-channel BGR from the IR grayscale so ArucoDetector
+        and the rest of the pipeline keep working with NO change to mapping.py.
     The mock path is unaffected — only the real RealsenseNode learns IR mode.
 """
 from __future__ import annotations
@@ -98,8 +99,9 @@ class RealsenseNode:
                 "pyrealsense2 is not installed; use MockRealsenseNode for "
                 "laptop testing or install librealsense on the drone."
             )
-        # IR fallback for D450 (no-RGB) cameras: align depth to the IR stream
-        # and synthesise BGR from IR so ArUco/mapping are unchanged.
+        # IR fallback for D450 (no-RGB) cameras: read raw left-IR + depth (already
+        # co-registered, NOT aligned) and synthesise BGR from IR so ArUco/mapping
+        # are unchanged.
         self._use_ir = bool(use_ir_for_aruco)
         self._pipeline = rs.pipeline()
         # IR mode: do NOT align — left IR (index 1) is the depth reference
@@ -115,14 +117,16 @@ class RealsenseNode:
 
     def _verify_color_frames(self) -> bool:
         """A D450 (no RGB) can 'start' a colour profile but never deliver a
-        colour frame. Confirm one actually arrives so start() can fall to IR."""
-        try:
-            for _ in range(3):
+        colour frame. Confirm one actually arrives so start() can fall to IR.
+        Per-attempt try so a slow first frame on a healthy D435 isn't kicked
+        to IR by a single early timeout."""
+        for _ in range(4):
+            try:
                 frames = self._pipeline.wait_for_frames(timeout_ms=1500)
-                if frames.get_color_frame():
-                    return True
-        except Exception:
-            return False
+            except Exception:
+                continue
+            if frames.get_color_frame():
+                return True
         return False
 
     def _reassert_emitter_off(self) -> None:
