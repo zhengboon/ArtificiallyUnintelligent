@@ -89,11 +89,6 @@ Both stages share the **same arena UWB frame** (origin = centre). The C1 → C2 
 | **K** | Challenge 2 Hula swarm controller · on-day pilot |
 | **A** | Operations · concept submission · judge interface |
 
-<p align="center">
-<img src="images/team.jpg" alt="ArtificiallyUnintelligent team in DSTA BrainHack jackets at the end of Day 2, three smiling teammates around their workspace laptop" width="540">
-<br><sub><i>End of Day 2 · the team after the convoy-operator slot · still smiling</i></sub>
-</p>
-
 ---
 
 <p align="center">
