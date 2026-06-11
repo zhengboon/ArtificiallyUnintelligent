@@ -1,3 +1,6 @@
+<!--OPDOC-BANNER-->
+> ⚠️ **SUPERSEDED — to run the mapping drone use [OP_DOC.md](OP_DOC.md).** This file is kept for historical detail only; the live decision-tree runbook is OP_DOC.md.
+
 # Day-1 Runbook — Pre-flight + Fallbacks
 
 Companion to `runbook.md`. Do these BEFORE arming. One page. Print on paper.

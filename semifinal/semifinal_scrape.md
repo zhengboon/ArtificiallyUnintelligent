@@ -1,3 +1,6 @@
+<!--OPDOC-BANNER-->
+> 🗑️ **RETIRED — stale qualifier-phase Discord scrape. Superseded by [OP_DOC.md](OP_DOC.md) and finals_brief_extracted.md. Kept for history only.**
+
 # Finals — Org Discord Scrape (early/qualifier-era; superseded by finals_brief_extracted.md)
 
 Verbatim copy of org's Discord posts about the semi-final scope. Source: BH2026ROBOVERSE channel(s), posted 2026-06-01 (one day before this file was written).

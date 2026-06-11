@@ -27,7 +27,9 @@ from .realsense import (
 from .mapping import ArucoSighting, ArucoDetector, OccupancyGrid, camera_to_world
 from .validity import decide_landing_validity, describe_rule
 from .run_writer import RunWriter
-from .controller import main, run
+# Primary entry point is the org-aligned MAVSDK mission. controller.py is
+# LEGACY (retired as an entry point) — do not re-export it here.
+from .moveit_mission import main
 
 __all__ = [
     # uwb
@@ -50,9 +52,8 @@ __all__ = [
     "describe_rule",
     # run writer
     "RunWriter",
-    # controller entry points
+    # entry point (moveit_mission)
     "main",
-    "run",
 ]
 
 

@@ -32,7 +32,9 @@ top-level project description so mocks and real adapters are drop-in.
 | `mapping.py`    | `ArucoDetector`, `OccupancyGrid`, `camera_to_world` helper.                    |
 | `validity.py`   | `decide_landing_validity(id)` + `describe_rule()` (see below).                 |
 | `run_writer.py` | `RunWriter` owns the run directory and all output files.                       |
-| `controller.py` | `main()` — argparse, asyncio loop, MAVSDK velocity controller, integration.    |
+| `moveit_mission.py` | `main()` — **the entry point** (`python3 -m mapping_drone`). argparse, asyncio loop, MAVSDK position/velocity controller (org `move_it4.py` pattern), integration. |
+| `px4_mission.py` | PX4-ROS2 / XRCE-DDS offboard **fallback** only (`python3 -m mapping_drone.px4_mission`). Used if the MAVSDK serial path is unavailable. |
+| `controller.py` | LEGACY. Retired as an entry point — kept for reference only; do not invoke.    |
 
 Flow per loop iteration (10 Hz):
 
@@ -105,29 +107,43 @@ pip install opencv-contrib-python numpy
 
 ## Run modes
 
+The entry point is the package itself — it dispatches to `moveit_mission`
+(MAVSDK on `serial:///dev/ttyS6:921600`):
+
 ```
-python -m mapping_drone.controller [flags]
+python3 -m mapping_drone [flags]
 ```
+
+`controller.py` is **retired** as an entry point (legacy). The
+PX4-ROS2/XRCE-DDS path is a **fallback only** — run it explicitly with
+`python3 -m mapping_drone.px4_mission` if the MAVSDK serial path is dead.
+
+> **Procedures live in [`../OP_DOC.md`](../OP_DOC.md)** — the single
+> decision-tree runbook for the day (Step 0 fingerprint → 1 sensors →
+> 2 check → 3 frame → 4 nofly → 5 fly → 6 artifacts, each with lettered
+> fallbacks). This README is the developer reference; do the actual run
+> from OP_DOC.md.
+
+Three mutually-exclusive modes:
+
+| Mode       | Meaning                                                              |
+| ---------- | -------------------------------------------------------------------- |
+| `--check`  | Connect + print pose, **no arm**.                                    |
+| `--nofly`  | UWB/FC pose + camera + detect + write artifacts, **no arm**.         |
+| `--fly`    | Autonomous MAVSDK offboard survey (DEFAULT if no mode given). Lands + disarms on exit/Ctrl-C/max-time. |
 
 | Flag                  | Meaning                                                                       |
 | --------------------- | ----------------------------------------------------------------------------- |
-| `--real`              | Real UWB + real MAVSDK + real RealSense. **DEFAULT — actual drone runs need NO flag.** |
-| `--mock-uwb`          | Use programmable mock UWB. Skips ROS2 import.                                 |
-| `--mock-mavsdk`       | Mock flight controller. No serial port required.                              |
-| `--mock-realsense`    | Synthetic depth + RGB frames. No camera required.                             |
-| `--mock` / `--mock` | All three mocks. Pure laptop run, no hardware. (`--mock` is the short alias.) |
-| `--waypoints PATH`    | JSON list of `[n_m, e_m, alt_m]`. Default = 4-pt demo square.                 |
+| `--mavsdk-address ADDR` | MAVSDK system address. Default `serial:///dev/ttyS6:921600`.                 |
+| `--pose {auto,fc,uwb}` | Horizontal pose source (redundant). `auto` (DEFAULT) = MAVSDK FC fused NED, auto-fallback to `/uwb_tag` if the FC goes stale, then hold. `fc` = FC only (DDS-immune, matches `survey_box` waypoints). `uwb` = `/uwb_tag` arena frame only. **Altitude is ALWAYS taken from the FC** (UWB gives N-E only, no Z — per the official slides). |
+| `--use-ir-for-aruco`  | Force the IR path: read left IR (index 1) and synthesise BGR for ArUco. For D450 / no-RGB cameras. **Usually unnecessary** — `RealsenseNode` auto-falls-back color→IR if every colour profile fails, so the same binary works on a D435 (RGB) and a D450 (no-RGB) with no flag. Use this only to force IR. |
+| `--aruco-dict NAMES`  | Comma-separated dictionary list scanned **every frame** (union of detections). Default `7X7_1000,6X6_250` (hedge: 7X7 came from Discord, not the slides). Case-insensitive, optional `DICT_` prefix. See below. |
+| `--waypoints PATH`    | JSON list of `[n_m, e_m, alt_m]`. (Also `--waypoints-from-json PATH`.)         |
+| `--takeoff-alt M`     | Takeoff altitude in metres. Default `4.0` (org `move_it4.py` used 2.0; raise if the arena floor is higher). |
 | `--gimbal-pitch DEG`  | Gimbal tilt; `-90` = straight down (DEFAULT, canonical down-facing mapping).  |
-| `--aruco-dict NAME`   | ArUco/AprilTag dictionary name (e.g. `6X6_250` [default], `4X4_50`, `APRILTAG_36h11`). Case-insensitive, optional `DICT_` prefix. See below. |
 | `--max-flight-time-s` | Hard cap before forced land. Default `420` s (60 s under the 480 s / 8-min ceiling from finals brief slide 5). |
-| `--mavsdk-address ADDR` | MAVSDK system address (single). Default `serial:///dev/ttyS6:921600`.       |
-| `--mavsdk-addresses A,B,C` | Comma-separated fallback list; tried in order with 5 s per-address connect timeout. Wins over `--mavsdk-address` when both present. See below. |
 | `--runs-dir DIR`      | Parent directory for `run_<ts>` output dirs. Default `mapping_drone/runs` (relative to CWD). |
-| `--log-level`         | `INFO` (default) or `DEBUG`.                                                  |
-| `--verbose`           | Promote silent-but-useful hot-path lines (per-frame scan result, per-UWB tick, per-velocity command, per-WP arrival distance, every state transition) from DEBUG to INFO. Does NOT lower the root level to DEBUG — keeps third-party noise out of `log.txt`. |
-| `--tailscale`         | Also POST every log line to the desktop `log_sink` over Tailscale (matches `tools/log_broadcaster/wrap.sh`). Default host `100.79.202.101:9999`, default tag `mapping-drone-<run_ts>`. Sink writes to `D:/hackerverse/laptop_logs/<tag>.log` on the desktop. Sink failures are silently swallowed (a one-shot INFO line is emitted on the first failure). |
-| `--tailscale-host`    | `<host>[:<port>]` override for the log_sink endpoint. Default `100.79.202.101:9999`. Only used when `--tailscale` is set. |
-| `--tailscale-tag`     | Override the log_sink tag (= log file basename). Default `mapping-drone-<run_ts>` so each run is its own log file. Only used when `--tailscale` is set. |
+| `--log-level`         | `INFO` (default), `DEBUG`, `WARNING`, or `ERROR`.                            |
 
 ### `--gimbal-pitch`
 
@@ -140,11 +156,19 @@ the occupancy-grid maths assumes a nadir view.
 
 ### `--aruco-dict`
 
-Selects which OpenCV ArUco/AprilTag dictionary the detector tries against
-incoming frames. Default is `6X6_250` (i.e. `cv2.aruco.DICT_6X6_250`) for
-prototyping; the actual dictionary will be announced by org Day-1 and can
-be overridden via `--aruco-dict` at runtime (case-insensitive, any of the
-20 supported). Per the org Discord (2026-06-06 21:32):
+Selects which OpenCV ArUco/AprilTag dictionaries the detector tries against
+incoming frames. The value is a **comma-separated list** and **every listed
+dictionary is scanned on every frame** — the union of detections is
+returned. Default is `7X7_1000,6X6_250`: we only *guessed* 7X7_1000 from the
+org Discord (not the slides), so we hedge by also scanning 6X6_250 so we
+don't miss markers if the real dict differs. A real 7X7 marker won't decode
+under the 6X6 grid and vice-versa, so there is no double count.
+`detect_in_frame` still returns `(id, center, bbox)` and logs which
+dictionary each ID matched (`ArUco id=<id> detected via dict <NAME>`).
+
+The org landing-pad markers are **assumed** `DICT_7X7_1000` with IDs
+`11`, `45`, `51`, `67`, `101` — **CONFIRM with the marshal on the day.** Per
+the org Discord (2026-06-06 21:32):
 
 > ArUco markers are 20cm x 20cm. Exact dictionary will be announced
 > Day-1.
@@ -158,7 +182,7 @@ keyed in `mapping._ARUCO_DICTS`:
 
 - ArUco 4x4: `4X4_50`, `4X4_100`, `4X4_250`, `4X4_1000`
 - ArUco 5x5: `5X5_50`, `5X5_100`, `5X5_250`, `5X5_1000`
-- ArUco 6x6: `6X6_50`, `6X6_100`, `6X6_250` (default), `6X6_1000`
+- ArUco 6x6: `6X6_50`, `6X6_100`, `6X6_250`, `6X6_1000`
 - ArUco 7x7: `7X7_50`, `7X7_100`, `7X7_250`, `7X7_1000`
 - AprilTag: `APRILTAG_16h5`, `APRILTAG_25h9`, `APRILTAG_36h10`, `APRILTAG_36h11`
 
@@ -173,17 +197,18 @@ in the message.
 Examples:
 
 ```
-# Laptop smoke test, no hardware (uses default -90 gimbal pitch)
-python -m mapping_drone.controller --mock --log-level DEBUG
+# Connect + print pose only (no arm)
+python3 -m mapping_drone --check
 
-# Drone bench test with mock flight + real camera
-python -m mapping_drone.controller --mock-uwb --mock-mavsdk
+# Ground test: pose + camera + detect + artifacts, no arm
+python3 -m mapping_drone --nofly
 
-# Real run (gimbal pitch defaults to -90; shown explicitly for clarity)
-python -m mapping_drone.controller --gimbal-pitch -90 --waypoints arena.json
+# Real autonomous run (gimbal pitch + dict defaults shown for clarity)
+python3 -m mapping_drone --fly --gimbal-pitch -90 --aruco-dict 7X7_1000,6X6_250 \
+    --waypoints-from-json configs/waypoints_10jun.json
 
-# Real run with a different printed-marker dictionary
-python -m mapping_drone.controller --aruco-dict 5X5_250 --waypoints arena.json
+# Force a single printed-marker dictionary
+python3 -m mapping_drone --fly --aruco-dict 5X5_250 --waypoints arena.json
 ```
 
 ## Output artifacts
@@ -212,71 +237,89 @@ pose, sightings so far, unique pad list with validity, battery percent.
 
 ## Validity rule
 
-`validity.decide_landing_validity(aruco_id)` is currently a **placeholder**:
-even IDs are valid, odd IDs are invalid. Org has not published the actual
-rule.
+`validity.decide_landing_validity(aruco_id)`. The **default rule is now
+`lookup`**, not `even`. `lookup` reads valid/invalid ID sets from a JSON file
+— the default file is `configs/valid_ids_finals.json` (resolved against the
+CWD; on the drone we launch from `semifinal/`). It returns `True` if the ID
+is in `valid_ids`, `False` if in `invalid_ids`, and `None` (unknown) if in
+neither.
 
-When org publishes it, replace **only** the body of that function. The rest
-of the pipeline already records every ID, image, and world position
-regardless, so no other code needs to change.
+The default was deliberately moved off `even`: the assumed org IDs
+(`11/45/51/67/101`) are all **odd**, so an `even` default would have marked
+every real landing pad **invalid** — a silent scoring catastrophe.
+
+**Day-1 action:** edit `configs/valid_ids_finals.json` with the marshal's
+real valid/invalid split — move INVALID IDs into `invalid_ids`. The rest of
+the pipeline already records every ID, image, and world position regardless,
+so no other code needs to change. (The classic placeholders `even` / `odd` /
+`all_valid` / `all_invalid` / `id_below_50` are still available via the env
+override below.)
 
 ### Startup banner: `describe_rule()`
 
 `validity.describe_rule()` returns a one-line human-readable string naming
-the active rule and whether it came from the default or from the env
-override. The controller logs it at startup so the run's `log.txt` always
-records exactly which classification was applied. Look for a line like:
+the active rule, whether it came from the default or from the env override,
+and (for `lookup`) the resolved JSON path. The controller logs it at startup
+so the run's `log.txt` always records exactly which classification was
+applied. Look for a line like:
 
 ```
-INFO mapping_drone.controller: current validity rule: even (default) — even ArUco IDs valid, odd IDs invalid (PLACEHOLDER — org has not published the real rule)
+INFO mapping_drone.moveit_mission: run dir: ... | validity: lookup (default) — lookup ArUco ID against JSON-defined valid/invalid ID sets (None if unknown) [file: .../configs/valid_ids_finals.json]
 ```
 
-If you ever doubt which rule a past run used, `grep "current validity rule"
-log.txt` in that run directory.
+It also logs `VALIDITY of org IDs (11, 45, 51, 67, 101) -> {...}` and warns
+loudly if all five org pads classify INVALID or UNKNOWN.
 
-### Env-var override: `MAPPING_DRONE_VALIDITY`
+If you ever doubt which rule a past run used, `grep "validity" log.txt` in
+that run directory.
+
+### Env-var override: `MAPPING_DRONE_VALIDITY` / `MAPPING_DRONE_VALIDITY_LOOKUP`
 
 You can swap the active rule at startup without touching code by setting the
-`MAPPING_DRONE_VALIDITY` environment variable before launching the
-controller. Accepted values (case-insensitive):
+`MAPPING_DRONE_VALIDITY` environment variable before launching. Accepted
+values (case-insensitive):
 
 | Value          | Meaning                                                |
 | -------------- | ------------------------------------------------------ |
-| `even`         | Even ArUco IDs valid, odd IDs invalid (DEFAULT).       |
+| `lookup`       | Look each ID up in a JSON valid/invalid table (DEFAULT). |
+| `even`         | Even ArUco IDs valid, odd IDs invalid.                 |
 | `odd`          | Odd ArUco IDs valid, even IDs invalid.                 |
 | `all_valid`    | Every detected landing pad classified valid.           |
 | `all_invalid`  | Every detected landing pad classified invalid.        |
 | `id_below_50`  | IDs < 50 valid, IDs >= 50 invalid.                     |
 
-Any other value falls back to `even` and logs a warning.
+Any other value falls back to the default (`lookup`) and logs a warning.
+
+`MAPPING_DRONE_VALIDITY_LOOKUP` overrides the lookup JSON path (absolute or
+relative). When unset, the lookup rule reads `configs/valid_ids_finals.json`
+relative to the CWD.
 
 Examples:
 
 ```
+# Point the lookup rule at an explicit JSON path:
+MAPPING_DRONE_VALIDITY=lookup \
+MAPPING_DRONE_VALIDITY_LOOKUP=/abs/path/to/valid_ids_finals.json \
+    python3 -m mapping_drone --fly
+
 # Force every detected pad to be reported valid (useful for sanity-checking
 # that detection itself is working in the field):
-MAPPING_DRONE_VALIDITY=all_valid python -m mapping_drone.controller --real
+MAPPING_DRONE_VALIDITY=all_valid python3 -m mapping_drone --fly
 
 # Force every detection invalid (useful for a dry pass that only exercises
 # mapping, not landing selection):
-MAPPING_DRONE_VALIDITY=all_invalid python -m mapping_drone.controller --real
+MAPPING_DRONE_VALIDITY=all_invalid python3 -m mapping_drone --fly
 
 # If org announces "ID >= 50 are obstacles, ID < 50 are landing pads",
 # flip to that rule with one shell variable:
-MAPPING_DRONE_VALIDITY=id_below_50 python -m mapping_drone.controller --real
-
-# Flip the parity of the placeholder:
-MAPPING_DRONE_VALIDITY=odd python -m mapping_drone.controller --real
-
-# Or be explicit about the default:
-MAPPING_DRONE_VALIDITY=even python -m mapping_drone.controller --real
+MAPPING_DRONE_VALIDITY=id_below_50 python3 -m mapping_drone --fly
 ```
 
 On Windows PowerShell the equivalent is:
 
 ```
 $env:MAPPING_DRONE_VALIDITY = "all_valid"
-python -m mapping_drone.controller --mock
+python3 -m mapping_drone --nofly
 ```
 
 ## Where to integrate K's RKNN YOLO model later
@@ -286,8 +329,8 @@ enough for the marker detection that Challenge 1 actually requires.
 
 If we want K's RKNN YOLO model (yolo11n, ~50 FPS on the RK3588 NPU) on top
 — e.g. for non-marker obstacle classification or as a secondary detector —
-add a `--detector {aruco,yolo,both}` flag to `controller.py` and wire a new
-class that mirrors the `ArucoDetector.detect_in_frame` signature. The
+add a `--detector {aruco,yolo,both}` flag to `moveit_mission.py` and wire a
+new class that mirrors the `ArucoDetector.detect_in_frame` signature. The
 canonical RKNN post-processing already lives in
 `learning_material_4_realsense/rknndecoder.py` and the depth-aware detect
 loop in `getDepthAndDetect.py` — port from those, do not rewrite.
@@ -300,85 +343,41 @@ marker reporting, not obstacle classification.
 **UWB not ready.**  `STATUS.txt` shows `state=WAIT_UWB`. The ROS2 `uwb_tag`
 topic has not published yet. Check `ros2 topic echo /uwb_tag` on the drone.
 The watchdog will hold position 1 s on intermittent loss and land if the
-fix is gone for >5 s. For laptop dev use `--mock-uwb`.
+fix is gone for >5 s. For laptop dev, use the `MockUwbNode` class (no ROS2
+required) — see `tests/`.
 
 **RealSense not detected.**  `RuntimeError: No device connected`. Replug
 the USB-C cable (must be USB 3.x — the supplied cables are colour-coded).
 `realsense-viewer` from `librealsense` confirms the device is alive. For
-dev without hardware use `--mock-realsense`.
+dev without hardware, use the `MockRealsenseNode` class — see `tests/`.
 
 **RealSense `pipeline.start()` fails on every PROFILE_CANDIDATES entry,
 all with "stream not supported" or similar around `rs.stream.color`.**
 The drone is almost certainly a **D430 or D450** instead of a D435. Both
 of those modules are depth-only (stereo IR + IR projector) and have NO
 RGB sensor — every entry in `PROFILE_CANDIDATES` enables `rs.stream.color`,
-so they all raise. Apply the `--use-ir-for-aruco` patch (sketch in
-`semifinal/D430_RGB_RISK.md` and as a TODO block at the top of
-`realsense.py`): stream `rs.stream.infrared` index 1 instead, turn the
-emitter off so the projector dot pattern doesn't degrade ArUco, and
-synthesise a 3-channel BGR from the IR grayscale so `ArucoDetector`
-needs no edit. Day-1 morning fix, ~1-2h with hardware in hand. Org
-confirmed the module family in BH2026ROBOVERSE Discord on
-2026-06-08 12:18.
+so they all raise. **This is now handled automatically:** `RealsenseNode`
+auto-falls-back from color to IR when every colour profile fails, so the
+same binary works on a D435 (RGB) and a D450 (no-RGB) with **no flag**. The
+IR path streams `rs.stream.infrared` index 1, turns the projector emitter
+off so its dot pattern doesn't degrade ArUco, and synthesises a 3-channel
+BGR from the IR grayscale so `ArucoDetector` needs no edit. Pass
+`--use-ir-for-aruco` only to force IR up-front. Org confirmed the module
+family in BH2026ROBOVERSE Discord on 2026-06-08 12:18; background in
+`semifinal/D430_RGB_RISK.md`.
 
-**MAVSDK serial port.**  Default is `serial:///dev/ttyS6:921600`. If you
-see `MAVSDK: connection failed` check `dmesg | tail` for the actual ttyS
-port and pass it via `--mavsdk-address` (e.g.
-`--mavsdk-address serial:///dev/ttyAMA0:921600`). The org PX4 build
-sometimes enumerates as `/dev/ttyAMA0` on a fresh boot.
-
-### `--mavsdk-addresses` (Day-1 fallback walker)
-
-When the PX4 enumerates as a different port between boots (we've observed
-`ttyS6` / `ttyACM0` / `ttyUSB0` all on the same hardware over the course
-of qualifier week) the single-address `--mavsdk-address` flag forces the
-operator to know which port is live before launching the controller.
-
-`--mavsdk-addresses` accepts a comma-separated list and tries each entry
-in order with a 5 s per-address connect timeout, logging every attempt
-and (on success) the line `connected via <addr>`. On all-failed it
-raises `RuntimeError`. When BOTH flags are present `--mavsdk-addresses`
-wins; the single-address path is preserved unchanged for back-compat
-with existing scripts and the operator runbook.
-
-The canonical Day-1 list is defined in `controller.py` as
-`DAY1_MAVSDK_TRY_ORDER`:
-
-```
-serial:///dev/ttyS6:921600
-serial:///dev/ttyACM0:115200
-serial:///dev/ttyUSB0:57600
-udp://:14540
-udp://:14550
-```
-
-Three serial ports (covering every PX4 enumeration we've seen) plus the
-two standard SITL UDP ports so a bench laptop running PX4 SITL or
-jMAVSim also connects with the same one-liner.
-
-Examples:
-
-```
-# Day-1 walk: try all 5 canonical addresses
-python -m mapping_drone.controller \
-    --mavsdk-addresses "serial:///dev/ttyS6:921600,serial:///dev/ttyACM0:115200,serial:///dev/ttyUSB0:57600,udp://:14540,udp://:14550"
-
-# Two-address cycle (USB serial OR SITL UDP)
-python -m mapping_drone.controller \
-    --mavsdk-addresses "serial:///dev/ttyACM0:115200,udp://:14540"
-
-# Original single-address behaviour (unchanged)
-python -m mapping_drone.controller \
-    --mavsdk-address serial:///dev/ttyAMA0:921600
-```
-
-Worst-case wall-clock when every address fails is ~25 s
-(5 entries x 5 s timeout) — fits inside the operator's patience budget
-between hitting Enter and deciding the PX4 is genuinely dead.
+**MAVSDK serial port.**  The entry point connects on a single address,
+default `serial:///dev/ttyS6:921600`. If you see `MAVSDK: connection failed`
+check `dmesg | tail` for the actual ttyS port and pass it via
+`--mavsdk-address` (e.g. `--mavsdk-address serial:///dev/ttyAMA0:921600`).
+The org PX4 build sometimes enumerates as a different port on a fresh boot;
+the Day-1 port-walk procedure (which addresses to try, in order) lives in
+[`../OP_DOC.md`](../OP_DOC.md).
 
 **NoMachine lag at the venue.**  The C2 Terminal pushes frames over wifi.
 Run the controller in a `tmux` session so the flight survives a NoMachine
-disconnect. STATUS.txt is updated on disk regardless of GUI — judges can
+disconnect. The pipeline is headless (no `cv2.imshow`) and tolerates dropped
+frames, and STATUS.txt is updated on disk regardless of GUI — judges can
 also `cat` it from a second terminal.
 
 **Position-stuck watchdog fires.**  If the drone hasn't moved >0.3 m in
@@ -399,9 +398,10 @@ match the one used to generate the printed tags. Re-generate the tags from
 you pass on the CLI.
 
 The exact ArUco dictionary will be announced by org on Day-1. The default
-is `DICT_6X6_250` for prototyping but can be overridden via `--aruco-dict`
-at runtime (case-insensitive, any of the 20 supported). The full accepted
-set — built programmatically by `mapping._build_aruco_dict_table()` and
+`--aruco-dict` is `7X7_1000,6X6_250` — both dicts are scanned every frame
+(we only guessed 7X7 from Discord), and it can be overridden at runtime
+(case-insensitive, any comma-separated subset of the 20 supported). The full
+accepted set — built programmatically by `mapping._build_aruco_dict_table()` and
 exposed as `mapping.ALL_SUPPORTED_DICT_NAMES` — is all 16 ArUco
 size/count combinations (`4X4`/`5X5`/`6X6`/`7X7` x `50`/`100`/`250`/`1000`)
 plus the 4 AprilTag variants (`APRILTAG_16h5`, `APRILTAG_25h9`,
@@ -434,21 +434,34 @@ callout above; the world frame is ENU (Up positive) and the negation is
 the caller's responsibility.
 
 **Validity column in `landing_pads.json` looks wrong.**  Check the startup
-line `current validity rule: ...` in `log.txt`. The
-`MAPPING_DRONE_VALIDITY` env var may have been set in the shell that
-launched the controller; `unset MAPPING_DRONE_VALIDITY` (or
-`Remove-Item Env:MAPPING_DRONE_VALIDITY` on PowerShell) restores the
-default.
+`... | validity: ...` line and the `VALIDITY of org IDs ...` line in
+`log.txt`. With the default `lookup` rule, the usual cause is a stale
+`configs/valid_ids_finals.json` — fix the valid/invalid split there. If a
+`MAPPING_DRONE_VALIDITY` env var was set in the launching shell, `unset
+MAPPING_DRONE_VALIDITY` (or `Remove-Item Env:MAPPING_DRONE_VALIDITY` on
+PowerShell) restores the `lookup` default.
 
 ## Safety
 
 Every command path includes:
 
-- `try/finally` land + disarm
-- MAVSDK battery failsafe subscription
-- UWB-loss watchdog (hold 1 s, land at >5 s)
-- `Ctrl-C` triggers the `emergency_land` coroutine
-- Position-stuck watchdog (>0.3 m movement required per 20 s after grace)
+- `try/finally` land + disarm; `Ctrl-C`/SIGTERM request a stop and land.
+- Battery watchdog — auto-land below 15%.
+- Pose-loss watchdog — auto-land if airborne with a stale fix (>5 s, or no
+  fix at all after 10 s airborne).
+- Position-stuck watchdog (>0.3 m movement required per window, after a 12 s
+  airborne grace).
+- Offboard setpoint-failure watchdog — abort after 5 consecutive failed
+  `set_position_velocity_ned` sends (wedged offboard link).
+- **Disarm only after `in_air=False`** — never disarm while airborne (waits
+  up to a hard cap, else leaves it to the RC kill switch).
+
+## ROS2 isolation
+
+`ROS_LOCALHOST_ONLY=1` is forced at entry (via `os.environ.setdefault`) to
+wall the drone off from cross-team DDS traffic on the shared
+`ROS_DOMAIN_ID=0`. **Also `export ROS_LOCALHOST_ONLY=1` in every terminal**
+you launch ROS2 from — see [`../OP_DOC.md`](../OP_DOC.md).
 
 ## Style and conventions
 

@@ -1,3 +1,6 @@
+<!--OPDOC-BANNER-->
+> ℹ️ **To RUN the mapping drone, see [OP_DOC.md](OP_DOC.md).** This README is background/knowledge-base reference.
+
 # BrainHack 2026 RoboVerse — Finals Prep
 
 **Status:** Advanced to FINALS 2026-06-03 (skipped semifinal tier). Category: University (confirmed 2026-06-05).

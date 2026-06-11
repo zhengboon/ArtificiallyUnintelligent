@@ -65,6 +65,8 @@ class UwbNode:
         self._lock = threading.Lock()
         self._n: float = 0.0
         self._e: float = 0.0
+        self._z: float = 0.0
+        self._have_z: bool = False
         self._ready: bool = False
         self._last_update_ts: float = 0.0
         self._node: object | None = None
@@ -87,13 +89,23 @@ class UwbNode:
             rclpy.init()
             self._owns_rclpy_init = True
 
-        node = _RclpyNode("mapping_drone_uwb_subscriber")
-        qos = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10,
-        )
-        node.create_subscription(PoseStamped, self._topic, self._on_pose, qos)
+        try:
+            node = _RclpyNode("mapping_drone_uwb_subscriber")
+            qos = QoSProfile(
+                reliability=ReliabilityPolicy.BEST_EFFORT,
+                history=HistoryPolicy.KEEP_LAST,
+                depth=10,
+            )
+            node.create_subscription(PoseStamped, self._topic, self._on_pose, qos)
+        except Exception:
+            # Don't leak the rclpy context we just initialised on a failed start.
+            if self._owns_rclpy_init and rclpy.ok():
+                try:
+                    rclpy.shutdown()
+                except Exception:
+                    pass
+                self._owns_rclpy_init = False
+            raise
         self._node = node
 
         def _spin() -> None:
@@ -116,6 +128,7 @@ class UwbNode:
             pose = msg.pose  # type: ignore[attr-defined]
             n = float(pose.position.y)
             e = float(pose.position.x)
+            z_up = float(pose.position.z)  # nlink /uwb_tag carries altitude as ENU z-up
         except Exception:
             logger.exception("Malformed PoseStamped on '%s'", self._topic)
             return
@@ -123,6 +136,10 @@ class UwbNode:
         with self._lock:
             self._n = n
             self._e = e
+            self._z = z_up
+            # Per-packet, NOT latched: a single early spurious z must not
+            # permanently poison get_altitude(). (UWB is really N-E only.)
+            self._have_z = abs(z_up) > 1e-6
             self._ready = True
             self._last_update_ts = time.monotonic()
 
@@ -151,6 +168,17 @@ class UwbNode:
     def get_position(self) -> tuple[float, float, bool]:
         with self._lock:
             return self._n, self._e, self._ready
+
+    def get_altitude(self) -> float | None:
+        """ENU z-up altitude from /uwb_tag if present AND fresh, else None.
+        NOTE: the UWB tag is N-E only (org slides) — prefer FC altitude; this
+        is a best-effort fallback only."""
+        with self._lock:
+            if not self._have_z or self._last_update_ts == 0.0:
+                return None
+            if time.monotonic() - self._last_update_ts > 1.0:
+                return None
+            return self._z
 
     @property
     def last_update_ts(self) -> float:

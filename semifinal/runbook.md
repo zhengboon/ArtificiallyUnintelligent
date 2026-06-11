@@ -1,3 +1,6 @@
+<!--OPDOC-BANNER-->
+> ⚠️ **SUPERSEDED — to run the mapping drone use [OP_DOC.md](OP_DOC.md).** This file is kept for historical detail only; the live decision-tree runbook is OP_DOC.md.
+
 # Finals Runbook — ArtificiallyUnintelligent
 
 **Finals: Wed 10 + Thu 11 June 2026, 9:00am – 6:00pm**

@@ -62,7 +62,7 @@ Source: `Finals brief.pptx` shared by org on Telegram 2026-06-09 22:06 SGT. Extr
 | Mapping Drone | **0.3 m/s** | floor 3.5 m (org 2026-06-08); we default 4.0 m | top-down depth map + Aruco snapshots |
 | Hula | **0.5 m/s** | **recommended 1.1 m**; **STRICTLY NO FLYING OVER OBSTACLES** | scores invalidated on violation |
 
-Two distinct altitude regimes — mapping drone flies *high* (above obstacles), Hula flies *low* (around obstacles). `controller.py` `MAX_VEL_XY` and any Hula speed cap in `swarm_controller.py` stub must clamp to these. Current `--max-flight-time-s` default is 420 s, sized 60 s under the org 480 s (8 min) per-attempt cap.
+Two distinct altitude regimes — mapping drone flies *high* (above obstacles), Hula flies *low* (around obstacles). The mapping drone speed cap lives in `moveit_mission.py` (`MAX_SPEED`/`SLOW_DOWN_RADIUS`) and any Hula speed cap in `swarm_controller.py` stub must clamp to these. `moveit_mission.py` `--max-flight-time-s` default is 420 s, sized 60 s under the org 480 s (8 min) per-attempt cap.
 
 ### Crash policy (slide 18, verbatim)
 
@@ -74,7 +74,7 @@ Safe-first behaviour is mandatory. No retries. Conservative speeds, conservative
 
 > *"Before the assessment starts, the valid and invalid Aruco Marker IDs will be announced."*
 
-Org confirms valid/invalid IDs are published **at the venue** before assessment. Our existing lookup-rule code path (`--valid-ids` / `--invalid-ids` CLI on `controller.py`) is the right shape — just wire it up Day-1 from whatever announcement format they use.
+Org confirms valid/invalid IDs are published **at the venue** before assessment. Our default validity rule is already `lookup` against [`configs/valid_ids_finals.json`](configs/valid_ids_finals.json) (seeded with org IDs 11/45/51/67/101, all valid) — Day-1, edit that JSON to match the announced valid/invalid split. Env overrides: `MAPPING_DRONE_VALIDITY` / `MAPPING_DRONE_VALIDITY_LOOKUP`. See OP_DOC.md for the wire-up procedure.
 
 ### C2A landing coordinates come from Discord (slide 6)
 
@@ -276,8 +276,8 @@ The RoboMasters carry **ArUco markers**. Detection uses `cv2.aruco` (we already 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  OUR PERSONAL LAPTOP (for dev / pre-venue prep)             │
-│  - ArUco (cv2.aruco DICT_6X6_250) prototype on Hula camera  │
-│    feed — PRIMARY RoboMaster detection path                 │
+│  - ArUco (cv2.aruco 7X7_1000 + 6X6_250, both scanned)       │
+│    prototype on Hula camera feed — PRIMARY RoboMaster path  │
 │  - A trains YOLOv11 model (yolo11n.pt) — INSURANCE/BACKUP   │
 │    only; convert via convertyolotoonnx_2.py for org VM      │
 │  - Write swarm controller (pyhulax + UWBParserThread mocks) │
@@ -312,7 +312,9 @@ The RoboMasters carry **ArUco markers**. Detection uses `cv2.aruco` (we already 
 │  - pyrealsense2 (depth camera)                              │
 │  - MAVSDK Python (control via serial → PX4)                 │
 │  - rknnlite (NPU inference, ~50 fps)                        │
-│  - Our mapping_drone/controller.py runs HERE                │
+│  - Our `python3 -m mapping_drone` (moveit_mission) runs     │
+│    HERE; px4_mission = PX4-ROS2/XRCE fallback. (controller. │
+│    py is RETIRED — legacy, not an entry point.)             │
 │  - UWB Python class for self pos                            │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -331,7 +333,7 @@ The RoboMasters carry **ArUco markers**. Detection uses `cv2.aruco` (we already 
 ## Open questions (file with org, in priority order)
 
 1. ~~Are we University or Pre-University?~~ **CONFIRMED University 2026-06-05**
-2. **What's the encoding for ArUco-marker → valid/invalid?** Specific IDs? Even/odd? Bit pattern? (Still open as of 2026-06-07 — open a fresh ticket per org's 2026-06-06 21:47 ticket etiquette.)
+2. **What's the encoding for ArUco-marker → valid/invalid?** Specific IDs? Even/odd? Bit pattern? (Still open — confirm the real valid/invalid split with the marshal Day-1. Code default is the `lookup` rule against [`configs/valid_ids_finals.json`](configs/valid_ids_finals.json), seeded with org IDs 11/45/51/67/101 as valid; just edit that JSON once announced. NOT `even` — the org IDs are all odd, so `even` would mark every real pad invalid.)
 3. ~~What target class(es) does the RoboMaster YOLO model need?~~ **OBSOLETED 2026-06-06: ArUco, not YOLO** — but: are different RoboMasters distinguished by different ArUco IDs, or do they all use the same?
 4. ~~Will training images of the RoboMaster robots be released?~~ **OBSOLETED 2026-06-06: ArUco, not YOLO** — A's annotation pipeline still useful as YOLO backup.
 5. **Time budget per challenge?** The day is 9hr but how is it allocated — back-to-back, separate runs, retries allowed? (Still open)
@@ -344,8 +346,8 @@ The RoboMasters carry **ArUco markers**. Detection uses `cv2.aruco` (we already 
 12. 🆕 **What tag_ids do the 3 Hulas (and possibly RoboMasters) have?** Org should publish a mapping; likely labelled on hardware at venue.
 13. 🆕 **What's the UWB origin?** Where is (0, 0) in the arena? Likely calibrated against a known landmark at venue.
 14. 🆕 **Should we pre-prep code, or build only Day 1?** Org didn't answer — STINKIES asked 5/6 10:35pm, re-asked 6/6 14:13 ("what codes should we come prepared with on 10 June?"), still no response by 6/7 AM. Default: bring everything pre-built (we are).
-15. 🆕 **Exact ArUco dictionary to be announced Day-1** (org 2026-06-06 21:32: *"The exact dictionary will be announced on the day"*). Could be any of: `DICT_4X4_{50,100,250,1000}`, `DICT_5X5_{50,100,250,1000}`, `DICT_6X6_{50,100,250,1000}`, `DICT_7X7_{50,100,250,1000}`, or AprilTag variants `DICT_APRILTAG_{16h5,25h9,36h10,36h11}`. Our `mapping.py:ArucoDetector` and `controller.py --aruco-dict` flag currently default to `DICT_6X6_250` and accept a subset of short-form names; widen this lookup before venue so any announced dict is accepted (today's `_ARUCO_DICTS` covers ~9 of the 20 possible options — see audit notes).
+15. 🆕 **Exact ArUco dictionary to be announced Day-1** (org 2026-06-06 21:32: *"The exact dictionary will be announced on the day"*). Could be any of: `DICT_4X4_{50,100,250,1000}`, `DICT_5X5_{50,100,250,1000}`, `DICT_6X6_{50,100,250,1000}`, `DICT_7X7_{50,100,250,1000}`, or AprilTag variants `DICT_APRILTAG_{16h5,25h9,36h10,36h11}`. ✅ Code is ready: `mapping.py:ArucoDetector` now defaults to `7X7_1000,6X6_250` (both scanned every frame — we only *guessed* 7X7 from Discord) and `_ARUCO_DICTS` probes all 20 ArUco/AprilTag combos, so any announced dict is accepted via `--aruco-dict a,b,c` (on `moveit_mission`; `controller.py` is retired).
 16. ✅ **Do Challenges 1 and 2 run in parallel or sequentially?** — **Resolved by finals brief slide 12**: C1 runs Day 1 (Wed) 1430–1800, C2 runs Day 2 (Thu) 1330–1600. Sequential across separate days; no parallel-within-slot.
 17. 🆕 **Can camera pitch be commanded?** Calibruh_KangKiatYang asked 2026-06-08 1:59 pm — *"Can the camera pitch change with commands or is it physically fixed downwards forever?"* — still unanswered. Affects whether we lock to -90 or can sweep.
-18. 🆕 **D430/D450 RGB stream availability** — org confirmed 2026-06-08 12:18 the mapping drone uses D430 + D450 (depth-only stereo IR, no RGB sensor in either module). Need confirmation whether the venue integration bolts on a separate RGB camera, or whether we must run ArUco on IR (emitter-toggle path, `--use-ir-for-aruco`).
+18. 🆕 **D430/D450 RGB stream availability** — org confirmed 2026-06-08 12:18 the mapping drone uses D430 + D450 (depth-only stereo IR, no RGB sensor in either module). ✅ Code-side handled: `RealsenseNode` AUTO-falls-back color→IR if every colour profile fails (works on D435-RGB and D450-no-RGB with no flag); `--use-ir-for-aruco` forces IR (emitter-toggle path). No venue action needed beyond confirming detections fire.
 19. 🆕 **Top-down depth map format** — FlyingExplorers asked 2026-06-07 6:03 pm whether the deliverable needs to be a stereo output map like the slide, or whether a matplotlib graph (a la `top_down.py`) is acceptable. Re-asked 2026-06-08 3:19 pm. Still unanswered.

@@ -1,32 +1,26 @@
 """Realsense adapters for the mapping drone.
 
 Provides a real pyrealsense2 implementation plus a mock that synthesises
-frames with a real DICT_6X6_250 ArUco marker drawn into the colour image,
-so end-to-end tests can run without a camera attached.
+frames with a real DICT_7X7_1000 ArUco marker (the org's finals dictionary)
+drawn into the colour image, so end-to-end tests run without a camera.
 
-TODO (P0, D430/D450 no-RGB risk — see semifinal/D430_RGB_RISK.md):
-    Org confirmed on 2026-06-08 12:18 that the mapping drone uses an Intel
-    RealSense D430 or D450 module. Both are depth-only (stereo IR + IR
-    projector). NEITHER HAS AN RGB SENSOR. RealsenseNode below enables
-    rs.stream.color in every PROFILE_CANDIDATES entry; on a D430/D450
-    pipeline.start() will raise for every candidate.
-
-    Day-1 morning patch (~1-2h with hardware in hand): add a
-    `use_ir_for_aruco: bool = False` ctor arg, gated on a new
-    `--use-ir-for-aruco` CLI flag. When True:
-      * _build_config() enables rs.stream.infrared index 1 (Y8) instead
-        of rs.stream.color.
-      * start() aligns to rs.stream.infrared and grabs the depth sensor
-        handle so we can toggle rs.option.emitter_enabled.
-      * grab() turns the emitter OFF (so the projector dot pattern
-        doesn't degrade ArUco), aligns, pulls infrared_frame(1) + depth,
-        and synthesises a 3-channel BGR from the IR grayscale so
-        ArucoDetector and the rest of the pipeline keep working
-        without any change to mapping.py.
-
-    Full patch sketch (including the controller.py flag wiring) is in
-    semifinal/D430_RGB_RISK.md. Mock path is unaffected — only the real
-    RealsenseNode needs to learn IR mode.
+Camera fleet (org confirmed 2026-06-10, see semifinal/D430_RGB_RISK.md):
+    The shared fleet is a MIX of D435 (HAS an RGB sensor — colour path works
+    unmodified) and D450 (depth-only stereo IR + projector, NO RGB sensor).
+    There is NO D430. On a D450, the default colour profile makes
+    pipeline.start() raise for every candidate, so RealsenseNode supports an
+    IR fallback: construct with use_ir_for_aruco=True (wired to the
+    --use-ir-for-aruco CLI flag). When True:
+      * _build_config() enables rs.stream.infrared index 1 (Y8) instead of
+        rs.stream.color.
+      * start() reads the left-IR stream intrinsics (NO align — raw IR+depth
+        are already co-registered) and grabs the depth sensor so the emitter
+        can be toggled.
+      * grab() turns the IR projector OFF (its dot pattern would corrupt
+        ArUco), pulls the RAW infrared_frame(1) + depth (same pixel grid),
+        and synthesises a 3-channel BGR from the IR grayscale so ArucoDetector
+        and the rest of the pipeline keep working with NO change to mapping.py.
+    The mock path is unaffected — only the real RealsenseNode learns IR mode.
 """
 from __future__ import annotations
 
@@ -99,57 +93,119 @@ class RealsenseNode:
     HEIGHT = PROFILE_CANDIDATES[0][1]
     FPS = PROFILE_CANDIDATES[0][2]
 
-    def __init__(self) -> None:
+    def __init__(self, use_ir_for_aruco: bool = False) -> None:
         if not _RS_AVAILABLE:
             raise RuntimeError(
                 "pyrealsense2 is not installed; use MockRealsenseNode for "
                 "laptop testing or install librealsense on the drone."
             )
+        # IR fallback for D450 (no-RGB) cameras: read raw left-IR + depth (already
+        # co-registered, NOT aligned) and synthesise BGR from IR so ArUco/mapping
+        # are unchanged.
+        self._use_ir = bool(use_ir_for_aruco)
         self._pipeline = rs.pipeline()
-        self._align = rs.align(rs.stream.color)
+        # IR mode: do NOT align — left IR (index 1) is the depth reference
+        # imager, already co-registered with depth at the same resolution.
+        # align(infrared) returns a null IR frame, which broke the D450 path.
+        self._align = None if self._use_ir else rs.align(rs.stream.color)
         self._profile: object | None = None
         self._intrinsics: object | None = None
+        self._depth_sensor: object | None = None
+        self._grab_count = 0
         self._started = False
         self.profile_used: tuple[int, int, int] | None = None
+
+    def _verify_color_frames(self) -> bool:
+        """A D450 (no RGB) can 'start' a colour profile but never deliver a
+        colour frame. Confirm one actually arrives so start() can fall to IR.
+        Per-attempt try so a slow first frame on a healthy D435 isn't kicked
+        to IR by a single early timeout."""
+        for _ in range(4):
+            try:
+                frames = self._pipeline.wait_for_frames(timeout_ms=1500)
+            except Exception:
+                continue
+            if frames.get_color_frame():
+                return True
+        return False
+
+    def _reassert_emitter_off(self) -> None:
+        """Keep the IR projector off (its dot pattern corrupts ArUco). Some
+        firmware re-enables it; re-assert periodically (cheap, throttled)."""
+        self._grab_count += 1
+        if self._depth_sensor is None or (self._grab_count % 30) != 1:
+            return
+        try:
+            if self._depth_sensor.supports(rs.option.emitter_enabled):
+                self._depth_sensor.set_option(rs.option.emitter_enabled, 0.0)
+        except Exception:
+            pass
 
     def _build_config(self, width: int, height: int, fps: int) -> "rs.config":
         cfg = rs.config()
         cfg.enable_stream(rs.stream.depth, width, height, rs.format.z16, fps)
-        cfg.enable_stream(rs.stream.color, width, height, rs.format.bgr8, fps)
+        if self._use_ir:
+            # D450 has no RGB: use left IR (index 1), Y8 grayscale.
+            cfg.enable_stream(rs.stream.infrared, 1, width, height, rs.format.y8, fps)
+        else:
+            cfg.enable_stream(rs.stream.color, width, height, rs.format.bgr8, fps)
         return cfg
 
     def start(self) -> None:
         if self._started:
             return
-        errors: list[str] = []
-        for width, height, fps in self.PROFILE_CANDIDATES:
-            cfg = self._build_config(width, height, fps)
-            try:
-                self._profile = self._pipeline.start(cfg)
-            except Exception as exc:
-                errors.append(f"{width}x{height}@{fps}: {exc}")
-                log.warning(
-                    "Realsense profile %dx%d @ %d Hz failed: %s",
-                    width, height, fps, exc,
+        # REDUNDANT camera paths: try the requested mode (color unless
+        # --use-ir-for-aruco), and if EVERY profile fails, AUTO-fall back to IR
+        # — so the same code works on a D435 (RGB) and a D450 (no RGB) with no
+        # operator flag. If IR was already requested, we only try IR.
+        modes = [self._use_ir] if self._use_ir else [False, True]
+        all_errors: list[str] = []
+        for ir_mode in modes:
+            self._use_ir = ir_mode
+            # IR mode is NOT aligned (raw IR+depth are already co-registered).
+            self._align = None if ir_mode else rs.align(rs.stream.color)
+            label = "IR/no-RGB" if ir_mode else "color"
+            for width, height, fps in self.PROFILE_CANDIDATES:
+                cfg = self._build_config(width, height, fps)
+                try:
+                    self._profile = self._pipeline.start(cfg)
+                except Exception as exc:
+                    all_errors.append(f"{label} {width}x{height}@{fps}: {exc}")
+                    continue
+                if ir_mode:
+                    ir_stream = self._profile.get_stream(rs.stream.infrared, 1)
+                    self._intrinsics = ir_stream.as_video_stream_profile().get_intrinsics()
+                    # Turn the IR projector OFF (dot pattern corrupts ArUco).
+                    try:
+                        self._depth_sensor = self._profile.get_device().first_depth_sensor()
+                        if self._depth_sensor.supports(rs.option.emitter_enabled):
+                            self._depth_sensor.set_option(rs.option.emitter_enabled, 0.0)
+                    except Exception as exc:  # pragma: no cover - hardware-specific
+                        log.warning("could not disable IR emitter: %s", exc)
+                else:
+                    color_stream = self._profile.get_stream(rs.stream.color)
+                    self._intrinsics = color_stream.as_video_stream_profile().get_intrinsics()
+                    # D450 can start colour but never deliver frames -> fall to IR.
+                    if not self._verify_color_frames():
+                        all_errors.append(f"{label} {width}x{height}@{fps}: started but no colour frames")
+                        try:
+                            self._pipeline.stop()
+                        except Exception:
+                            pass
+                        continue
+                self.WIDTH, self.HEIGHT, self.FPS = width, height, fps
+                self.profile_used = (width, height, fps)
+                self._started = True
+                log.info(
+                    "Realsense started: %dx%d @ %d Hz, fx=%.2f cx=%.2f (%s)",
+                    width, height, fps, self._intrinsics.fx, self._intrinsics.ppx, label,
                 )
-                continue
-            color_stream = self._profile.get_stream(rs.stream.color)
-            self._intrinsics = color_stream.as_video_stream_profile().get_intrinsics()
-            self.WIDTH = width
-            self.HEIGHT = height
-            self.FPS = fps
-            self.profile_used = (width, height, fps)
-            self._started = True
-            log.info(
-                "Realsense started: %dx%d @ %d Hz, fx=%.2f cx=%.2f",
-                width, height, fps,
-                self._intrinsics.fx, self._intrinsics.ppx,
-            )
-            return
-        tried = ", ".join(f"{w}x{h}@{f}" for w, h, f in self.PROFILE_CANDIDATES)
+                return
+            if not ir_mode and len(modes) > 1:
+                log.warning("all COLOR profiles failed — AUTO-falling back to IR (no-RGB camera?)")
         raise RuntimeError(
-            f"Realsense pipeline.start() failed for all candidate profiles "
-            f"[{tried}]. Errors: {'; '.join(errors)}"
+            "Realsense pipeline.start() failed for all profiles in all modes. "
+            f"Errors: {'; '.join(all_errors)}"
         )
 
     def stop(self) -> None:
@@ -172,12 +228,22 @@ class RealsenseNode:
         except Exception as exc:
             log.warning("Realsense wait_for_frames failed: %s", exc)
             return None
-        aligned = self._align.process(frames)
-        color_frame = aligned.get_color_frame()
-        depth_frame = aligned.get_depth_frame()
-        if not color_frame or not depth_frame:
-            return None
-        color = np.asanyarray(color_frame.get_data())
+        if self._use_ir:
+            # Raw frameset (no align): left IR + depth are co-registered.
+            depth_frame = frames.get_depth_frame()
+            ir_frame = frames.get_infrared_frame(1)
+            if not ir_frame or not depth_frame:
+                return None
+            self._reassert_emitter_off()
+            ir = np.asanyarray(ir_frame.get_data())          # Y8 grayscale
+            color = cv2.cvtColor(ir, cv2.COLOR_GRAY2BGR)     # synth 3-channel BGR
+        else:
+            aligned = self._align.process(frames)
+            depth_frame = aligned.get_depth_frame()
+            color_frame = aligned.get_color_frame()
+            if not color_frame or not depth_frame:
+                return None
+            color = np.asanyarray(color_frame.get_data())
         depth = np.asanyarray(depth_frame.get_data())
         return RealsenseFrame(
             color_bgr=color,
@@ -197,9 +263,10 @@ class RealsenseNode:
 # Mock node
 # --------------------------------------------------------------------------- #
 class MockRealsenseNode:
-    """Synthetic Realsense source that draws a real DICT_6X6_250 marker.
+    """Synthetic Realsense source that draws a real DICT_7X7_1000 marker
+    cycling through the org's finals IDs (11/45/51/67/101).
 
-    Useful for end-to-end testing the YOLO/ArUco pipeline without a camera.
+    Useful for end-to-end testing the ArUco pipeline without a camera.
     Intrinsics are a SimpleNamespace mirroring rs.intrinsics field names
     (fx, fy, ppx, ppy, width, height, model, coeffs).
     """
@@ -208,8 +275,9 @@ class MockRealsenseNode:
     HEIGHT = 480
     MARKER_PX = 80
     DEFAULT_DEPTH_MM = 1500
+    FINALS_IDS = (11, 45, 51, 67, 101)
 
-    def __init__(self, seed: int | None = None) -> None:
+    def __init__(self, seed: int | None = None, dict_name: str = "7X7_1000") -> None:
         self._rng = random.Random(seed)
         # seeded numpy Generator so depth-hole locations are reproducible too
         self._np_rng = np.random.default_rng(seed)
@@ -223,7 +291,9 @@ class MockRealsenseNode:
             model="brown_conrady",
             coeffs=[0.0, 0.0, 0.0, 0.0, 0.0],
         )
-        self._aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
+        _dict_id = getattr(cv2.aruco, f"DICT_{dict_name}", cv2.aruco.DICT_7X7_1000)
+        self._aruco_dict = cv2.aruco.getPredefinedDictionary(_dict_id)
+        self._seq = 0
         self._started = False
 
     def start(self) -> None:
@@ -242,7 +312,9 @@ class MockRealsenseNode:
         noise = self._rng.randint(0, 30)
         color[..., 1] = np.clip(color[..., 1].astype(int) + noise, 0, 255).astype(np.uint8)
 
-        marker_id = self._rng.randint(0, 249)
+        # cycle the real finals IDs so e2e tests exercise the actual markers
+        marker_id = self.FINALS_IDS[self._seq % len(self.FINALS_IDS)]
+        self._seq += 1
         marker_img = self._generate_marker(marker_id, self.MARKER_PX)
         max_x = self.WIDTH - self.MARKER_PX - 1
         max_y = self.HEIGHT - self.MARKER_PX - 1

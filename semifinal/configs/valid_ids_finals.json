@@ -1,0 +1,5 @@
+{
+  "_note": "DAY-1: set the real split from the marshal. Move INVALID IDs into invalid_ids. IDs in neither list resolve to None (unknown). Launch with MAPPING_DRONE_VALIDITY=lookup MAPPING_DRONE_VALIDITY_LOOKUP=configs/valid_ids_finals.json",
+  "valid_ids": [11, 45, 51, 67, 101],
+  "invalid_ids": []
+}

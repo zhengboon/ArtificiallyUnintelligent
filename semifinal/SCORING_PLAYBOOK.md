@@ -1,6 +1,6 @@
 # Scoring Playbook — confirmed rubric, strategy, hard caps
 
-Companion to `runbook.md` and `DAY1_RUNBOOK.md`. Read once before Day-1, again before each scored run. Rubric confirmed from org finals brief 2026-06-09 (slide 9). Authoritative source: `finals_brief_extracted.md`.
+Companion to `OP_DOC.md` (THE day-of runbook — the decision tree for procedures). Read once before Day-1, again before each scored run. Rubric confirmed from org finals brief 2026-06-09 (slide 9). Authoritative source: `finals_brief_extracted.md`.
 
 ---
 
@@ -26,13 +26,13 @@ Pre-Uni split (for reference): 44% C2A + 44% C2B + 4% CUAS + 8% concept = 100% (
 - **C2A (30%) — land within hoop.** Priority is landings, then timing. Conservative speed (0.3-0.4 m/s on Hula even though cap is 0.5), UWB pre-position, and ArUco visual aid for final descent (ArUco markers sit beside the Hula landing pads per 2026-06-06 clarification). Don't sacrifice a landing for seconds.
 - **C2B (30%) — maximise ArUco detections.** Priority is detections, then timing. Finding all 5 RoboMasters beats finishing fast with 3. Take 2-3 frames per sighting; blurry/clipped frames likely don't count.
 - **CUAS bonus (4%) — non-trivial.** Assign A to walk to the Counter UAS booth ("Above & Beyond: Skies & Space" zone, MBS L4) during a testing-window slot. Bring the drone for the photo, complete the BrainHack Frontier Exploration System task, screenshot the zone-explored page. 4% can be the gap between podium places.
-- **Concept explanation (7%) — prepare a 3-min talk track.** Cover: team architecture (mapping → C1 artifacts → C2A coords from Discord → C2B hunt), what we built (controller, ArUco detector, occupancy grid, UWB sniffer fallback), what trade-offs we made (safe-first runs, IR fallback if no RGB on D430/D450, 4 m altitude above 3.5 m floor). Z owns the script, K and A rehearse.
+- **Concept explanation (7%) — prepare a 3-min talk track.** Cover: team architecture (mapping → C1 artifacts → C2A coords from Discord → C2B hunt), what we built (MAVSDK offboard mission, ArUco detector, occupancy grid, UWB sniffer fallback), what trade-offs we made (safe-first runs, IR fallback if no RGB on D430/D450, 2.5 m altitude (cage ceiling is 3.5 m)). Z owns the script, K and A rehearse.
 
 ---
 
 ## Hard caps from brief
 
-- **Mapping drone max speed: 0.3 m/s** (slide 5). Currently `controller.py` `MAX_VEL_XY` may allow higher — clamp before scored run.
+- **Mapping drone max speed: 0.3 m/s** (slide 5). The live entry point is `python3 -m mapping_drone` -> `moveit_mission` (MAVSDK on `serial:///dev/ttyS6:921600`); `controller.py` is retired. Verify the waypoint velocity profile stays at/below 0.3 m/s before a scored run.
 - **Hula max speed: 0.5 m/s** (slide 6). Recommended altitude **1.1 m**. **Strictly no flying over obstacles** — score invalidated if violated.
 - **Per-attempt time: 8 min** for both C1 and C2 (slides 5, 6). Current `--max-flight-time-s` default is 420 s (7 min) — sized 60 s under the 480 s / 8-min org cap so the per-attempt timeout never elbows the org's clock.
 - **Per-session testing: 5 min** (slide 17). Hula cage holds 2 teams at once.
@@ -47,7 +47,7 @@ Pre-Uni split (for reference): 44% C2A + 44% C2B + 4% CUAS + 8% concept = 100% (
 
 A safe-first run that completes banks at minimum the dimension-1 partial credit on every scored S/N: 15% (some C1 detection) + 15% (some depth accuracy) + 30% (some C2A landings) + 30% (some C2B detections). Aggressive runs only happen after a safe score is already banked.
 
-- **Run 1 = SAFE.** Bank a confirmed score. Conservative altitude — **4.0 m default** for the mapping drone (above the 3.5 m floor org set on 2026-06-08 12:18; the older 1.5-2.0 m guidance is dead). Mapping speed **0.3 m/s** (clamped to cap). Hula at **1.1 m** recommended altitude, **0.3-0.4 m/s** even though cap is 0.5. Short waypoint list, full arena coverage for C1. Pick the closest pre-staged template at venue: `configs/arena_3x3.json`, `arena_4x4.json`, `arena_6x6.json`, or `arena_8x8.json` (all bumped to 4.0 m). Fallback if none match: `waypoints_2x2_default.json`. Goal: bank S/N 1-4 partial points.
+- **Run 1 = SAFE.** Bank a confirmed score. Conservative altitude — **2.5 m default** (cage ceiling 3.5 m; code hard-caps at 3.2 m; use --takeoff-alt 3.0 for higher). Mapping speed **0.3 m/s** (clamped to cap). Hula at **1.1 m** recommended altitude, **0.3-0.4 m/s** even though cap is 0.5. Short waypoint list, full arena coverage for C1. Pick the closest pre-staged template at venue: `configs/arena_3x3.json`, `arena_4x4.json`, `arena_6x6.json`, or `arena_8x8.json` (altitude now clamped to <=3.2 m; cage 3.5 m). Fallback if none match: `waypoints_2x2_default.json`. Goal: bank S/N 1-4 partial points.
 - **Run 2+ = AGGRESSIVE.** Tune based on run-1 deductions:
   - Mapping drone speed already at 0.3 m/s cap — gain time by trimming waypoints to **known pad neighbourhoods**, not by going faster.
   - Higher mapping altitude only if detection still works (verify with a mock dry-run on the captured top-down).
@@ -59,22 +59,22 @@ A safe-first run that completes banks at minimum the dimension-1 partial credit 
 
 ## Hard caps for safety
 
-- `--max-flight-time-s`: **420** default (sits ~60 s under the 480 s / 8-min org cap so the per-attempt timeout never elbows the org's clock — see `controller.py:1546-1549` comment). Lower for short scored slots; never raise above battery margin.
-- **Consecutive velocity failures**: 5. The controller aborts after 5 back-to-back `_send_velocity` warnings — this is the safety abort committed for this slot.
-- **Altitude floor**: **3.5 m minimum** (org 2026-06-08 12:18). All pre-staged templates default to **4.0 m** (3.5 m floor + 0.5 m margin). Do NOT use the older 1.5-2.0 m guidance — those altitudes are below the floor and the run will be rejected/unsafe.
-- **Battery cutoff**: per-drone failsafe. Ground when <20%. Do not arm a drone below 30% for a scored run.
+- `--max-flight-time-s`: **420** default (sits ~60 s under the 480 s / 8-min org cap so the per-attempt timeout never elbows the org's clock). Lower for short scored slots; never raise above battery margin.
+- **Consecutive setpoint-send failures**: 5. `moveit_mission` aborts (and lands) after 5 back-to-back `_set_setpoint` failures — `VEL_FAIL_ABORT = 5`, the offboard-setpoint-failure watchdog committed for this slot.
+- **Altitude CEILING**: the cage net is **3.5 m** (confirmed 2026-06-11 — this is a CEILING, not a floor; the old "3.5 m floor / fly 4.0 m" note was WRONG and would hit the net). Default `ALTITUDE_TARGET_DEFAULT = 2.5`; use `--takeoff-alt 3.0` for the higher option. Code HARD-CAPS any altitude at 3.2 m. Lower = sharper ArUco = more accuracy points.
+- **Battery cutoff**: in-code watchdog auto-lands at **<15%** (`BATTERY_LAND_FRAC = 0.15`). Operator margin: ground at <20% and do not arm a drone below 30% for a scored run. Other watchdogs (pose-loss, position-stuck, offboard-setpoint-failure) also auto-land; disarm only fires after `in_air=False`.
 - **Geofence**: rely on Hula's own — we do not enforce in code. Confirm with org during setup that geofence is active for our slot.
 
 ---
 
 ## Failure mode triage
 
-- **ArUco 0 sightings**: check `--aruco-dict` matches org announcement (announced Day-1 morning per slide 5: valid/invalid IDs announced before assessment; dictionary itself per 2026-06-06 Discord drop is TBD on the day). Increase frames-per-waypoint if time allows. If still 0, mount/lighting is the suspect — re-do the marker-on-floor camera mount check from `DAY1_RUNBOOK.md`.
+- **ArUco 0 sightings**: `--aruco-dict` default is `7X7_1000,6X6_250` and BOTH dicts are scanned every frame (`detect_in_frame` logs which dict matched), so a wrong-dict guess no longer zeroes us out (7X7 was only guessed from Discord; org markers assumed `DICT_7X7_1000`, IDs 11/45/51/67/101 — CONFIRM with marshal). Valid/invalid IDs are announced Day-1 morning per slide 5: edit `configs/valid_ids_finals.json` (the `lookup` validity default) with the marshal's real split. Increase frames-per-waypoint if time allows. If still 0, mount/lighting is the suspect — re-do the marker-on-floor camera mount check (see `OP_DOC.md`).
 - **UWB drift**: bring the sniffer back up (`python3 -m tools.uwb_sniffer`), confirm topic name + NED axes (see `tools/uwb_sniffer.py` — UWB topic name / NED axes are confirmed empirically, not filed as an org ticket). If pose jumps >1 m between adjacent frames, do not arm.
-- **Realsense disconnect mid-flight**: swap cable on landing; `PROFILE_CANDIDATES` in `realsense.py` handles graceful degrade across 640x480@30 / 848x480@30 / 1280x720@30 / 640x480@15.
+- **Realsense disconnect mid-flight**: swap cable on landing; `PROFILE_CANDIDATES` in `realsense.py` handles graceful degrade across 640x480@30 / 848x480@30 / 1280x720@30 / 640x480@15. `RealsenseNode` also AUTO-falls back color->IR if every colour profile fails (works on D435 RGB and D450 no-RGB with no flag); it runs headless (no `cv2.imshow`) and tolerates dropped frames.
 - **Hula offboard refuses**: battery <20% OR RC mode wrong. Cycle drone, verify RC mode, retry.
-- **Velocity setpoints failing repeatedly**: the controller will hit the 5-consecutive-failure abort. Land, inspect `log.txt` for the underlying MAVSDK exception, do not retry blind.
-- **RGB stream missing on drone** → use `--use-ir-for-aruco` once the `D430_RGB_RISK.md` patch is applied (Day-1 morning — flag not yet wired in code). Default behaviour (Strategy A in `D430_RGB_RISK.md`) keeps the IR emitter off every grab — no fps halving but depth on textureless surfaces degrades. If ArUco still misses, switch to alternating Strategy B (halves both depth and ArUco fps). Org confirmed 2026-06-08 12:18 the mapping drone uses D430 + D450, neither of which has an RGB sensor in the bare module. If the venue did not bolt on a separate RGB camera, the color-frame path in `ArucoDetector` returns empty — pivot to IR-with-emitter-toggle and accept the trade-off.
+- **Velocity setpoints failing repeatedly**: `moveit_mission` will hit the 5-consecutive-failure abort (`VEL_FAIL_ABORT`) and auto-land. Inspect `log.txt` for the underlying MAVSDK exception, do not retry blind.
+- **RGB stream missing on drone** → no action needed for first attempt: `RealsenseNode` AUTO-falls back color->IR when every colour profile fails, so a no-RGB D450 works with no flag. To FORCE IR explicitly, pass `--use-ir-for-aruco` (the flag is wired in code). The IR projector is turned OFF on every grab (its dot pattern corrupts ArUco), so depth on textureless surfaces degrades. Org confirmed 2026-06-08 12:18 the mapping drone uses D430 + D450, neither of which has an RGB sensor in the bare module — the auto-fallback covers this case; see `D430_RGB_RISK.md` for the trade-off details.
 
 ---
 
@@ -86,4 +86,4 @@ A safe-first run that completes banks at minimum the dimension-1 partial credit 
 
 ---
 
-*Scoring Playbook v2 (2026-06-09). Rubric confirmed from org finals brief slide 9; source: `finals_brief_extracted.md`. If something here contradicts `runbook.md`, `runbook.md` wins for event flow; this file wins for per-challenge scoring intent.*
+*Scoring Playbook v2 (2026-06-09). Rubric confirmed from org finals brief slide 9; source: `finals_brief_extracted.md`. If something here contradicts `OP_DOC.md` (THE day-of runbook), `OP_DOC.md` wins for procedures/event flow; this file wins for per-challenge scoring intent.*
