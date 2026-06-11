@@ -20,23 +20,27 @@ Writeup with the architecture diagrams: [link to GitHub Pages]
 
 ---
 
-## Version B — story-driven (~250 words)
+## Version B — story-driven, with the flair (~330 words)
 
 Five days. Three people. Two drones. One coordinate world.
 
-That's the elevator pitch for what my team and I built for BrainHack 2026's RoboVerse Drone Challenge at Marina Bay Sands this week.
+That's the elevator pitch for what my team and I built for BrainHack 2026's RoboVerse Drone Challenge — and I'm still buzzing about the two days we just spent at Marina Bay Sands Expo.
 
-**Stage 1: Reconnaissance.** A mapping drone — Realsense depth camera, UWB localisation, MAVSDK over serial to the PX4 flight controller — flies a deterministic lawnmower sweep over a netted cage. On each frame it deprojects depth into a top-down occupancy grid, scans for ArUco landing-pad markers, and writes a machine-readable JSON of pad coordinates and validity. Output is a judge-readable artifact AND the input contract for stage 2.
+**Stage 1: Reconnaissance.** A mapping drone — Realsense depth camera, UWB localisation, MAVSDK over serial to the PX4 flight controller — flies a deterministic lawnmower sweep over a netted cage. On each frame it deprojects depth into a top-down occupancy grid, scans for ArUco landing-pad markers, and writes a machine-readable JSON of every pad's world coordinates and validity. Output: a judge-readable artifact AND the input contract for stage 2.
 
-**Stage 2: Deployment & Ambush.** A swarm of three Hula drones consumes that JSON, lands on the three valid pads, then transitions into a coordinated 360° spin-scan hunt for five RoboMaster ground robots, each carrying an ArUco marker.
+**Stage 2: Deployment & Ambush.** A swarm of three Hula drones consumes that JSON, lands on the three valid pads, then transitions into a coordinated 360° spin-scan hunt for five RoboMaster ground robots, each carrying its own ArUco marker.
 
-The most interesting engineering decisions weren't the drone control loops — they were the failure modes. Indoor UWB frames are notoriously ambiguous, so we built a survey tool that *measures* the frame at venue setup instead of assuming it. The cage walls are see-through netting, so we used deterministic sweeps instead of SLAM (depth sensors hallucinate through net). The official ArUco dictionary was announced on the day, so the mapping pipeline scans *two* dictionaries every frame.
+The most interesting engineering decisions weren't the drone control loops — they were the failure modes. Indoor UWB frames are notoriously ambiguous, so we built a survey tool that *measures* the frame at setup instead of assuming it. The cage walls are see-through netting, so we used deterministic sweeps instead of SLAM (depth sensors hallucinate through the mesh). The official ArUco dictionary was announced on the day, so the mapping pipeline scans *two* dictionaries every frame. Crash = no re-assessment, so safety lives in the control loop, not on a checklist.
 
-Crash = no re-assessment. So safety lives in the control loop, not on a checklist.
+But honestly? The system is half the story.
 
-Full architecture writeup: [link to GitHub Pages]
+Huge respect to the DSTA team who ran this — clear rules, fast Discord support, and marshals who genuinely wanted every team to succeed. The DSTA tech showcase next door (Counter-UAS, Sentinel, CDDC, the Brainhack Frontier Exploration System) was the kind of thing I'd come back to BrainHack for on its own. And MBS Expo Level 4 — the entire floor turned into a robotics arena, with teams shouting over each other's spin-scans — was just a vibe.
 
-#robotics #autonomy #drones #brainhack #computervision #engineering
+Big thanks to my teammates and to every marshal who answered "wait, just one more question." Already plotting next year.
+
+Architecture writeup with the diagrams: [link to GitHub Pages]
+
+#BrainHack2026 #DSTA #robotics #autonomy #drones #computervision #engineering
 
 ---
 
