@@ -1,0 +1,33 @@
+title: ArtificiallyUnintelligent — RoboVerse Drone Challenge
+description: How we built a two-stage autonomous drone mission for BrainHack 2026 — mapping drone reconnaissance + Hula swarm deployment & ambush.
+theme: jekyll-theme-cayman
+show_downloads: false
+
+# Cayman theme footer + header tuning
+google_analytics:
+
+# Navigation
+nav:
+  - title: Home
+    url: /
+  - title: Architecture
+    url: /architecture
+  - title: Challenge 1 — Mapping
+    url: /c1-mapping
+  - title: Challenge 2 — Swarm
+    url: /c2-swarm
+  - title: Design principles
+    url: /principles
+  - title: Engineering log
+    url: /engineering
+
+# Plugins enabled by default on GitHub Pages
+plugins:
+  - jekyll-relative-links
+
+relative_links:
+  enabled: true
+  collections: true
+
+include:
+  - CONCEPT_PLAN.md
