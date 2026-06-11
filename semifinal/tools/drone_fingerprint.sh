@@ -89,6 +89,10 @@ echo "  in EVERY terminal + the start scripts, then re-run the data-flow check b
 echo
 echo "  DATA-FLOW check (run AFTER 'start_micro' + 'start_uwb' in their own terminals):"
 echo "    export ROS_LOCALHOST_ONLY=1; source ~/ros2_ws/install/setup.bash"
+echo "    # PRIMARY pose is FC fused NED (--pose auto/fc). Check IT first:"
+echo "    timeout 10 ros2 topic echo /fmu/out/vehicle_local_position --qos-reliability best_effort | grep -m1 xy_valid"
+echo "    # If FC fused NED streams, the drone is FLYABLE on --pose auto/fc EVEN if /uwb_tag is empty."
+echo "    # /uwb_tag is the FALLBACK pose source (arena frame) — check it second:"
 echo "    timeout 10 ros2 topic echo /uwb_tag --qos-reliability best_effort   # streaming?"
 echo "    ros2 topic info -v /uwb_tag                                         # publisher count"
 echo "=========================================================="

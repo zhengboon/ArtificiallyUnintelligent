@@ -443,9 +443,12 @@ class OccupancyGrid:
         self,
         world_xyz_m: tuple[float, float, float],
         aruco_id: int,
-        valid: bool,
+        valid: Optional[bool],
     ) -> None:
-        self.pads.append((tuple(float(v) for v in world_xyz_m), int(aruco_id), bool(valid)))
+        # Keep tri-state: True / False / None(unknown). Do NOT coerce None->False
+        # or unknown pads render as invalid (red) on the top-down map.
+        v = None if valid is None else bool(valid)
+        self.pads.append((tuple(float(x) for x in world_xyz_m), int(aruco_id), v))
 
     def render(self) -> np.ndarray:
         """Return RGB-ish (BGR for cv2) visualisation. Higher hit count = brighter.
@@ -466,7 +469,8 @@ class OccupancyGrid:
             row_world = int(round((n - self._n_min) / self.resolution_m))
             row_img = (self.cells - 1) - row_world
             if 0 <= row_img < self.cells and 0 <= col < self.cells:
-                colour = (0, 200, 0) if valid else (0, 0, 220)
+                # green=valid, red=invalid, yellow=unknown (None)
+                colour = (0, 200, 0) if valid is True else ((0, 0, 220) if valid is False else (0, 200, 200))
                 cv2.circle(img, (col, row_img), 6, colour, thickness=-1)
                 cv2.circle(img, (col, row_img), 7, (255, 255, 255), thickness=1)
                 cv2.putText(

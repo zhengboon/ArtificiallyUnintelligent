@@ -198,14 +198,15 @@ def wall_follower_tick(drone, wf, direction, now):
             wf['stateStartTime'] = now
     
     elif state == WF_FORWARD_ALONG_WALL:
-        # wall lost = side sensor reads False
-        if not side:
-            wf['state'] = WF_FIND_CORNER
-            wf['stateStartTime'] = now
-
+        # Mutually exclusive: a front obstacle (inside corner) takes priority
+        # over a lost side wall, so only ONE transition fires per tick.
         if front:
             wf['prevHeading'] = heading
             wf['state'] = WF_ROTATE_IN_CORNER
+            wf['stateStartTime'] = now
+        elif not side:
+            # wall lost = side sensor reads False
+            wf['state'] = WF_FIND_CORNER
             wf['stateStartTime'] = now
 
     elif state == WF_ROTATE_AROUND_WALL:

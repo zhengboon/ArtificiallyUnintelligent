@@ -357,10 +357,13 @@ class MoveItMission:
         if self.drone is not None:
             try:
                 await asyncio.wait_for(self.drone.connect(system_address=self.args.mavsdk_address), timeout=8.0)
+                ct = time.monotonic() + 12.0
                 async for st in self.drone.core.connection_state():
                     if st.is_connected:
                         ok = True
                         logger.info("MAVSDK connected via %s", self.args.mavsdk_address)
+                        break
+                    if self._stop or time.monotonic() > ct:
                         break
             except Exception as exc:
                 logger.error("MAVSDK connect failed on %s: %s", self.args.mavsdk_address, exc)
@@ -397,11 +400,19 @@ class MoveItMission:
         drone = self.drone
         try:
             self.state = "CONNECTING"
-            await drone.connect(system_address=self.args.mavsdk_address)
+            await asyncio.wait_for(drone.connect(system_address=self.args.mavsdk_address), timeout=10.0)
+            connected = False
+            ct = time.monotonic() + 15.0
             async for st in drone.core.connection_state():
                 if st.is_connected:
+                    connected = True
                     logger.info("MAVSDK connected via %s", self.args.mavsdk_address)
                     break
+                if self._stop or time.monotonic() > ct:
+                    break
+            if not connected:
+                logger.error("MAVSDK did not connect on %s — refusing to fly", self.args.mavsdk_address)
+                return 2
             self.state = "AWAIT_LOCAL_POS"
             ok = False
             t = time.monotonic() + LOCAL_POS_TIMEOUT_S
@@ -453,6 +464,10 @@ class MoveItMission:
                 self.state = f"FLY_WP_{idx}"
                 logger.info("WAYPOINT %d/%d -> N=%.2f E=%.2f alt=%.2f", idx, len(waypoints), wn, we, alt_wp)
                 await self._navigate_uwb(wn, we, alt_wp)
+                if self._stop:
+                    # safety abort fired mid-waypoint — land NOW, skip the scan/hold
+                    logger.warning("abort during wp %d — landing immediately", idx)
+                    break
                 # hold position; MAVSDK keeps streaming the last setpoint while we scan
                 await drone.offboard.set_position_velocity_ned(
                     PositionNedYaw(wn, we, -alt_wp, 0.0), VelocityNedYaw(0.0, 0.0, 0.0, 0.0))
@@ -470,6 +485,16 @@ class MoveItMission:
             except Exception:
                 pass
             return 1
+        finally:
+            # Stop the background telemetry loops so they don't leak/pend.
+            for t in self._tasks:
+                t.cancel()
+            if self._tasks:
+                try:
+                    await asyncio.gather(*self._tasks, return_exceptions=True)
+                except Exception:
+                    pass
+            self._tasks = []
 
     async def _land_and_disarm(self, *, aborted: bool) -> int:
         if self._abort_reason:
@@ -518,7 +543,14 @@ def _load_waypoints(args):
                        ARENA_W_M, ARENA_L_M)
         return [(n, e, None) for (n, e) in DEFAULT_WAYPOINTS]
     data = json.loads(Path(path).read_text())
-    out = [(float(r[0]), float(r[1]), (float(r[2]) if len(r) > 2 else None)) for r in data]
+    out = []
+    for i, r in enumerate(data):
+        if not (isinstance(r, (list, tuple)) and len(r) >= 2):
+            raise ValueError(f"{path}: waypoint row {i} is malformed (need [n,e] or [n,e,alt]): {r!r}")
+        try:
+            out.append((float(r[0]), float(r[1]), (float(r[2]) if len(r) > 2 else None)))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{path}: waypoint row {i} has non-numeric values {r!r}: {exc}")
     if not out:
         raise ValueError(f"{path}: waypoints list is empty")
     _sanity_check_waypoints(out, path)
@@ -590,6 +622,13 @@ def main() -> int:
     run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = Path(args.runs_dir).resolve() / f"run_{run_ts}"
     run_dir.mkdir(parents=True, exist_ok=True)
+    # Mirror logs to run_dir/log.txt (run_summary.json advertises this artifact).
+    try:
+        _fh = logging.FileHandler(run_dir / "log.txt")
+        _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        logging.getLogger().addHandler(_fh)
+    except Exception:
+        pass
     logger.info("run dir: %s | ArUco dict: %s | validity: %s", run_dir, args.aruco_dict, describe_rule())
     _org_ids = (11, 45, 51, 67, 101)
     _cls = {i: decide_landing_validity(i) for i in _org_ids}
@@ -599,6 +638,10 @@ def main() -> int:
     elif all(v is None for v in _cls.values()):
         logger.warning("ALL FIVE org pads classify UNKNOWN — validity lookup table not found; "
                        "run from semifinal/ or set MAPPING_DRONE_VALIDITY_LOOKUP to the JSON path.")
+    elif all(v is True for v in _cls.values()):
+        logger.warning("ALL FIVE org pads classify VALID — this is the DEFAULT pre-fill. "
+                       "Confirm it matches the marshal's announced valid/invalid split; "
+                       "edit configs/valid_ids_finals.json before a scored run!")
 
     drone = None
     if args.fly or args.check:

@@ -229,8 +229,10 @@ class Px4Ros2Flight:
             e = float(msg.y)
             down = float(msg.z)
             heading = float(getattr(msg, "heading", 0.0))
-            xy_valid = bool(getattr(msg, "xy_valid", True))
-            z_valid = bool(getattr(msg, "z_valid", True))
+            # Default to INVALID if the field is missing — never assume a
+            # position fix exists for a safety/validity flag.
+            xy_valid = bool(getattr(msg, "xy_valid", False))
+            z_valid = bool(getattr(msg, "z_valid", False))
         except Exception:
             logger.exception("malformed VehicleLocalPosition")
             return
@@ -328,9 +330,12 @@ class Px4Ros2Flight:
 
     # ---- reads -----------------------------------------------------
     def get_pose(self) -> tuple[float, float, float, float, bool]:
-        """Return (north_m, east_m, down_m, yaw_deg, valid)."""
+        """Return (north_m, east_m, down_m, yaw_deg, valid). valid flips to
+        False if /fmu/out/vehicle_local_position goes stale (>1.5s), so a
+        dropped XRCE link can't keep flying offboard on frozen coordinates."""
         with self._lock:
-            return self._n, self._e, self._down, self._yaw_deg, self._pos_valid
+            fresh = self._last_pos_ts > 0.0 and (time.monotonic() - self._last_pos_ts) < 1.5
+            return self._n, self._e, self._down, self._yaw_deg, (self._pos_valid and fresh)
 
     @property
     def last_pos_ts(self) -> float:

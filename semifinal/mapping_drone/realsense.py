@@ -102,12 +102,40 @@ class RealsenseNode:
         # and synthesise BGR from IR so ArUco/mapping are unchanged.
         self._use_ir = bool(use_ir_for_aruco)
         self._pipeline = rs.pipeline()
-        self._align = rs.align(rs.stream.infrared if self._use_ir else rs.stream.color)
+        # IR mode: do NOT align — left IR (index 1) is the depth reference
+        # imager, already co-registered with depth at the same resolution.
+        # align(infrared) returns a null IR frame, which broke the D450 path.
+        self._align = None if self._use_ir else rs.align(rs.stream.color)
         self._profile: object | None = None
         self._intrinsics: object | None = None
         self._depth_sensor: object | None = None
+        self._grab_count = 0
         self._started = False
         self.profile_used: tuple[int, int, int] | None = None
+
+    def _verify_color_frames(self) -> bool:
+        """A D450 (no RGB) can 'start' a colour profile but never deliver a
+        colour frame. Confirm one actually arrives so start() can fall to IR."""
+        try:
+            for _ in range(3):
+                frames = self._pipeline.wait_for_frames(timeout_ms=1500)
+                if frames.get_color_frame():
+                    return True
+        except Exception:
+            return False
+        return False
+
+    def _reassert_emitter_off(self) -> None:
+        """Keep the IR projector off (its dot pattern corrupts ArUco). Some
+        firmware re-enables it; re-assert periodically (cheap, throttled)."""
+        self._grab_count += 1
+        if self._depth_sensor is None or (self._grab_count % 30) != 1:
+            return
+        try:
+            if self._depth_sensor.supports(rs.option.emitter_enabled):
+                self._depth_sensor.set_option(rs.option.emitter_enabled, 0.0)
+        except Exception:
+            pass
 
     def _build_config(self, width: int, height: int, fps: int) -> "rs.config":
         cfg = rs.config()
@@ -130,7 +158,8 @@ class RealsenseNode:
         all_errors: list[str] = []
         for ir_mode in modes:
             self._use_ir = ir_mode
-            self._align = rs.align(rs.stream.infrared if ir_mode else rs.stream.color)
+            # IR mode is NOT aligned (raw IR+depth are already co-registered).
+            self._align = None if ir_mode else rs.align(rs.stream.color)
             label = "IR/no-RGB" if ir_mode else "color"
             for width, height, fps in self.PROFILE_CANDIDATES:
                 cfg = self._build_config(width, height, fps)
@@ -152,6 +181,14 @@ class RealsenseNode:
                 else:
                     color_stream = self._profile.get_stream(rs.stream.color)
                     self._intrinsics = color_stream.as_video_stream_profile().get_intrinsics()
+                    # D450 can start colour but never deliver frames -> fall to IR.
+                    if not self._verify_color_frames():
+                        all_errors.append(f"{label} {width}x{height}@{fps}: started but no colour frames")
+                        try:
+                            self._pipeline.stop()
+                        except Exception:
+                            pass
+                        continue
                 self.WIDTH, self.HEIGHT, self.FPS = width, height, fps
                 self.profile_used = (width, height, fps)
                 self._started = True
@@ -187,15 +224,18 @@ class RealsenseNode:
         except Exception as exc:
             log.warning("Realsense wait_for_frames failed: %s", exc)
             return None
-        aligned = self._align.process(frames)
-        depth_frame = aligned.get_depth_frame()
         if self._use_ir:
-            ir_frame = aligned.get_infrared_frame(1)
+            # Raw frameset (no align): left IR + depth are co-registered.
+            depth_frame = frames.get_depth_frame()
+            ir_frame = frames.get_infrared_frame(1)
             if not ir_frame or not depth_frame:
                 return None
+            self._reassert_emitter_off()
             ir = np.asanyarray(ir_frame.get_data())          # Y8 grayscale
             color = cv2.cvtColor(ir, cv2.COLOR_GRAY2BGR)     # synth 3-channel BGR
         else:
+            aligned = self._align.process(frames)
+            depth_frame = aligned.get_depth_frame()
             color_frame = aligned.get_color_frame()
             if not color_frame or not depth_frame:
                 return None

@@ -75,7 +75,7 @@ def fit_rigid(arena_pts, ned_pts):
     pred = A @ R.T + t
     res = np.linalg.norm(pred - B, axis=1)
     yaw_deg = math.degrees(math.atan2(R[1, 0], R[0, 0]))
-    return R, t, res, yaw_deg
+    return R, t, res, yaw_deg, S
 
 
 def to_ned(R, t, x, y):
@@ -126,6 +126,7 @@ async def main() -> int:
             latest["n"] = p.position.north_m
             latest["e"] = p.position.east_m
             latest["d"] = p.position.down_m
+            latest["ts"] = asyncio.get_running_loop().time()
 
     telem_task = asyncio.ensure_future(telem())
 
@@ -155,23 +156,38 @@ async def main() -> int:
         show_task = asyncio.ensure_future(show())
         line = (await loop.run_in_executor(None, sys.stdin.readline)).strip().lower()
         stop["v"] = True
-        await asyncio.sleep(0.05)
+        show_task.cancel()
+        try:
+            await show_task
+        except asyncio.CancelledError:
+            pass
         if line == "s":
             print(f"\n    skipped {label}")
             continue
+        if loop.time() - latest.get("ts", 0.0) > 0.5:
+            print("\n    [WARN] FC telemetry STALE (>0.5s) — this capture may be a frozen old "
+                  "position. Hold still and re-run the survey if unsure.")
         n, e = latest["n"], latest["e"]
         captured.append((arena_xy, (n, e)))
         print(f"\n    captured {label}:  NED n={n:+.3f} e={e:+.3f}")
 
     telem_task.cancel()
 
-    if len(captured) < 2:
-        print("\n[FATAL] need at least 2 corners (ideally 4). Got", len(captured))
+    if len(captured) < 3:
+        print(f"\n[FATAL] need at least 3 non-collinear corners — 2 corners fit mirror-"
+              f"ambiguously and would map the lawnmower into the WRONG half (into a wall). "
+              f"Got {len(captured)}.")
         return 2
 
     arena_pts = [c[0] for c in captured]
     ned_pts = [c[1] for c in captured]
-    R, t, res, yaw_deg = fit_rigid(arena_pts, ned_pts)
+    R, t, res, yaw_deg, S = fit_rigid(arena_pts, ned_pts)
+    # Degenerate (near-collinear corners) -> tiny smallest singular value -> the
+    # perpendicular axis is unconstrained and the box can mirror. Refuse.
+    if float(np.min(S)) < 1e-9 or float(np.min(S)) < 1e-6 * float(np.max(S)):
+        print("\n[FATAL] captured corners are (near-)collinear — fit is degenerate / "
+              "mirror-ambiguous. Re-survey using corners that span BOTH arena axes.")
+        return 2
 
     print("\n==================== SURVEY RESULT ====================")
     print(f"corners captured: {len(captured)}")

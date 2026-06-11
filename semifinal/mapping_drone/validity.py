@@ -118,10 +118,19 @@ def _load_lookup(path: Path) -> dict[str, set[int]]:
         bundle = {"valid": set(), "invalid": set()}
         _LOOKUP_CACHE[key] = bundle
         return bundle
-    with open(path, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
-    valid = {int(x) for x in data.get("valid_ids", [])}
-    invalid = {int(x) for x in data.get("invalid_ids", [])}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        valid = {int(x) for x in data.get("valid_ids", [])}
+        invalid = {int(x) for x in data.get("invalid_ids", [])}
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        # Malformed/corrupt lookup file: degrade to "everything unknown"
+        # rather than crash the mission (honours the never-crash contract).
+        logger.error("validity lookup file %s is malformed (%s) — every pad "
+                     "classifies UNKNOWN (None). Fix the JSON.", path, exc)
+        bundle = {"valid": set(), "invalid": set()}
+        _LOOKUP_CACHE[key] = bundle
+        return bundle
     overlap = valid & invalid
     if overlap:
         logger.warning(

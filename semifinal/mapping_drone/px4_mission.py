@@ -306,12 +306,22 @@ class Px4Mission:
     def _fly_to(self, n, e, alt, yaw_deg) -> bool:
         self.flight.set_target(n, e, alt, yaw_deg)
         deadline = time.monotonic() + FLY_TO_TIMEOUT_S
+        lost_since = None
         while time.monotonic() < deadline and not self._stop:
-            cn, ce, cdown, _, _ = self.pose.get_pose()
-            if (abs(n - cn) < REACH_XY_M and abs(e - ce) < REACH_XY_M
-                    and abs(alt - (-cdown)) < REACH_Z_M):
-                time.sleep(0.5)
-                return True
+            cn, ce, cdown, _, valid = self.pose.get_pose()
+            if not valid:
+                # pose went stale/invalid (XRCE dropout) — abort if it persists
+                lost_since = lost_since or time.monotonic()
+                if time.monotonic() - lost_since > 5.0:
+                    logger.error("px4 pose lost/stale >5s — aborting (land)")
+                    self._stop = True
+                    return False
+            else:
+                lost_since = None
+                if (abs(n - cn) < REACH_XY_M and abs(e - ce) < REACH_XY_M
+                        and abs(alt - (-cdown)) < REACH_Z_M):
+                    time.sleep(0.5)
+                    return True
             self._write_status()
             time.sleep(0.2)
         return False
@@ -323,14 +333,21 @@ class Px4Mission:
             self.flight.land()
         except Exception as exc:
             logger.error("land failed: %s", exc)
+        # NEVER force-disarm while still armed/airborne (PX4 auto-disarms on
+        # land). Only disarm once we've observed armed=False.
+        disarmed_ok = False
         for _ in range(40):
             if not self.flight.armed:
+                disarmed_ok = True
                 break
             time.sleep(0.5)
-        try:
-            self.flight.disarm()
-        except Exception:
-            pass
+        if disarmed_ok:
+            try:
+                self.flight.disarm()
+            except Exception:
+                pass
+        else:
+            logger.error("still ARMED after 20s — NOT sending disarm (safety); use the RC kill switch")
         self.state = "ABORTED" if aborted else "DONE"
         return 1 if aborted else 0
 
@@ -363,6 +380,8 @@ def _parse_args(argv=None) -> argparse.Namespace:
                         "carries no z (nlink normally publishes ENU z-up altitude, which is used)")
     p.add_argument("--aruco-dict", default="7X7_1000,6X6_250",
                    help="comma-separated dicts scanned every frame (hedge both 7X7_1000 + 6X6_250)")
+    p.add_argument("--use-ir-for-aruco", action="store_true",
+                   help="D450 (no-RGB) camera: force IR + synth BGR (color->IR is auto anyway)")
     p.add_argument("--waypoints", default=None)
     p.add_argument("--waypoints-from-json", default=None)
     p.add_argument("--gimbal-pitch", type=float, default=-90.0)
@@ -389,6 +408,12 @@ def main() -> int:
     run_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = Path(args.runs_dir).resolve() / f"run_{run_ts}"
     run_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        _fh = logging.FileHandler(run_dir / "log.txt")
+        _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+        logging.getLogger().addHandler(_fh)
+    except Exception:
+        pass
     logger.info("run dir: %s", run_dir)
     logger.info("pose=%s | ArUco dict: %s | validity: %s", args.pose, args.aruco_dict, describe_rule())
 
@@ -406,7 +431,7 @@ def main() -> int:
     else:
         pose_source = UwbPoseSource(args.assumed_alt)
 
-    realsense = RealsenseNode()
+    realsense = RealsenseNode(use_ir_for_aruco=args.use_ir_for_aruco)
     run_writer = RunWriter(run_dir, run_ts)
 
     mission: Optional[Px4Mission] = None
