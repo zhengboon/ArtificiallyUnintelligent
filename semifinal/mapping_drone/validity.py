@@ -121,9 +121,11 @@ def _load_lookup(path: Path) -> dict[str, set[int]]:
     try:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
+        if not isinstance(data, dict):
+            raise ValueError(f"top-level JSON must be an object, got {type(data).__name__}")
         valid = {int(x) for x in data.get("valid_ids", [])}
         invalid = {int(x) for x in data.get("invalid_ids", [])}
-    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, TypeError, AttributeError, json.JSONDecodeError) as exc:
         # Malformed/corrupt lookup file: degrade to "everything unknown"
         # rather than crash the mission (honours the never-crash contract).
         logger.error("validity lookup file %s is malformed (%s) — every pad "

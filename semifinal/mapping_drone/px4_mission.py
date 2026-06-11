@@ -64,6 +64,8 @@ from .uwb import UwbNode
 logger = logging.getLogger("mapping_drone.px4_mission")
 
 TAKEOFF_ALT_DEFAULT = 2.5   # ~1 m below the 3.5 m cage ceiling (use 3.0 for higher)
+CAGE_HEIGHT_M = 3.5         # arena cage ceiling/net height
+MAX_SAFE_ALT_M = 3.2        # hard cap: keep >=0.3 m clearance below the net
 REACH_XY_M = 0.30
 REACH_Z_M = 0.30
 FLY_TO_TIMEOUT_S = 40.0
@@ -71,7 +73,7 @@ FRAMES_PER_WAYPOINT = 8
 DEDUPE_RADIUS_M = 0.5
 POSE_WAIT_S = 15.0
 ARM_OFFBOARD_WAIT_S = 8.0
-DEFAULT_WAYPOINTS = [(0.0, 0.0, 4.0), (2.0, 0.0, 4.0), (2.0, 2.0, 4.0), (0.0, 2.0, 4.0)]
+DEFAULT_WAYPOINTS = [(0.0, 0.0, 2.5), (2.0, 0.0, 2.5), (2.0, 2.0, 2.5), (0.0, 2.0, 2.5)]
 
 
 def _world_distance(a, b) -> float:
@@ -304,6 +306,9 @@ class Px4Mission:
         return self._land_and_disarm(aborted=self._stop)
 
     def _fly_to(self, n, e, alt, yaw_deg) -> bool:
+        if alt > MAX_SAFE_ALT_M:   # never command above the cage net (3.5 m)
+            logger.warning("alt %.1f m > safe max %.1f m (cage %.1f m) — clamping", alt, MAX_SAFE_ALT_M, CAGE_HEIGHT_M)
+            alt = MAX_SAFE_ALT_M
         self.flight.set_target(n, e, alt, yaw_deg)
         deadline = time.monotonic() + FLY_TO_TIMEOUT_S
         lost_since = None
