@@ -89,11 +89,23 @@ Both stages share the **same arena UWB frame** (origin = centre). The C1 → C2 
 
 ## Recognition
 
-DSTA issued every participant a verifiable digital certificate via Credsverse. For Tan Zheng Boon's:
+DSTA issued every team member a verifiable digital **University Finalist** credential via Credsverse — awarded 16 June 2026, signed by Ng Chad-Son, Chief Executive of DSTA. Click any card to verify on Credsverse.
 
-<p align="center">
-<a href="https://credsverse.com/credentials/b5c1044e-0b4f-4f63-b3cc-ebe811ecb6c5?recipient=true" target="_blank" rel="noopener">
-<img src="images/credential-dsta-brainhack2026.webp" alt="BrainHack 2026 RoveVerse Certificate of Participation — University Finalist, awarded to Tan Zheng Boon on 16 June 2026 by Ng Chad-Son, Chief Executive of DSTA">
-</a>
-<br><sub><i>BrainHack 2026 RoboVerse · <strong>University Finalist</strong> · awarded 16 June 2026 by DSTA · <a href="https://credsverse.com/credentials/b5c1044e-0b4f-4f63-b3cc-ebe811ecb6c5?recipient=true" target="_blank" rel="noopener">verify on Credsverse →</a></i></sub>
-</p>
+<div class="cred-grid">
+  <a class="cred-card" href="https://credsverse.com/credentials/b5c1044e-0b4f-4f63-b3cc-ebe811ecb6c5?recipient=true" target="_blank" rel="noopener">
+    <img src="images/credential-dsta-brainhack2026-zheng.webp" alt="BrainHack 2026 RoboVerse Certificate of Participation — University Finalist, awarded to Tan Zheng Boon on 16 June 2026 by DSTA">
+    <div class="cred-body">
+      <div class="cred-name">Tan Zheng Boon</div>
+      <div class="cred-meta">BrainHack 2026 · RoboVerse · University Finalist</div>
+      <span class="cred-verify">Verify on Credsverse →</span>
+    </div>
+  </a>
+  <a class="cred-card" href="https://credsverse.com/credentials/6a469f62-90b4-40dc-a9a1-1b009fd67acd" target="_blank" rel="noopener">
+    <img src="images/credential-dsta-brainhack2026-abi.webp" alt="BrainHack 2026 RoboVerse Certificate of Participation — University Finalist, awarded to Abirami Baskaran on 16 June 2026 by DSTA">
+    <div class="cred-body">
+      <div class="cred-name">Abirami Baskaran</div>
+      <div class="cred-meta">BrainHack 2026 · RoboVerse · University Finalist</div>
+      <span class="cred-verify">Verify on Credsverse →</span>
+    </div>
+  </a>
+</div>
