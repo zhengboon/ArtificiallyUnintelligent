@@ -1,6 +1,6 @@
 title: ArtificiallyUnintelligent
 description: BrainHack 2026 RoboVerse Drone Challenge — University Finals, Marina Bay Sands, 10–11 June 2026.
-theme: jekyll-theme-cayman
+# theme intentionally omitted — we ship our own _layouts/default.html + assets/css/style.css.
 
 # Pretty URLs
 permalink: pretty
@@ -13,7 +13,6 @@ kramdown:
   syntax_highlighter: rouge
   toc_levels: 2..3
 
-# Plugins (whitelisted on GitHub Pages)
 plugins:
   - jekyll-relative-links
   - jekyll-seo-tag
@@ -32,7 +31,6 @@ exclude:
   - Gemfile
   - Gemfile.lock
 
-# SEO defaults
 url: "https://zhengboon.github.io"
 baseurl: "/ArtificiallyUnintelligent"
 github:

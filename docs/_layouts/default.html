@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% if page.title and page.title != "Home" %}{{ page.title }} · {{ site.title }}{% else %}{{ site.title }}{% endif %}</title>
+<meta name="description" content="{% if page.description %}{{ page.description }}{% else %}{{ site.description }}{% endif %}">
+<meta property="og:title" content="{{ site.title }}">
+<meta property="og:description" content="{% if page.description %}{{ page.description }}{% else %}{{ site.description }}{% endif %}">
+<meta property="og:image" content="{{ '/images/hero-arch-dsta.jpg' | relative_url }}">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body class="{% if page.url == '/' %}home{% else %}subpage{% endif %}">
+
+<header class="site-nav">
+  <div class="nav-inner">
+    <a class="brand" href="{{ '/' | relative_url }}">
+      <span class="brand-mark">AU</span>
+      <span class="brand-name">ArtificiallyUnintelligent</span>
+    </a>
+    <nav class="nav-links">
+      <a href="{{ '/architecture' | relative_url }}" {% if page.url contains '/architecture' %}class="active"{% endif %}>Architecture</a>
+      <a href="{{ '/c1-mapping' | relative_url }}" {% if page.url contains '/c1-mapping' %}class="active"{% endif %}>C1 · Mapping</a>
+      <a href="{{ '/c2-swarm' | relative_url }}" {% if page.url contains '/c2-swarm' %}class="active"{% endif %}>C2 · Swarm</a>
+      <a href="{{ '/principles' | relative_url }}" {% if page.url contains '/principles' %}class="active"{% endif %}>Principles</a>
+      <a href="{{ '/engineering' | relative_url }}" {% if page.url contains '/engineering' %}class="active"{% endif %}>Engineering</a>
+      <a class="nav-github" href="https://github.com/zhengboon/ArtificiallyUnintelligent" target="_blank" rel="noopener" aria-label="GitHub repository">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 0C5.4 0 0 5.4 0 12c0 5.3 3.4 9.8 8.2 11.4.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.8-1.3-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.4-1.3-5.4-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2.9-.3 2-.4 3-.4s2.1.1 3 .4c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.3 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6C20.6 21.8 24 17.3 24 12c0-6.6-5.4-12-12-12z"/></svg>
+    </a>
+    </nav>
+    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.body.classList.toggle('nav-open')">
+      <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M3 6h18v2H3zM3 11h18v2H3zM3 16h18v2H3z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main class="content">
+  {{ content }}
+</main>
+
+<footer class="site-footer">
+  <div class="footer-inner">
+    <div>
+      <strong>ArtificiallyUnintelligent</strong> · BrainHack 2026 RoboVerse Drone Challenge · University Finals
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/zhengboon/ArtificiallyUnintelligent" target="_blank" rel="noopener">GitHub</a>
+      <span class="sep">·</span>
+      <a href="{{ '/' | relative_url }}">Home</a>
+      <span class="sep">·</span>
+      <span>Marina Bay Sands · 10–11 June 2026</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

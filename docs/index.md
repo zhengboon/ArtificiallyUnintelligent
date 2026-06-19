@@ -4,27 +4,18 @@ title: Home
 description: A two-stage autonomous drone mission for BrainHack 2026 — mapping drone reconnaissance + Hula swarm deployment & ambush.
 ---
 
-# ArtificiallyUnintelligent
-
-**RoboVerse Drone Challenge · BrainHack 2026 · University Finals**
-*Marina Bay Sands Expo, Level 4 · 10–11 June 2026*
-
-<p align="center">
-<a href="#what-we-built">What we built</a> &nbsp;·&nbsp;
-<a href="#five-design-principles">Principles</a> &nbsp;·&nbsp;
-<a href="#at-a-glance">At a glance</a> &nbsp;·&nbsp;
-<a href="#dive-deeper">Pages</a> &nbsp;·&nbsp;
-<a href="#team">Team</a>
-</p>
-
-> A two-stage autonomous drone mission. First, a mapping drone surveys the arena and classifies which landing pads are valid. Then a swarm of three Hula drones lands on the valid pads and hunts a convoy of ground robots. Two challenges, one coordinate world, one intelligence-driven pipeline.
-
-<p align="center">
-<img src="images/hero-venue.jpg" alt="Approaching the BRAINHACK arch at Marina Bay Sands Expo Level 4, Day 1 morning of the RoboVerse Drone Challenge finals" width="720">
-<br><sub><i>Day 1 · MBS Expo Level 4 · approaching the BRAINHACK arch and the DSTA Roboverse zone</i></sub>
-</p>
-
----
+<section class="hero">
+  <div class="hero-inner">
+    <span class="hero-eyebrow">BrainHack 2026 · RoboVerse · University Finals</span>
+    <h1>Two drones. One coordinate world.</h1>
+    <p class="lead">A mapping drone surveys the arena and classifies the landing pads. Then a swarm of three Hula drones lands on the valid pads and hunts a convoy of ground robots. Two challenges, one intelligence-driven pipeline.</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="{{ '/architecture' | relative_url }}">See the architecture</a>
+      <a class="btn btn-secondary" href="https://github.com/zhengboon/ArtificiallyUnintelligent" target="_blank" rel="noopener">View on GitHub</a>
+    </div>
+  </div>
+  <span class="hero-credit">Background photo · DSTA · BrainHack 2026</span>
+</section>
 
 ## What we built
 
@@ -50,7 +41,7 @@ Both stages share the **same arena UWB frame** (origin = centre). The C1 → C2 
 | **4** | Safe-first | Crash → zero points → no recovery |
 | **5** | Frame discipline | Silent axis errors that look like "everything is wrong" |
 
-[Full design rationale → Design principles]({{ '/principles' | relative_url }})
+[Full design rationale →]({{ '/principles' | relative_url }})
 
 ---
 
@@ -65,17 +56,17 @@ Both stages share the **same arena UWB frame** (origin = centre). The C1 → C2 
 | **Path** | Lawnmower sweep · centred-origin waypoints | Wall-follow + 360° spin-scan |
 | **Output** | `top_down.png` + `landing_pads.json` (judge artifact) | Snapshot per detected RoboMaster |
 
-[System architecture diagram → Architecture]({{ '/architecture' | relative_url }})
+[System architecture →]({{ '/architecture' | relative_url }})
 
 ---
 
 ## Dive deeper
 
-- 📐 [**Architecture**]({{ '/architecture' | relative_url }}) — full system diagram, module-by-module
-- 🛰 [**Challenge 1 — Mapping drone**]({{ '/c1-mapping' | relative_url }}) — algorithms + flight envelope + redundancy
-- 🤖 [**Challenge 2 — Hula swarm**]({{ '/c2-swarm' | relative_url }}) — deploy + hunt + central detection
-- 📏 [**Design principles**]({{ '/principles' | relative_url }}) — the five rules driving every decision
-- 🛠 [**Engineering log**]({{ '/engineering' | relative_url }}) — trade-offs, prep-week surprises, lessons
+- [**Architecture**]({{ '/architecture' | relative_url }}) — full system diagram, module-by-module
+- [**Challenge 1 — Mapping drone**]({{ '/c1-mapping' | relative_url }}) — algorithms + flight envelope + redundancy
+- [**Challenge 2 — Hula swarm**]({{ '/c2-swarm' | relative_url }}) — deploy + hunt + central detection
+- [**Design principles**]({{ '/principles' | relative_url }}) — the five rules driving every decision
+- [**Engineering log**]({{ '/engineering' | relative_url }}) — trade-offs, prep-week surprises, lessons
 
 ---
 
@@ -90,12 +81,6 @@ Both stages share the **same arena UWB frame** (origin = centre). The C1 → C2 
 | **A** | Operations · concept submission · judge interface |
 
 <p align="center">
-<img src="images/team.jpg" alt="ArtificiallyUnintelligent team in DSTA BrainHack jackets standing in front of the Counter-UAS demo station at MBS Expo Level 4, with a leaderboard screen and a SPOTTED SUSPICIOUS DRONE alert visible behind them" width="540">
-<br><sub><i>The team at the Counter-UAS demo station — DSTA Tech Showcase, MBS Expo Level 4</i></sub>
-</p>
-
----
-
-<p align="center">
-<sub>Source: <a href="https://github.com/zhengboon/ArtificiallyUnintelligent">github.com/zhengboon/ArtificiallyUnintelligent</a> · this site is generated from <code>/docs</code> via GitHub Pages</sub>
+<img src="images/team.jpg" alt="ArtificiallyUnintelligent team in DSTA BrainHack jackets standing in front of the Counter-UAS demo station at MBS Expo Level 4">
+<br><sub><i>The team at the Counter-UAS demo station — DSTA Tech Showcase</i></sub>
 </p>
