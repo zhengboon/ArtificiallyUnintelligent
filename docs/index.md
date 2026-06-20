@@ -100,6 +100,14 @@ DSTA issued every team member a verifiable digital **University Finalist** crede
       <span class="cred-verify">Verify on Credsverse →</span>
     </div>
   </a>
+  <a class="cred-card" href="https://credsverse.com/credentials/d6868a57-8741-47a8-b6b7-4feeac665ce9" target="_blank" rel="noopener">
+    <img src="images/credential-dsta-brainhack2026-kai.webp" alt="BrainHack 2026 RoboVerse Certificate of Participation — University Finalist, awarded to Bock Kai Sheng on 16 June 2026 by DSTA">
+    <div class="cred-body">
+      <div class="cred-name">Bock Kai Sheng</div>
+      <div class="cred-meta">BrainHack 2026 · RoboVerse · University Finalist</div>
+      <span class="cred-verify">Verify on Credsverse →</span>
+    </div>
+  </a>
   <a class="cred-card" href="https://credsverse.com/credentials/6a469f62-90b4-40dc-a9a1-1b009fd67acd" target="_blank" rel="noopener">
     <img src="images/credential-dsta-brainhack2026-abi.webp" alt="BrainHack 2026 RoboVerse Certificate of Participation — University Finalist, awarded to Abirami Baskaran on 16 June 2026 by DSTA">
     <div class="cred-body">
