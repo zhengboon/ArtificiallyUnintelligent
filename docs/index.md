@@ -5,16 +5,21 @@ description: A two-stage autonomous drone mission for BrainHack 2026 — mapping
 ---
 
 <section class="hero">
-  <div class="hero-inner">
-    <span class="hero-eyebrow">BrainHack 2026 · RoboVerse · University Finals</span>
-    <h1>Two drones. One coordinate world.</h1>
-    <p class="lead">A mapping drone surveys the arena and classifies the landing pads. Then a swarm of three Hula drones lands on the valid pads and hunts a convoy of ground robots. Two challenges, one intelligence-driven pipeline.</p>
-    <div class="hero-actions">
-      <a class="btn btn-primary" href="{{ '/architecture' | relative_url }}">See the architecture</a>
-      <a class="btn btn-secondary" href="https://github.com/zhengboon/ArtificiallyUnintelligent" target="_blank" rel="noopener">View on GitHub</a>
+  <div class="hero-row">
+    <div class="hero-text">
+      <span class="hero-eyebrow">BrainHack 2026 · RoboVerse · University Finals</span>
+      <h1>Two drones. One coordinate world.</h1>
+      <p class="lead">A mapping drone surveys the arena and classifies the landing pads. Then a swarm of three Hula drones lands on the valid pads and hunts a convoy of ground robots. Two challenges, one intelligence-driven pipeline.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="{{ '/architecture' | relative_url }}">See the architecture</a>
+        <a class="btn btn-secondary" href="https://github.com/zhengboon/ArtificiallyUnintelligent" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
     </div>
+    <figure class="hero-photo">
+      <img src="images/hero-team.jpg" alt="The ArtificiallyUnintelligent team in DSTA BrainHack jackets, three teammates standing under the lit BRAINHACK arch at Marina Bay Sands Expo Level 4 on Day 1 of the finals">
+      <figcaption class="hero-photo-caption">ArtificiallyUnintelligent · BRAINHACK arch · MBS Expo L4</figcaption>
+    </figure>
   </div>
-  <span class="hero-credit">Background photo · DSTA · BrainHack 2026</span>
 </section>
 
 ## What we built
@@ -81,8 +86,8 @@ Both stages share the **same arena UWB frame** (origin = centre). The C1 → C2 
 | **A** | Operations · concept submission · judge interface |
 
 <p align="center">
-<img src="images/team.jpg" alt="ArtificiallyUnintelligent team in DSTA BrainHack jackets standing in front of the Counter-UAS demo station at MBS Expo Level 4">
-<br><sub><i>The team at the Counter-UAS demo station — DSTA Tech Showcase</i></sub>
+<img src="images/team.jpg" alt="ArtificiallyUnintelligent team in DSTA BrainHack jackets in front of the RoboVerse backdrop at MBS Expo Level 4, one teammate holding up a printed ArUco marker, another holding a RoboMaster ground robot, with the rest of the team's hardware staged on the platform in front of them">
+<br><sub><i>The team in front of the RoboVerse backdrop — one ArUco marker, one RoboMaster, and the rest of the day's hardware on the platform</i></sub>
 </p>
 
 ---
