@@ -71,7 +71,7 @@ We drafted 11 support-ticket questions for the org over the prep week. By T-1 ev
 Slide 10 of the brief: a 4 % bonus for completing the *Brainhack Frontier Exploration System* — a gamified tour of the DSTA tech showcase next to the arena. Three zones (Above & Beyond: Skies & Space · Machines at the Edge: Land & Sea · Truth & Trust: Digital Defence). We checked all three off between scored slots.
 
 <p align="center">
-<img src="images/frontier-exploration-bonus.jpg" alt="Phone screenshot of the Brainhack Frontier Exploration System showing 3/3 zones explored: Above and Beyond Skies and Space, Machines at the Edge Land and Sea, Truth and Trust Digital Defence, all marked EXPLORED with a Complete Mission button at the bottom" width="360">
+<img src="{{ '/images/frontier-exploration-bonus.jpg' | relative_url }}" alt="Phone screenshot of the Brainhack Frontier Exploration System showing 3/3 zones explored: Above and Beyond Skies and Space, Machines at the Edge Land and Sea, Truth and Trust Digital Defence, all marked EXPLORED with a Complete Mission button at the bottom" width="360">
 <br><sub><i>3 / 3 zones explored — the 4 % bonus collected between slots</i></sub>
 </p>
 

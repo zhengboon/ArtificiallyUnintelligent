@@ -16,7 +16,7 @@ description: A two-stage autonomous drone mission for BrainHack 2026 — mapping
       </div>
     </div>
     <figure class="hero-photo">
-      <img src="images/hero-team.jpg" alt="The ArtificiallyUnintelligent team in DSTA BrainHack jackets, three teammates standing under the lit BRAINHACK arch at Marina Bay Sands Expo Level 4 on Day 1 of the finals">
+      <img src="{{ '/images/hero-team.jpg' | relative_url }}" alt="The ArtificiallyUnintelligent team in DSTA BrainHack jackets, three teammates standing under the lit BRAINHACK arch at Marina Bay Sands Expo Level 4 on Day 1 of the finals">
       <figcaption class="hero-photo-caption">ArtificiallyUnintelligent · BRAINHACK arch · MBS Expo L4</figcaption>
     </figure>
   </div>
@@ -102,7 +102,7 @@ Both stages share the **same arena UWB frame** (origin = centre). The C1 → C2 
 | **A** | Operations · concept submission · judge interface |
 
 <p align="center">
-<img src="images/team.jpg" alt="ArtificiallyUnintelligent team in DSTA BrainHack jackets in front of the RoboVerse backdrop at MBS Expo Level 4, one teammate holding up a printed ArUco marker, another holding a RoboMaster ground robot, with the rest of the team's hardware staged on the platform in front of them">
+<img src="{{ '/images/team.jpg' | relative_url }}" alt="ArtificiallyUnintelligent team in DSTA BrainHack jackets in front of the RoboVerse backdrop at MBS Expo Level 4, one teammate holding up a printed ArUco marker, another holding a RoboMaster ground robot, with the rest of the team's hardware staged on the platform in front of them">
 <br><sub><i>The team in front of the RoboVerse backdrop — one ArUco marker, one RoboMaster, and the rest of the day's hardware on the platform</i></sub>
 </p>
 
@@ -114,7 +114,7 @@ DSTA issued every team member a verifiable digital **University Finalist** crede
 
 <div class="cred-grid">
   <a class="cred-card" href="https://credsverse.com/credentials/b5c1044e-0b4f-4f63-b3cc-ebe811ecb6c5?recipient=true" target="_blank" rel="noopener">
-    <img src="images/credential-dsta-brainhack2026-zheng.webp" alt="BrainHack 2026 RoboVerse Certificate of Participation — University Finalist, awarded to Tan Zheng Boon on 16 June 2026 by DSTA">
+    <img src="{{ '/images/credential-dsta-brainhack2026-zheng.webp' | relative_url }}" alt="BrainHack 2026 RoboVerse Certificate of Participation — University Finalist, awarded to Tan Zheng Boon on 16 June 2026 by DSTA">
     <div class="cred-body">
       <div class="cred-name">Tan Zheng Boon</div>
       <div class="cred-meta">BrainHack 2026 · RoboVerse · University Finalist</div>
@@ -122,7 +122,7 @@ DSTA issued every team member a verifiable digital **University Finalist** crede
     </div>
   </a>
   <a class="cred-card" href="https://credsverse.com/credentials/d6868a57-8741-47a8-b6b7-4feeac665ce9" target="_blank" rel="noopener">
-    <img src="images/credential-dsta-brainhack2026-kai.webp" alt="BrainHack 2026 RoboVerse Certificate of Participation — University Finalist, awarded to Bock Kai Sheng on 16 June 2026 by DSTA">
+    <img src="{{ '/images/credential-dsta-brainhack2026-kai.webp' | relative_url }}" alt="BrainHack 2026 RoboVerse Certificate of Participation — University Finalist, awarded to Bock Kai Sheng on 16 June 2026 by DSTA">
     <div class="cred-body">
       <div class="cred-name">Bock Kai Sheng</div>
       <div class="cred-meta">BrainHack 2026 · RoboVerse · University Finalist</div>
@@ -130,7 +130,7 @@ DSTA issued every team member a verifiable digital **University Finalist** crede
     </div>
   </a>
   <a class="cred-card" href="https://credsverse.com/credentials/6a469f62-90b4-40dc-a9a1-1b009fd67acd" target="_blank" rel="noopener">
-    <img src="images/credential-dsta-brainhack2026-abi.webp" alt="BrainHack 2026 RoboVerse Certificate of Participation — University Finalist, awarded to Abirami Baskaran on 16 June 2026 by DSTA">
+    <img src="{{ '/images/credential-dsta-brainhack2026-abi.webp' | relative_url }}" alt="BrainHack 2026 RoboVerse Certificate of Participation — University Finalist, awarded to Abirami Baskaran on 16 June 2026 by DSTA">
     <div class="cred-body">
       <div class="cred-name">Abirami Baskaran</div>
       <div class="cred-meta">BrainHack 2026 · RoboVerse · University Finalist</div>

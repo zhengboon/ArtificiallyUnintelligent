@@ -34,7 +34,7 @@ We must produce:
 All artifacts written to one timestamped run folder for the judges.
 
 <p align="center">
-<img src="images/convoy-robomasters.jpg" alt="Three RoboMaster ground robots staged on the carpet inside the BrainHack arena cage, each carrying a printed ArUco marker on its top surface, with the see-through black netting visible behind them" width="540">
+<img src="{{ '/images/convoy-robomasters.jpg' | relative_url }}" alt="Three RoboMaster ground robots staged on the carpet inside the BrainHack arena cage, each carrying a printed ArUco marker on its top surface, with the see-through black netting visible behind them" width="540">
 <br><sub><i>Inside the cage on Day 1 morning — the convoy of RoboMasters with their on-body ArUco markers, against the see-through netting that defeated reactive obstacle sensing</i></sub>
 </p>
 
@@ -73,7 +73,7 @@ The closed-loop velocity controller polls the current pose (10 Hz), computes err
 ## Perception — multi-dictionary ArUco
 
 <p align="center">
-<img src="images/aruco-marker-printed.jpg" alt="A printed ArUco marker laid flat on a dark tablecloth, roughly 20 cm square, the asymmetric black-and-white pattern of a 7x7 dictionary clearly visible" width="360">
+<img src="{{ '/images/aruco-marker-printed.jpg' | relative_url }}" alt="A printed ArUco marker laid flat on a dark tablecloth, roughly 20 cm square, the asymmetric black-and-white pattern of a 7x7 dictionary clearly visible" width="360">
 <br><sub><i>The org's announced markers — 20 cm × 20 cm, dictionary <code>DICT_7X7_1000</code> revealed at the briefing</i></sub>
 </p>
 

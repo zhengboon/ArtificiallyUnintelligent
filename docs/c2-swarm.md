@@ -38,7 +38,7 @@ Our swarm design accommodates all of these — ArUco-first detection, UWB-positi
 ## Architecture overview
 
 <p align="center">
-<img src="images/swarm-controller-live.jpg" alt="Live screen of the swarm controller during Day 2 — the per-drone state machine printing STATE_FLY_TO_ZONE for Drone 1 in the terminal pane and an opened detection JPEG showing a green-bbox ArUco marker captured by the Hula's down-camera mid-hunt" width="720">
+<img src="{{ '/images/swarm-controller-live.jpg' | relative_url }}" alt="Live screen of the swarm controller during Day 2 — the per-drone state machine printing STATE_FLY_TO_ZONE for Drone 1 in the terminal pane and an opened detection JPEG showing a green-bbox ArUco marker captured by the Hula's down-camera mid-hunt" width="720">
 <br><sub><i>The swarm controller live on Day 2 · per-drone state in the terminal · fresh ArUco hit on a RoboMaster body in the image pane</i></sub>
 </p>
 

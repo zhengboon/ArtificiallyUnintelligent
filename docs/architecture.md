@@ -67,7 +67,7 @@ description: System architecture of the mapping drone + Hula swarm. Module-by-mo
 Runs on the C2 Terminal (Windows host + Ubuntu VM) talking to three Hula drones over Wi-Fi via `pyhula`.
 
 <p align="center">
-<img src="images/swarm-controller-live.jpg" alt="Laptop screen during Day 2 — VS Code with swarm_controller.py open, the per-drone state machine printing STATE_FLY_TO_ZONE in the terminal, and an opened detection JPEG showing a green-bbox ArUco marker pinned to the side of a RoboMaster captured by the Hula's down-camera" width="720">
+<img src="{{ '/images/swarm-controller-live.jpg' | relative_url }}" alt="Laptop screen during Day 2 — VS Code with swarm_controller.py open, the per-drone state machine printing STATE_FLY_TO_ZONE in the terminal, and an opened detection JPEG showing a green-bbox ArUco marker pinned to the side of a RoboMaster captured by the Hula's down-camera" width="720">
 <br><sub><i>Day 2 · live: the swarm controller's per-drone state machine (terminal) and a fresh ArUco detection on a RoboMaster body (image preview)</i></sub>
 </p>
 
