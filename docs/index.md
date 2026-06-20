@@ -65,6 +65,21 @@ Both stages share the **same arena UWB frame** (origin = centre). The C1 → C2 
 
 ---
 
+## By the numbers
+
+<div class="stats">
+  <div class="stat"><span class="stat-num">5</span><span class="stat-label">Days of prep</span></div>
+  <div class="stat"><span class="stat-num">3</span><span class="stat-label">Teammates</span></div>
+  <div class="stat"><span class="stat-num">2</span><span class="stat-label">Drone platforms</span></div>
+  <div class="stat"><span class="stat-num">~140</span><span class="stat-label">Commits</span></div>
+  <div class="stat"><span class="stat-num">~3.5k</span><span class="stat-label">C1 LOC</span></div>
+  <div class="stat"><span class="stat-num">20</span><span class="stat-label">ArUco dicts supported</span></div>
+  <div class="stat"><span class="stat-num">5</span><span class="stat-label">Safety watchdogs</span></div>
+  <div class="stat"><span class="stat-num">11</span><span class="stat-label">Org clarifications handled live</span></div>
+</div>
+
+---
+
 ## Dive deeper
 
 - [**Architecture**]({{ '/architecture' | relative_url }}) — full system diagram, module-by-module

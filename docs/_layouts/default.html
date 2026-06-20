@@ -5,17 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% if page.title and page.title != "Home" %}{{ page.title }} · {{ site.title }}{% else %}{{ site.title }}{% endif %}</title>
 <meta name="description" content="{% if page.description %}{{ page.description }}{% else %}{{ site.description }}{% endif %}">
-<meta property="og:title" content="{{ site.title }}">
+<meta property="og:title" content="{% if page.title and page.title != 'Home' %}{{ page.title }} · {{ site.title }}{% else %}{{ site.title }}{% endif %}">
 <meta property="og:description" content="{% if page.description %}{{ page.description }}{% else %}{{ site.description }}{% endif %}">
-<meta property="og:image" content="{{ '/images/hero-arch-dsta.jpg' | relative_url }}">
+<meta property="og:image" content="{{ '/images/hero-team.jpg' | relative_url }}">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="{{ '/favicon.svg' | relative_url }}">
 <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 </head>
 <body class="{% if page.url == '/' %}home{% else %}subpage{% endif %}">
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div class="reading-progress" id="reading-progress"></div>
 
 <header class="site-nav">
   <div class="nav-inner">
@@ -40,7 +45,7 @@
   </div>
 </header>
 
-<main class="content">
+<main class="content" id="main">
   {{ content }}
 </main>
 
@@ -58,6 +63,62 @@
     </div>
   </div>
 </footer>
+
+<script>
+(function() {
+  // 1. Reading-progress bar — only on subpages with long content
+  var bar = document.getElementById('reading-progress');
+  if (bar && document.body.classList.contains('subpage')) {
+    var update = function() {
+      var h = document.documentElement;
+      var scrolled = h.scrollTop || document.body.scrollTop;
+      var height = h.scrollHeight - h.clientHeight;
+      bar.style.width = height > 0 ? (scrolled / height * 100) + '%' : '0%';
+    };
+    window.addEventListener('scroll', update, {passive: true});
+    update();
+  }
+
+  // 2. Anchor links on h2 / h3 — hover to copy
+  var headings = document.querySelectorAll('.content h2[id], .content h3[id]');
+  headings.forEach(function(h) {
+    var a = document.createElement('a');
+    a.href = '#' + h.id;
+    a.className = 'heading-anchor';
+    a.setAttribute('aria-label', 'Link to ' + h.textContent);
+    a.innerHTML = '#';
+    a.addEventListener('click', function(e) {
+      navigator.clipboard && navigator.clipboard.writeText(window.location.origin + window.location.pathname + '#' + h.id);
+    });
+    h.appendChild(a);
+  });
+
+  // 3. Lazy-load all images that don't already have a loading attribute
+  document.querySelectorAll('img:not([loading])').forEach(function(img) {
+    img.loading = 'lazy';
+    img.decoding = 'async';
+  });
+
+  // 4. Code-copy buttons on every <pre>
+  document.querySelectorAll('.content pre').forEach(function(pre) {
+    var btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.type = 'button';
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', function() {
+      var code = pre.querySelector('code');
+      var text = code ? code.textContent : pre.textContent;
+      navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = 'Copied';
+        setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+      }, function() {
+        btn.textContent = 'Failed';
+      });
+    });
+    pre.appendChild(btn);
+  });
+})();
+</script>
 
 </body>
 </html>

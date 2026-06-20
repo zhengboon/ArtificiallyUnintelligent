@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://zhengboon.github.io/ArtificiallyUnintelligent/sitemap.xml
