@@ -15,6 +15,19 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script>
+// No-flash theme: applied before paint
+(function(){
+  try {
+    var saved = localStorage.getItem('au-theme');
+    if (saved === 'light' || saved === 'dark') {
+      document.documentElement.setAttribute('data-theme', saved);
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  } catch(e) {}
+})();
+</script>
 </head>
 <body class="{% if page.url == '/' %}home{% else %}subpage{% endif %}">
 
@@ -38,6 +51,10 @@
       <a class="nav-github" href="https://github.com/zhengboon/ArtificiallyUnintelligent" target="_blank" rel="noopener" aria-label="GitHub repository">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 0C5.4 0 0 5.4 0 12c0 5.3 3.4 9.8 8.2 11.4.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.8-1.3-1.8-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.4-1.3-5.4-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2.9-.3 2-.4 3-.4s2.1.1 3 .4c2.3-1.5 3.3-1.2 3.3-1.2.7 1.7.3 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6C20.6 21.8 24 17.3 24 12c0-6.6-5.4-12-12-12z"/></svg>
     </a>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle light / dark theme" aria-pressed="false">
+        <svg class="icon-moon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>
+        <svg class="icon-sun" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M6.76 4.84l-1.8-1.79L3.55 4.46l1.79 1.79 1.42-1.41zM1 11h3v2H1zm10-9h2v3h-2zm7.45 2.16l1.41 1.41-1.79 1.8-1.41-1.42 1.79-1.79zM17 11h3v2h-3zm-5 7a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm-1 4h2v-3h-2zm-7.45-2.16l1.41-1.41 1.79 1.79-1.41 1.42-1.79-1.8z"/></svg>
+      </button>
     </nav>
     <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.body.classList.toggle('nav-open')">
       <svg viewBox="0 0 24 24" width="24" height="24"><path fill="currentColor" d="M3 6h18v2H3zM3 11h18v2H3zM3 16h18v2H3z"/></svg>
@@ -48,6 +65,19 @@
 <main class="content" id="main">
   {{ content }}
 </main>
+
+<nav class="toc" id="toc" aria-label="On this page" hidden>
+  <div class="toc-label">On this page</div>
+  <ul id="toc-list"></ul>
+</nav>
+
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer" hidden>
+  <button class="lightbox-close" id="lb-close" aria-label="Close">✕</button>
+  <button class="lightbox-prev"  id="lb-prev"  aria-label="Previous">‹</button>
+  <button class="lightbox-next"  id="lb-next"  aria-label="Next">›</button>
+  <img id="lb-img" alt="">
+  <div class="lightbox-caption" id="lb-caption"></div>
+</div>
 
 <footer class="site-footer">
   <div class="footer-inner">
@@ -66,7 +96,23 @@
 
 <script>
 (function() {
-  // 1. Reading-progress bar — only on subpages with long content
+
+  // ============ 1. Theme toggle ============
+  var root = document.documentElement;
+  var toggle = document.getElementById('theme-toggle');
+  var setPressed = function(){
+    toggle.setAttribute('aria-pressed', root.getAttribute('data-theme') === 'light' ? 'true' : 'false');
+  };
+  setPressed();
+  toggle.addEventListener('click', function() {
+    var current = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    var next = current === 'light' ? 'dark' : 'light';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('au-theme', next); } catch(e) {}
+    setPressed();
+  });
+
+  // ============ 2. Reading-progress bar ============
   var bar = document.getElementById('reading-progress');
   if (bar && document.body.classList.contains('subpage')) {
     var update = function() {
@@ -79,7 +125,7 @@
     update();
   }
 
-  // 2. Anchor links on h2 / h3 — hover to copy
+  // ============ 3. Heading anchors ============
   var headings = document.querySelectorAll('.content h2[id], .content h3[id]');
   headings.forEach(function(h) {
     var a = document.createElement('a');
@@ -87,19 +133,19 @@
     a.className = 'heading-anchor';
     a.setAttribute('aria-label', 'Link to ' + h.textContent);
     a.innerHTML = '#';
-    a.addEventListener('click', function(e) {
+    a.addEventListener('click', function() {
       navigator.clipboard && navigator.clipboard.writeText(window.location.origin + window.location.pathname + '#' + h.id);
     });
     h.appendChild(a);
   });
 
-  // 3. Lazy-load all images that don't already have a loading attribute
+  // ============ 4. Lazy-load + decoding ============
   document.querySelectorAll('img:not([loading])').forEach(function(img) {
     img.loading = 'lazy';
     img.decoding = 'async';
   });
 
-  // 4. Code-copy buttons on every <pre>
+  // ============ 5. Code copy buttons ============
   document.querySelectorAll('.content pre').forEach(function(pre) {
     var btn = document.createElement('button');
     btn.className = 'copy-btn';
@@ -117,6 +163,95 @@
     });
     pre.appendChild(btn);
   });
+
+  // ============ 6. TOC sidebar ============
+  var tocList = document.getElementById('toc-list');
+  var toc = document.getElementById('toc');
+  if (tocList && toc && document.body.classList.contains('subpage')) {
+    var items = [];
+    document.querySelectorAll('.content h2[id], .content h3[id]').forEach(function(h) {
+      var li = document.createElement('li');
+      li.className = 'toc-' + h.tagName.toLowerCase();
+      var a = document.createElement('a');
+      a.href = '#' + h.id;
+      // strip the trailing # heading-anchor we added
+      var txt = h.textContent.replace(/#$/, '').trim();
+      a.textContent = txt;
+      li.appendChild(a);
+      tocList.appendChild(li);
+      items.push({a: a, id: h.id, el: h});
+    });
+    if (items.length >= 2) {
+      toc.hidden = false;
+      // Active-section observer
+      var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(en) {
+          if (en.isIntersecting) {
+            items.forEach(function(it) { it.a.classList.toggle('active', it.id === en.target.id); });
+          }
+        });
+      }, { rootMargin: '-80px 0px -65% 0px' });
+      items.forEach(function(it) { observer.observe(it.el); });
+    }
+  }
+
+  // ============ 7. ASCII diagram class ============
+  // Wrap recognized box-drawing chars + arrows in <span> for styling
+  var boxChars = /[│─┌┐└┘├┤┬┴┼━┃┏┓┗┛┣┫┳┻╋▼▲►◄▶◀]/;
+  var arrows = /([─━]+>|<[─━]+|→|←|↑|↓|◄|►|▶|◀|▼|▲)/g;
+  document.querySelectorAll('.content pre code, .content pre').forEach(function(el) {
+    var raw = (el.tagName === 'CODE' ? el : el.querySelector('code') || el).textContent;
+    if (!boxChars.test(raw)) return;
+    var target = el.tagName === 'PRE' ? el : el.parentElement;
+    target.classList.add('ascii-block');
+  });
+
+  // ============ 8. Lightbox for gallery ============
+  var lb = document.getElementById('lightbox');
+  var lbImg = document.getElementById('lb-img');
+  var lbCap = document.getElementById('lb-caption');
+  var lbClose = document.getElementById('lb-close');
+  var lbPrev = document.getElementById('lb-prev');
+  var lbNext = document.getElementById('lb-next');
+  var galleryItems = Array.prototype.slice.call(document.querySelectorAll('.gallery-item'));
+  var lbIndex = 0;
+
+  function lbOpen(i) {
+    lbIndex = (i + galleryItems.length) % galleryItems.length;
+    var item = galleryItems[lbIndex];
+    var src = item.getAttribute('href');
+    var caption = item.querySelector('figcaption');
+    lbImg.src = src;
+    lbImg.alt = (item.querySelector('img') || {}).alt || '';
+    lbCap.textContent = caption ? caption.textContent : '';
+    lb.hidden = false;
+    lb.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function lbCloseFn() {
+    lb.classList.remove('open');
+    lb.hidden = true;
+    lbImg.src = '';
+    document.body.style.overflow = '';
+  }
+  if (galleryItems.length > 0) {
+    galleryItems.forEach(function(item, i) {
+      item.addEventListener('click', function(e) {
+        e.preventDefault();
+        lbOpen(i);
+      });
+    });
+    lbClose.addEventListener('click', lbCloseFn);
+    lbPrev.addEventListener('click', function(e) { e.stopPropagation(); lbOpen(lbIndex - 1); });
+    lbNext.addEventListener('click', function(e) { e.stopPropagation(); lbOpen(lbIndex + 1); });
+    lb.addEventListener('click', function(e) { if (e.target === lb || e.target === lbImg) {} if (e.target === lb) lbCloseFn(); });
+    document.addEventListener('keydown', function(e) {
+      if (!lb.classList.contains('open')) return;
+      if (e.key === 'Escape') lbCloseFn();
+      if (e.key === 'ArrowLeft') lbOpen(lbIndex - 1);
+      if (e.key === 'ArrowRight') lbOpen(lbIndex + 1);
+    });
+  }
 })();
 </script>
 
