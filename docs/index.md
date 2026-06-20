@@ -72,6 +72,7 @@ Both stages share the **same arena UWB frame** (origin = centre). The C1 → C2 
 - [**Challenge 2 — Hula swarm**]({{ '/c2-swarm' | relative_url }}) — deploy + hunt + central detection
 - [**Design principles**]({{ '/principles' | relative_url }}) — the five rules driving every decision
 - [**Engineering log**]({{ '/engineering' | relative_url }}) — trade-offs, prep-week surprises, lessons
+- [**Gallery**]({{ '/gallery' | relative_url }}) — venue, team, hardware, swarm controller in the wild
 
 ---
 
