@@ -32,6 +32,16 @@ Most are our own. The DSTA-credited photo is from DSTA's official album of the e
     <figcaption>Venue arrival · Day 1 morning</figcaption>
   </a>
 
+  <a class="gallery-item span-6" href="{{ '/images/gallery-hula-tinkering.jpg' | relative_url }}" target="_blank" rel="noopener">
+    <img src="{{ '/images/gallery-hula-tinkering.jpg' | relative_url }}" alt="A teammate seated at the team's workspace handling a Hula quadcopter, the schedule slide projected on a screen behind, the ROBOVERSE wall to the side, and the team's equipment table loaded with cables, batteries, and components">
+    <figcaption>Hula in hand · Day 1 prep</figcaption>
+  </a>
+
+  <a class="gallery-item span-6" href="{{ '/images/gallery-cuas-demo.jpg' | relative_url }}" target="_blank" rel="noopener">
+    <img src="{{ '/images/gallery-cuas-demo.jpg' | relative_url }}" alt="A teammate inside a netted enclosure at the DSTA Counter-UAS Tech Showcase booth, a small drone hovering in front of a target grid of green LED squares with a red marker indicating the drone's position, a marshal holding a stopwatch on the right">
+    <figcaption>Counter-UAS demo · DSTA Tech Showcase</figcaption>
+  </a>
+
   <a class="gallery-item span-6" href="{{ '/images/swarm-controller-live.jpg' | relative_url }}" target="_blank" rel="noopener">
     <img src="{{ '/images/swarm-controller-live.jpg' | relative_url }}" alt="Laptop screen during Day 2 — VS Code with swarm_controller.py open, the per-drone state machine printing STATE_FLY_TO_ZONE in the terminal, and an opened detection JPEG showing a green-bbox ArUco marker on a RoboMaster body">
     <figcaption>Swarm controller live · ArUco hit · Day 2</figcaption>
